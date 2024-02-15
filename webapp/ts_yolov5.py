@@ -23,7 +23,7 @@ class YOLOv5_Detector:
         # Model
         #model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
         self.model = torch.hub.load(
-            'ultralytics/yolov5', 'custom', path_or_model=filename)
+            'ultralytics/yolov5', 'custom', path=filename)
         if torch.cuda.is_available():
             self.model.cuda()
             t = torch.cuda.get_device_properties(0).total_memory
