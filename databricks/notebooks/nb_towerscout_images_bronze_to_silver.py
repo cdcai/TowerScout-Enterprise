@@ -1,6 +1,7 @@
 # Databricks notebook source
 import pyspark.sql.functions as F
 import pyspark.sql.types as pst
+from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
 
 import io
@@ -15,7 +16,7 @@ from PIL import Image, ImageStat
 # MAGIC Extensions of this notebook could include the extraction of EXIF metadata or other metadata that tends to be embedded in jpg and png file formats.
 # MAGIC
 # MAGIC ## Requirements
-# MAGIC To run this notebook, you need a volume and schema defined in Unity Catalog. EDAV sets catalog name information in the cluster.
+# MAGIC To run this notebook, you need a volume and schema defined in Unity Catalog. EDAV sets catalog name information in the cluster. Without this configuration set, this notebook **WILL** fail.
 
 # COMMAND ----------
 
@@ -73,7 +74,7 @@ sink_table = f"{cat_name}.{sch_name}.{parameters['sink_table_name']}"
 
 # COMMAND ----------
 
-#TODO: This goes into a code file
+#TODO: This cell goes into a code file
 statistics_schema = pst.StructType([
     pst.StructField("mean", pst.ArrayType(pst.DoubleType())),
     pst.StructField("median", pst.ArrayType(pst.IntegerType())),
@@ -83,6 +84,12 @@ statistics_schema = pst.StructType([
 
 
 def image_statistics_udf(image_binary: pst.BinaryType) -> statistics_schema:
+    """
+    Returns a struct containing the mean, median, stddev, and extrema of an image binary
+
+    Args:
+        image_binary: Image encoded as binary values
+    """
     image = Image.open(io.BytesIO(image_binary))
     image_statistics = ImageStat.Stat(image)
 
@@ -93,12 +100,22 @@ def image_statistics_udf(image_binary: pst.BinaryType) -> statistics_schema:
         "extrema": image_statistics.extrema,
     }
 
-_ = spark.udf.register("image_statistics_udf", image_statistics_udf, statistics_schema)
+def compute_image_statistics(dataframe: DataFrame, image_column: str) -> DataFrame:
+    """
+    Returns a dataframe with column of computed image statistics
 
+    Args:
+        dataframe: DataFrame
+        image_column: Name of column in dataframe that contains image binaries
+    """
+    return dataframe.withColumn("statistics", F.expr(f"image_statistics_udf({image_column})"))
 
 # COMMAND ----------
 
- # Read Images
+# Register our UDF in a parallelized manner
+_ = spark.udf.register("image_statistics_udf", image_statistics_udf, statistics_schema)
+
+# Read Images
 image_config = {
     "cloudFiles.format": "binaryFile",
     "pathGlobFilter": "*.jpg"
@@ -112,15 +129,15 @@ source_df = (
     .load(source_path)
 )
 
-
-# Add statistics needed for training and EDA
+# Add statistics needed for training, EDA, or filtering
 transformed_df = (
     source_df
-    .withColumn("statistics", F.expr("image_statistics_udf(content)"))
+    .withColumnRenamed("content", "imageBinary")
+    .transform(compute_image_statistics, "imageBinary")
 )
  
- # Write data as a Delta Table
- write_stream = (
+# Write data as a Delta Table
+write_stream = (
     transformed_df
     .writeStream
     .format("delta")
@@ -129,3 +146,7 @@ transformed_df = (
     .option("checkpointLocation", checkpoint_path)
     .table(sink_table)
 )
+
+# COMMAND ----------
+
+
