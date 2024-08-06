@@ -80,7 +80,8 @@ Licensed under CC-BY-NC-SA-4.0
     <div class="fsearch">
       <div id="mapsearchui" style="display:block;height:auto">
         <span id="location">Location:&nbsp;</span>
-        <input type="text" id="search" style="display:inline;" placeholder="Search ...">
+        <div id="searchBoxContainer" style="display:inline;">
+        <input type="text" id="search" placeholder="Search ..."/> </div>
         <span style="float: right;" id="geometry">
           <input type='text' id='radius' style='width:20%;vertical-align:10%'>&nbsp;m
           <button onclick="circleBoundary()" id="radiusbutton" style="vertical-align:10%;">Circle</button>
@@ -105,9 +106,9 @@ Licensed under CC-BY-NC-SA-4.0
     <div class="fmodel" style="font-size:smaller; overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
       User interface:<br><br>
       <form id="uis" name="uis">
-        <input type="radio" id="google" name="uis" value="google" checked>
-        <label for="google">Google Maps</label><br>
-        <input type="radio" id="bing" name="uis" value="bing">
+        <!-- <input type="radio" id="google" name="uis" value="google" checked> -->
+        <!-- <label for="google">Google Maps</label><br> -->
+        <input type="radio" id="bing" name="uis" value="bing" checked>
         <label for="bing">Bing Maps</label><br>
         <input type="radio" id="upload" name="uis" value="upload">
         <label for="upload">Image upload</label><br>
@@ -124,18 +125,18 @@ Licensed under CC-BY-NC-SA-4.0
       </form>
     </div>
 
-    <div class="fuploadmodel" id="fuploadmodel"
+    <!-- <div class="fuploadmodel" id="fuploadmodel"
       style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;font-size: smaller;">
       <input type="file" id="upload_model" style="display:none" />
       <button class="btn" onclick="document.getElementById('upload_model').click()"
         style="width:100%; height:100%">Upload model</button>
-    </div>
+    </div> -->
 
 
     <!--The div element for the map -->
     <div class="fmap" style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
-      <div id="googleMap" style="display:block"></div>
-      <div id="bingMap" style="display:none"></div>
+      <!-- <div id="googleMap" style="display:block"></div> -->
+      <div id="bingMap" style="display:block"></div>
       <div id="uploadMap" style="display:none; overflow-y:scroll">
         <img id="canvas" style="width:100%;">
       </div>
@@ -188,14 +189,14 @@ Licensed under CC-BY-NC-SA-4.0
     </div>
 
     <div class="fsave" id="fsave" style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;font-size: smaller;">
-      <button class="btn" onclick="download_csv(),download_kml()" style="width:33%; height:100%">Download
+      <button class="btn" onclick="download_csv(),download_kml()" style="width:50%; height:100%">Download
         results</button>
-      <button class="btn" onclick="download_dataset()" style="width:33%; height:100%">Download
+      <button class="btn" onclick="download_dataset()" style="width:50%; height:100%">Download
         dataset</button>
-      <button class="btn" onclick="document.getElementById('upload_dataset').click()"
-        style="width:33%; height:100%">Restore
-        dataset</button>
-      <input type="file" id="upload_dataset" style="display:none" />
+      <!-- <button class="btn" onclick="document.getElementById('upload_dataset').click()"
+        style="width:33%; height:100%" hidden>Restore
+        dataset</button> -->
+      <!-- <input type="file" id="upload_dataset" style="display:none" /> -->
     </div>
 
     <div class="ftext" style="font-size: smaller;">
@@ -208,15 +209,10 @@ Licensed under CC-BY-NC-SA-4.0
 
 
   <script src="/js/jquery-3.5.1.min.js"></script>
-  <script
-    src="https://maps.googleapis.com/maps/api/js?key={{google_map_key}}&loading=async&callback=initGoogleMap&libraries=places,drawing&v=weekly"
-    defer>
-    </script>
   <script type='text/javascript' src='https://www.bing.com/api/maps/mapcontrol?callback=initBingMap&key={{bing_map_key}}'
     async defer>
     </script>
   <script>
-    let gak = "{{google_map_key}}";
     let bak = "{{bing_map_key}}";
     let dev = {{ dev }};
   </script>

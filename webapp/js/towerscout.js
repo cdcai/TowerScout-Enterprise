@@ -12,8 +12,6 @@
 // TowerScout.js
 // client-side logic
 
-
-
 // maps
 
 // The location of a spot in central NYC
@@ -92,16 +90,18 @@ function aboutOpacity(secs, total) {
 // Initialize and add the map
 function initBingMap() {
   bingMap = new BingMap();
+  currentMap = bingMap;
+
+  // also add change listeners for the UI providers
+  // add change listeners for radio buttons
+  currentUI = document.uis.uis[0];
+  setMap(currentUI);
+  for (let rad of document.uis.uis) {
+    rad.addEventListener('change', function () {
+      setMap(this);
+    });
+  }
 }
-
-function initGoogleMap() {
-  googleMap = new GoogleMap();
-  setMyLocation();
-
-  // the Google Map is also the default map
-  currentMap = googleMap;
-}
-
 
 
 //
@@ -162,6 +162,18 @@ class TSMap {
 // Bing Maps
 //
 
+function drawBoundary(map, results) {
+  var locations = results.searchResults;
+  locations.forEach(function (location) {
+    var polygon = new Microsoft.Maps.Polygon(location.location.boundary, {
+      fillColor: 'rgba(0, 255, 0, 0.5)',
+      strokeColor: 'green',
+      strokeThickness: 2
+    });
+    map.entities.push(polygon);
+  })
+}
+
 class BingMap extends TSMap {
   constructor() {
     super();
@@ -171,10 +183,129 @@ class BingMap extends TSMap {
       zoom: 19,
       maxZoom: 21,
       disableStreetside: true,
+      // showSearchBar: true
+    });
+    let bingMap = this.map;
+    Microsoft.Maps.loadModule('Microsoft.Maps.AutoSuggest', function () {
+      var options = {
+          maxResults: 4,
+          map: bingMap
+      };
+      var manager = new Microsoft.Maps.AutosuggestManager(options);
+      manager.attachAutosuggest('#search', '#searchBoxContainer', selectedSuggestion);
     });
 
+    document.getElementById('search').addEventListener('change', Search);
+
+    let searchManager;
+    Microsoft.Maps.loadModule(['Microsoft.Maps.SpatialDataService',
+    'Microsoft.Maps.Search'], function () {
+        searchManager = new Microsoft.Maps.Search.SearchManager(bingMap);
+    });
+
+    function Search() {
+      //Remove all data from the map.
+      bingMap.entities.clear();
+
+      //Create the geocode request.
+      var geocodeRequest = {
+          where: document.getElementById('search').value,
+          callback: getBoundary,
+          errorCallback: function (e) {
+              //If there is an error, alert the user about it.
+             // alert("No results found.");
+          }
+      };
+      searchManager.geocode(geocodeRequest);
+    }
+
+      function getBoundary(geocodeResult){
+        //Add the first result to the map and zoom into it.
+        if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
+            //Zoom into the location.
+            bingMap.setView({ bounds: geocodeResult.results[0].bestView });
+
+            //Create the request options for the GeoData API.
+            var geoDataRequestOptions = {
+                lod: 1,
+                getAllPolygons: true
+            };
+
+            //Verify that the geocoded location has a supported entity type.
+            switch (geocodeResult.results[0].entityType) {
+                case "CountryRegion":
+                case "AdminDivision1":
+                case "AdminDivision2":
+                case "Postcode1":
+                case "Postcode2":
+                case "Postcode3":
+                case "Postcode4":
+                case "Neighborhood":
+                case "PopulatedPlace":
+                    geoDataRequestOptions.entityType = geocodeResult.results[0].entityType;
+                    break;
+                default:
+                    //Display a pushpin if GeoData API does not support EntityType.
+                    console.log(`GeoData API does not support EntityType ${geocodeResult.results[0].entityType}.`);
+                    return;
+            }
+
+            //Use the GeoData API manager to get the boundaries of the zip codes.
+            Microsoft.Maps.SpatialDataService.GeoDataAPIManager.getBoundary(
+              geocodeResult.results[0].location,
+              geoDataRequestOptions,
+              bingMap,
+              function (data) {
+                  //Add the polygons to the map.
+                  if (data.results && data.results.length > 0) {
+                    bingMap.entities.push(data.results[0].Polygons);
+                  } else {
+                      console.log(`Could not find boundary for ${document.getElementById('search').value}`)
+                  }
+              }
+            );
+        }
+      }
+
+function selectedSuggestion(result) {
+      bingMap.entities.clear;
+      var geocodeRequest;
+      if ((result.entitySubType == "Address") || (result.entityType == "PostalAddress")){
+        geocodeRequest = {
+          where: result.formattedSuggestion,
+          callback: function (r) {
+              //Add the first result to the map and zoom into it.
+              if (r && r.results && r.results.length > 0) {
+                  var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
+                  bingMap.entities.push(pin);
+
+                  bingMap.setView({ bounds: r.results[0].bestView });
+              }
+          },
+          errorCallback: function (e) {
+              //If there is an error, alert the user about it.
+              alert("No results found.");
+          }
+      }
+    }
+      else{
+        geocodeRequest = {
+        where: result.title,
+        callback: getBoundary,
+        errorCallback: function (e) {
+            //If there is an error, alert the user about it.
+            alert("No results found.");
+        }
+    };
+      
+      }
+      searchManager.geocode(geocodeRequest);
+    }
+
+
+
     // get view change event to bias place search results
-    Microsoft.Maps.Events.addHandler(this.map, 'viewchangeend', () => googleMap.biasSearchBox());
+    // Microsoft.Maps.Events.addHandler(this.map, 'viewchangeend', () => googleMap.biasSearchBox());
 
     // load the spatial math module
     Microsoft.Maps.loadModule('Microsoft.Maps.SpatialMath', () => { });
@@ -198,6 +329,21 @@ class BingMap extends TSMap {
   }
 
   getBounds() {
+    let locations = [];
+
+    for(var i = 0; i < this.map.entities.getLength(); i++) {
+      var entity = this.map.entities.get(i);
+      if(entity instanceof Microsoft.Maps.Polygon) {
+        var vertices = entity.getLocations();
+        locations = locations.concat(vertices);
+      }
+    }
+
+    if(locations.length > 0) {
+      var bounds = Microsoft.Maps.LocationRect.fromLocations(locations);
+      this.map.setView({ bounds: bounds });
+    } 
+
     let rect = this.map.getBounds();
     return [
       rect.center.longitude - rect.width / 2,
@@ -273,13 +419,14 @@ class BingMap extends TSMap {
     for (let b of this.boundaries) {
       for (let i = this.map.entities.getLength() - 1; i >= 0; i--) {
         let obj = this.map.entities.get(i);
-        if (obj === b.bingObject) {
+        // if (obj === b.bingObject) {
           this.map.entities.removeAt(i);
-        }
+        // }
       }
       b.bingObject = null;
     }
     this.boundaries = [];
+    this.map.entities.clear();
   }
 
   addBoundary(b) {
@@ -325,7 +472,6 @@ class BingMap extends TSMap {
         }
         polys.push(new PolygonBoundary(points))
       }
-      this.drawingManager.clear();
     } else {
       console.log('No shapes in the drawing manager.');
     }
@@ -369,6 +515,7 @@ class BingMap extends TSMap {
         augmentDetections();
       }
       this.drawingManager.clear();
+      // this.map.entities.clear();
     } else {
       console.log('No shapes in the drawing manager.');
     }
@@ -376,384 +523,23 @@ class BingMap extends TSMap {
 
   clearShapes() {
     this.drawingManager.clear();
+    this.map.entities.clear();
   }
 
   clearAll() {
     this.clearShapes();
     // now, also go through Detection_detections and take out the blue ones
-    let dets = [];
-    for (let det of Detection_detections) {
-      if (det.conf !== 1.0) {
-        det.id = dets.length;
-        dets.push(det);
-      }
-    }
-    Detection_detections = dets;
-    Detection.generateList();
-  }
-
-
-}
-
-
-//
-// Google Maps
-//
-
-
-class GoogleMap extends TSMap {
-  constructor() {
-    super();
-    // make the map 
-    this.map = new google.maps.Map(document.getElementById("googleMap"), {
-      zoom: 19,
-      //center: nyc,
-      fullscreenControl: false,
-      streetViewControl: false,
-      scaleControl: true,
-      maxZoom: 21,
-      tilt: 0,
-    });
-    this.boundaries = [];
-    this.drawingManager = new google.maps.drawing.DrawingManager({
-      drawingMode: null
-    });
-    this.newShapes = [];
-
-    // Create the search box and link it to the UI element.
-    this.searchBox = new google.maps.places.SearchBox(input);
-
-    // Bias the SearchBox results towards current map's viewport.
-    this.map.addListener("bounds_changed", () => {
-      this.searchBox.setBounds(this.map.getBounds());
-    });
-
-    // Listen for the event fired when the user selects a prediction and retrieve
-    // more details for that place.
-    this.searchBox.addListener("places_changed", () => {
-      let i = 0;
-      if (input.value !== '"') {
-        this.places = this.searchBox.getPlaces();
-
-        if (this.places.length == 0) {
-          console.log("No places found.");
-          return;
-        }
-      }
-
-
-      let p = input.value;
-      if ((p.length === 5 && !isNaN(p)) ||
-        (p.length === 7 && p[0] == '"' && p[6] == '"' && !isNaN(p.substring(1, 6))) ||
-        (p.startsWith("zipcode "))) {
-        // special case: zipcode
-        getZipcodePolygon(p);
-        return;
-      }
-      this.getBoundsPolygon(input.value, this.places[0])
-    });
-
-    this.drawingManager.setOptions({
-      drawingMode: null,
-      drawingControl: true,
-      drawingControlOptions: {
-        position: google.maps.ControlPosition.TOP_CENTER,
-        drawingModes: [google.maps.drawing.OverlayType.RECTANGLE,
-        google.maps.drawing.OverlayType.POLYGON]
-      },
-      rectangleOptions: {
-        strokeColor: 'green',
-        strokeWeight: 2,
-        fillColor: 'green',
-        fillOpacity: 0.1,
-        editable: true,
-        draggable: true
-      }
-    });
-    this.drawingManager.setMap(this.map);
-
-    google.maps.event.addListener(this.drawingManager, 'rectanglecomplete', function (rect) {
-      googleMap.newShapes.push(rect);
-      console.log("new rectangle: " + rect.bounds.toString());
-    });
-
-    google.maps.event.addListener(this.drawingManager, 'polygoncomplete', function (poly) {
-      googleMap.newShapes.push(poly);
-      console.log("new polygon:");
-      // let path = poly.getPath();
-      // path.forEach((e,i)=>{console.log(" "+e.lng()+","+e.lat())})
-    });
-
-
-  }
-
-  retrieveDrawnBoundaries() {
-    let polys = [];
-
-    for (let s of this.newShapes) {
-      if (typeof s.bounds !== "undefined") {
-        // rectangles have bounds
-        let ne = s.bounds.getNorthEast();
-        let sw = s.bounds.getSouthWest();
-        polys.push(new SimpleBoundary([sw.lng(), ne.lat(), ne.lng(), sw.lat()]));
-      } else {
-        // polygons do not
-        let poly = [];
-        s.getPath().forEach((e, i) => { poly.push([e.lng(), e.lat()]); });
-        polys.push(new PolygonBoundary(poly));
-      }
-    }
-    this.clearShapes()
-    return polys;
-  }
-
-  hasShapes() {
-    return this.newShapes.length !== 0;
-  }
-
-  addShapes() {
-    let bounds;
-
-    for (let s of this.newShapes) {
-      if (typeof s.bounds === "undefined") {
-        bounds = new google.maps.LatLngBounds();
-        s.getPath().forEach((e) => {
-          bounds = bounds.extend(e);
-        });
-      } else {
-        bounds = s.bounds;
-      }
-      s.setMap(null);
-
-      let x1 = bounds.getSouthWest().lng();
-      let y1 = bounds.getNorthEast().lat();
-      let x2 = bounds.getNorthEast().lng();
-      let y2 = bounds.getSouthWest().lat();
-
-      let tileIds = Tile.getTileIds(x1, y1, x2, y2);
-      for (let tileId of tileIds) {
-        let tile = Tile_tiles[tileId]
-        x1 = Math.max(x1, tile.x1);
-        x1 = Math.min(x1, tile.x2);
-        x2 = Math.max(x2, tile.x1);
-        x2 = Math.min(x2, tile.x2);
-        y1 = Math.max(y1, tile.y2);
-        y1 = Math.min(y1, tile.y1);
-        y2 = Math.max(y2, tile.y2);
-        y2 = Math.min(y2, tile.y1);
-        let det = new Detection(x1, y1, x2, y2,
-          'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
-        det.update();
-      }
-    }
-    this.newShapes = [];
-    this.drawingManager.setDrawingMode(null);
-
-    augmentDetections();
-  }
-
-  clearShapes() {
-    for (let rect of this.newShapes) {
-      rect.setMap(null);
-    }
-    this.newShapes = [];
-    this.drawingManager.setDrawingMode(null);
-  }
-
-  clearAll() {
-    this.clearShapes();
-    // now, also go through Detection_detections and take out the blue ones
-    let dets = [];
-    for (let det of Detection_detections) {
-      if (det.conf !== 1.0) {
-        det.id = dets.length;
-        dets.push(det);
-      }
-    }
-    Detection_detections = dets;
-    Detection.generateList();
-  }
-
-
-
-  getBoundsPolygon(query, place) {
-    googleMap.resetBoundaries();
-    bingMap.resetBoundaries();
-
-    console.log("Querying place outline for: " + query + " (" + place.name + ")");
-    if (query[0] === '"' && query.endsWith('"')) {
-      // hand this to openstreetmap "as is"
-      query = query.substring(1, query.length - 1);
-    } else {
-      // take the google idea of what this is instead
-      query = place.formatted_address;
-    }
-
-    googleMap.map.fitBounds(place.geometry.viewport);
-    bingMap.fitBounds(googleMap.getBounds())
-
-    $.ajax({
-      url: "https://nominatim.openstreetmap.org/search.php",
-      data: {
-        q: query,
-        polygon_geojson: "1",
-        format: "json",
-      },
-      success: function (result) {
-        let x = result[0];
-        if (typeof x === 'undefined') {
-          //googleMap.map.setCenter(place.geometry.location);
-          googleMap.map.fitBounds(place.geometry.viewport);
-          //googleMap.map.setZoom(19);
-          bingMap.fitBounds(googleMap.getBounds())
-          return;
-        }
-        console.log(" Display name: " + x['display_name'] + ": " + x['boundingbox']);
-        if (x["geojson"]["type"] == "Polygon" || x["geojson"]["type"] == "MultiPolygon") {
-          let bounds = null;
-          let ps = x["geojson"]["coordinates"];
-          for (let p of ps) {
-            if (x["geojson"]["type"] == "MultiPolygon") {
-              p = p[0];
-            }
-            //console.log(" Polygon: " + p);
-            //let polyData = parseLatLngArray(p);
-            googleMap.addBoundary(new PolygonBoundary(p));
-            bingMap.addBoundary(new PolygonBoundary(p));
-          }
-          //console.log(bounds.toUrlValue());
-        } else if (x["geojson"]["type"] == "LineString" || x["geojson"]["type"] == "Point") {
-          googleMap.map.fitBounds(place.geometry.viewport, 0)
-          bingMap.fitBounds(googleMap.getBounds())
-        }
-        if (googleMap.boundaries.length > 0) {
-          googleMap.showBoundaries();
-          bingMap.showBoundaries();
-        }
-      }
-    });
-  }
-
-
-  // will always synchronize with the Google map,
-  // which should in turn be in sych with the Bing map.
-  biasSearchBox() {
-    this.searchBox.setBounds(this.map.getBounds());
-  }
-
-  getBounds() {
-    let bounds = this.map.getBounds();
-    let ne = bounds.getNorthEast();
-    let sw = bounds.getSouthWest();
-    return [sw.lng(), ne.lat(), ne.lng(), sw.lat()];
-  }
-
-  fitBounds(x1, y1, x2, y2) {
-    let bounds = google.maps.LatLngBounds({
-      north: y1,
-      south: y2,
-      east: x2,
-      west: x1
-    });
-    this.map.fitBounds(bounds);
-  }
-
-  setCenter(c) {
-    this.map.setCenter({ lat: c[1], lng: c[0] });
-    //this.map.setZoom(19);
-  }
-
-  getZoom() {
-    return this.map.getZoom();
-  }
-
-  setZoom(z) {
-    this.map.setZoom(z);
-  }
-
-  makeMapRect(o, listener) {
-    const rectangle = new google.maps.Rectangle({
-      strokeColor: o.color,
-      strokeOpacity: 1.0,
-      strokeWeight: 1,
-      fillColor: o.fillColor,
-      fillOpacity: o.opacity,
-      clickable: true,
-      bounds: {
-        north: o.y1,
-        south: o.y2,
-        east: o.x2,
-        west: o.x1,
-      },
-    });
-    if (typeof listener !== 'undefined') {
-      rectangle.addListener("click", listener);
-      rectangle.setOptions({ zIndex: 1000 });
-    } else {
-      rectangle.setOptions({ zIndex: 0 });
-    }
-    return rectangle;
-  }
-
-  colorMapRect(o, color) {
-    o.mapRect.setOptions({ strokeColor: color, fillColor: color, fillOpacity: o.opacity });
-  }
-
-  updateMapRect(o, onoff) {
-    let r = o.mapRect;
-    r.setMap(onoff ? this.map : null)
-  }
-
-  resetBoundaries() {
-    for (let b of this.boundaries) {
-      b.object.setMap(null);
-      b.object = null;
-    }
-    this.boundaries = [];
-  }
-
-  addBoundary(b) {
-    // add to active bounds
-    b.index = this.boundaries.length;
-
-    // now make GoogleMap objects and link to them
-    let points = b.points.map(p => ({lng: p[0], lat: p[1] }));
-    const poly = new google.maps.Polygon({
-      paths: points,
-      strokeColor: "#0000FF",
-      strokeOpacity: 1,
-      strokeWeight: 2,
-      fillColor: "#00FF00",
-      fillOpacity: 0,
-    });
-    poly.setMap(googleMap.map);
-    b.object = poly;
-    b.objectBounds = new google.maps.LatLngBounds();
-    for (let p of points) {
-      b.objectBounds.extend(p);
-    }
-
-    this.boundaries.push(b);
-
-
-  }
-
-  showBoundaries() {
-    // set map bounds to fit union of all active boundaries
-    let bounds = new google.maps.LatLngBounds();
-    for (let b of this.boundaries) {
-      bounds = bounds.union(b.objectBounds);
-    }
-    this.map.fitBounds(bounds, 0);
-  }
-
-  getBoundaryBoundsUrl() {
-    // set map bounds to fit union of all active boundaries
-    let bounds = new google.maps.LatLngBounds();
-    for (let b of this.boundaries) {
-      bounds = bounds.union(b.objectBounds);
-    }
-    return bounds.toUrlValue();
+    // let dets = [];
+    // for (let det of Detection_detections) {
+    //   if (det.conf !== 1.0) {
+    //     det.id = dets.length;
+    //     dets.push(det);
+    //   }
+    // }
+    
+    // Detection_detections = dets;
+    // Detection.generateList();
+    Detection.resetAll();
   }
 
   getBoundariesStr() {
@@ -844,8 +630,8 @@ class PlaceRect {
   centerInMap() {
     // this.map.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
     // currentMap.setZoom(19);
-    googleMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
-    googleMap.setZoom(19);
+    // googleMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
+    // googleMap.setZoom(19);
     bingMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
     bingMap.setZoom(19);
   }
@@ -1232,14 +1018,34 @@ function createElementFromHTML(htmlString) {
   return div.firstChild;
 }
 
+async function getObjectsResults(processId) {
+  try {
+    const response = await fetch(`/getobjects/${processId}`);
+    if(!response.ok) {
+      throw new Error('Network response was not ok ' + response.statusText);
+    }
+    const data = await response.json();
+    if(data.status === 'Completed') {
+      processObjects(JSON.parse(data.results), performance.now());
+    } else {
+      setTimeout(() => getObjectsResults(processId), 2000);
+
+    }
+  } catch (error) {
+    console.error('There has been a problem with fetching results: ', error);
+  }
+}
+
 // retrieve satellite image and detect objects
 function getObjects(estimate) {
   //let center = currentMap.getCenterUrl();
 
   if (Detection_detections.length > 0) {
     if (!window.confirm("This will erase current detections. Proceed?")) {
-      return;
-    }
+       // erase the previous set of towers and tiles
+  this.clearAll();
+  return;
+}
   }
 
   let engine = $('input[name=model]:checked', '#engines').val()
@@ -1262,7 +1068,7 @@ function getObjects(estimate) {
     }
   }
 
-  let boundaries = googleMap.getBoundariesStr();
+  let boundaries = currentMap.getBoundariesStr();
   let kinds = ["None", "Polygon", "Multiple polygons"]
   if (estimate) {
     console.log("Estimate request in progress");
@@ -1282,7 +1088,7 @@ function getObjects(estimate) {
   formData.append('polygons', boundaries);
   formData.append('estimate', "yes");
 
-  fetch("/getobjects",  { method: "POST", body: formData, })
+  fetch("/getobjects",  { method: "POST", body: formData })
     .then(result => result.text()) 
     .then(result => {
       if (Number(result) === -1) {
@@ -1309,8 +1115,9 @@ function getObjects(estimate) {
       formData.delete("estimate");
       fetch("/getobjects", { method: "POST", body: formData })
         .then(response => response.json())
-        .then(result => {
-          processObjects(result, startTime);
+        .then(data => {
+          console.log(data.status);
+          getObjectsResults(data.process_id);
         })
         .catch(e => {
           console.log(e + ": "); disableProgress(0, 0);
@@ -1363,18 +1170,19 @@ function circleBoundary() {
   // radius? construct a circle
   let radius = document.getElementById("radius").value;
   if (radius !== "") {
-    googleMap.resetBoundaries();
-    bingMap.resetBoundaries();
+    //Clear any current boundaries before getting coordinates
+    clearBoundaries();
+    // make circle
+    let centerCoords = currentMap.getCenter();
+  
     // convert to m
     radius = Number(radius);
 
-    // make circle
-    let centerCoords = currentMap.getCenter();
-
-    googleMap.addBoundary(new CircleBoundary(centerCoords, radius));
+    // googleMap.addBoundary(new CircleBoundary(centerCoords, radius));
     bingMap.addBoundary(new CircleBoundary(centerCoords, radius));
 
-    googleMap.showBoundaries();
+    // googleMap.showBoundaries();
+    
     bingMap.showBoundaries();
   }
 }
@@ -1383,14 +1191,15 @@ function drawnBoundary() {
   console.log("using custom boundary polygon(s)");
   let boundaries = currentMap.retrieveDrawnBoundaries();
   for (let b of boundaries) {
-    googleMap.addBoundary(b);
+    // googleMap.addBoundary(b);
     bingMap.addBoundary(b);
   }
 }
 
 function clearBoundaries() {
-  googleMap.resetBoundaries();
-  bingMap.resetBoundaries();
+  // googleMap.resetBoundaries();
+  currentMap.resetBoundaries();
+  currentMap.drawingManager.clear()
 }
 
 
@@ -1453,13 +1262,13 @@ function fillProviders() {
 
       // add change listeners for the backend provider radio box
       let rad = document.providers.provider;
-      currentProvider = rad[0];
+      currentProvider = rad; //Bing Maps is the defacto provider for now
 
-      for (let r of rad) {
-        r.addEventListener('change', function () {
-          // no action right now
-        });
-      }
+      // for (let r of rad) {
+      //   r.addEventListener('change', function () {
+      //     // no action right now
+      //   });
+      // }
 
       // and one for the file input box
       let fileBox = document.getElementById("upload_file");
@@ -1468,31 +1277,19 @@ function fillProviders() {
       });
 
       // and one for the model upload box
-      let modelBox = document.getElementById("upload_model");
-      modelBox.addEventListener('change', () => {
-        uploadModel();
-      });
+      // let modelBox = document.getElementById("upload_model");
+      // modelBox.addEventListener('change', () => {
+      //   uploadModel();
+      // });
 
       // and one for the dataset upload box
-      let datasetBox = document.getElementById("upload_dataset");
-      datasetBox.addEventListener('change', () => {
-        uploadDataset();
-      });
+      // let datasetBox = document.getElementById("upload_dataset");
+      // datasetBox.addEventListener('change', () => {
+      //   uploadDataset();
+      // });
 
     }
   });
-
-  // also add change listeners for the UI providers
-  // add change listeners for radio buttons
-  let rads = document.uis.uis;
-  currentUI = rads[0];
-  setMap(currentUI);
-
-  for (let rad of rads) {
-    rad.addEventListener('change', function () {
-      setMap(this);
-    });
-  }
 }
 
 function setMap(newMap) {
@@ -1505,13 +1302,13 @@ function setMap(newMap) {
   handle.style.width = "100%";
   handle.style.height = "100%";
 
-  let lastMap = currentMap;
+  // let lastMap = currentMap;
   let zoom;
   let center;
-  if (typeof lastMap !== 'undefined') {
-    zoom = currentMap.getZoom();
-    center = currentMap.getCenter();
-  }
+  // if (lastmap) {
+  //   zoom = currentMap.getZoom();
+  //   center = currentMap.getCenter();
+  // }
 
   if (currentUI.value === "upload") {
     document.getElementById("uploadsearchui").style.display = "block";
@@ -1546,6 +1343,8 @@ function setMap(newMap) {
     let bs = bingMap.boundaries;
     bingMap.resetBoundaries();
     bs.map(b => bingMap.addBoundary(b));
+    zoom = currentMap.getZoom();
+    center = currentMap.getCenter();
   }
 
   // set center and zoom
@@ -1587,49 +1386,59 @@ function changeReviewMode() {
 
 function augmentDetections() {
   Detection_detectionsAugmented = 0;
-  for (let det of Detection_detections) {
+ //for (let det of Detection_detections) {
+    for (let i = 0; i < Detection_detections.length; i++) {
+      let det = Detection_detections[i];
     if (det.address !== "") {
       Detection_detectionsAugmented++;
       continue;
     }
     let loc = det.getCenterUrl();
-    $.ajax({
-      url: "https://maps.googleapis.com/maps/api/geocode/json",
+     // call Bing maps api instead at:
+     
+     setTimeout((ix)=>{
+     // console.log(ix+1);
+      $.ajax({
+      url: "https://dev.virtualearth.net/REST/v1/locationrecog/" + loc,
       data: {
-        latlng: loc,
-        key: gak,
-        location_type: "ROOFTOP",
-        result_type: "street_address",
+        key: bak,
+        includeEntityTypes: "address",
+        output: "json",
       },
       success: function (result) {
-        let addr = "";
-        if (result['status'] === "OK") {
-          addr = result['results'][0]['formatted_address'];
-          det.augment(addr);
-          afterAugment();
-        } else {
-          addr = "(unable to determine address)";
-          // console.log("Cannot parse address result for tower "+i+": "+JSON.stringify(result));
-          // call Bing maps api instead at:
-          $.ajax({
-            url: "http://dev.virtualearth.net/REST/v1/locationrecog/" + loc,
-            data: {
-              key: bak,
-              includeEntityTypes: "address",
-              output: "json",
-            },
-            success: function (result) {
-              let addr = result['resourceSets'][0]['resources'][0]['addressOfLocation'][0]['formattedAddress'];
-              det.augment(addr);
-              afterAugment();
-            }
-          });
-        }
-        //det.augment(addr);
+        let addr = result['resourceSets'][0]['resources'][0]['addressOfLocation'][0]['formattedAddress'];
+        det.augment(addr);
+        afterAugment();
       }
+      
     });
+     },200*i,i)
+    // $.ajax({
+    //   url: "https://maps.googleapis.com/maps/api/geocode/json",
+    //   data: {
+    //     latlng: loc,
+    //     key: gak,
+    //     location_type: "ROOFTOP",
+    //     result_type: "street_address",
+    //   },
+    //   success: function (result) {
+    //     let addr = "";
+    //     if (result['status'] === "OK") {
+    //       addr = result['results'][0]['formatted_address'];
+    //       det.augment(addr);
+    //       afterAugment();
+    //     } else {
+    //       addr = "(unable to determine address)";
+    //       // console.log("Cannot parse address result for tower "+i+": "+JSON.stringify(result));
+         
+    //     }
+    //     //det.augment(addr);
+    //   }
+    // });
 
   }
+
+  //TODO-- Use Bing or Azure maps to Augment Detections
 }
 
 function afterAugment() {
@@ -1983,12 +1792,12 @@ function setMyLocation() {
   if (location.protocol === 'https:' && navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(showPosition);
   } else {
-    googleMap.setCenter(nyc);
+    currentMap.setCenter(nyc);
   }
 }
 
 function showPosition(position) {
-  googleMap.setCenter([position.coords.longitude, position.coords.latitude]);
+  currentMap.setCenter([position.coords.longitude, position.coords.latitude]);
 }
 
 
@@ -2006,7 +1815,7 @@ function getZipcodePolygon(z) {
     .then(response => response.json())
     .then(response => {
       let polygons = parseZipcodeResult(response);
-      if (polygons !== []) {
+      if (polygons != []) {
         currentMap.resetBoundaries();
         for (let polygon of polygons) {
           currentMap.addBoundary(new PolygonBoundary(polygon[0]));
@@ -2046,4 +1855,3 @@ about(0);
 
 
 console.log("TowerScout initialized.");
-
