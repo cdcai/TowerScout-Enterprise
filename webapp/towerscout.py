@@ -10,6 +10,7 @@
 #
 
 # import basic functionality
+import logging
 from ts_yolov5 import YOLOv5_Detector
 from ts_en import EN_Classifier
 import ts_imgutil
@@ -18,7 +19,7 @@ from ts_gmaps import GoogleMap
 from ts_zipcode import Zipcode_Provider
 from ts_events import ExitEvents
 import ts_maps
-from flask import Flask, render_template, send_from_directory, request, session, Response
+from flask import Flask, render_template, send_from_directory, request, session, Response, jsonify
 from flask_session import Session
 from waitress import serve
 import json
@@ -37,6 +38,7 @@ import gc
 import datetime
 import sys
 from functools import reduce 
+import uuid
 
 dev = 0
 
@@ -53,6 +55,9 @@ engine_lock = threading.Lock()
 
 exit_events = ExitEvents()
 
+# Create a dictionary to store session data
+sessions = {}
+process_status = {}
 
 # on-demand instantiate YOLOv5 model
 def get_engine(e):
@@ -104,7 +109,7 @@ def add_model(m):
 
 # map providers
 providers = {
-    'google': {'id': 'google', 'name': 'Google Maps'},
+    # 'google': {'id': 'google', 'name': 'Google Maps'},
     'bing': {'id': 'bing', 'name': 'Bing Maps'},
 }
 
@@ -142,7 +147,6 @@ def start_zipcodes():
 # Flask boilerplate stuff
 app = Flask(__name__)
 # session = Session()
-app.config['UPLOAD_FOLDER'] = "uploads"
 # configure server-sise session
 SESSION_TYPE = 'filesystem'
 SESSION_PERMANENT = False
@@ -235,8 +239,7 @@ def map_func():
         del session['tmpdirname']
 
     # now render the map.html template, inserting the key
-    return render_template('towerscout.html',
-                           google_map_key=google_api_key, bing_map_key=bing_api_key, dev=dev)
+    return render_template('towerscout.html', bing_map_key=bing_api_key, dev=dev)
 
 
 # cache control
@@ -293,106 +296,19 @@ def abort():
     exit_events.signal(id(session))
     return "ok"
 
-# detection route
-
-
-@app.route('/getobjects', methods=['POST'])
-def get_objects():
-    print(" session:", id(session))
-
-    # check whether this session is over its limit
-    if 'tiles' not in session:
-        session['tiles'] = 0
-
-    print("tiles queried in session:", session['tiles'])
-    if session['tiles'] > MAX_TILES_SESSION:
-        return "-1"
-
+def process_objects_task(bounds, engine, map, polygons, tiles, process_id, tmpdirname, tmpfilename):
+    if session is None:
+        return
     # start time, get params
     start = time.time()
-    bounds = request.form.get("bounds")
-    engine = request.form.get("engine")
-    provider = request.form.get("provider")
-    polygons = request.form.get("polygons")
-    print("incoming detection request:")
-    print(" bounds:", bounds)
-    print(" engine:", engine)
-    print(" map provider:", provider)
-    print(" polygons:", polygons)
-
-    # cropping
-    crop_tiles = True
-
-    # make the polygons
-    polygons = json.loads(polygons)
-    # print(" parsed polygons:", polygons)
-    polygons = [ts_imgutil.make_boundary(p) for p in polygons]
-    print(" Shapely polygons:", polygons)
-
+    results = []
     # get the proper detector
     det = get_engine(engine)
-
-    # empty results
-    results = []
-
-    # create a map provider object
-    map = None
-    if provider == "bing":
-        map = BingMap(bing_api_key)
-    elif provider == "google":
-        map = GoogleMap(google_api_key)
-    if map is None:
-        print(" could not instantiate map provider:", provider)
-
-    # divide the map into 640x640 parts
-    tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
-    print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
-    # print(" Tile centers:")
-    # for c in tiles:
-    #   print("  ",c)
-
-    tiles = [t for t in tiles if ts_maps.check_tile_against_bounds(t, bounds)]
-    tiles = [t for t in tiles if ts_imgutil.tileIntersectsPolygons(t, polygons)]
-    for i, tile in enumerate(tiles):
-        tile['id'] = i
-    print(" tiles left after viewport and polygon filter:", len(tiles))
-
-    if request.form.get("estimate") == "yes":
-        # reset abort flag
-        exit_events.alloc(id(session))  # todo: might leak some of these
-        print(" returning number of tiles")
-        print()
-        # + ("" if len(tiles) > MAX_TILES else " (exceeds limit)")
-        return str(len(tiles))
-
-    if len(tiles) > MAX_TILES:
-        print(" ---> request contains too many tiles")
-        exit_events.free(id(session))
-        return "[]"
-    else:
-        # tally the new request
-        session['tiles'] += len(tiles)
-
     # main processing:
-    # first, clean out the old tempdir
-    if "tmpdirname" in session:
-        rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
-        print("cleaned up tmp dir", session['tmpdirname'])
-        del session['tmpdirname']
-
-    # make a new tempdir name and attach to session
-    tmpdir = tempfile.TemporaryDirectory()
-    tmpdirname = tmpdir.name
-    tmpfilename = tmpdirname[tmpdirname.rindex("/")+1:]
-    print("creating tmp dir", tmpdirname)
-    session['tmpdirname'] = tmpdirname
-    tmpdir.cleanup()  # yeah this is asinine but I need the tmpdir to survive to I will create it manually next
-    os.mkdir(tmpdirname)
-    print("created tmp dir", tmpdirname)
 
     # retrieve tiles and metadata if available
     meta = map.get_sat_maps(tiles, loop, tmpdirname, tmpfilename)
-    session['metadata'] = meta
+    # session['metadata'] = meta
     print(" asynchronously retrieved", len(tiles), "files")
 
     # check for abort
@@ -406,7 +322,7 @@ def get_objects():
         tile['filename'] = tmpdirname+"/"+tmpfilename+str(i)+".jpg"
 
     # detect all towers
-    results_raw = det.detect(tiles, exit_events, id(session), crop_tiles=crop_tiles, secondary=secondary_en)
+    results_raw = det.detect(tiles, exit_events, id(session), crop_tiles=True, secondary=secondary_en)
     # abort if signaled
     if exit_events.query(id(session)):
         print(" client aborted request.")
@@ -425,7 +341,7 @@ def get_objects():
             tile['metadata'] = ""
 
     # record some results in session for later saving if desired
-    session['detections'] = make_persistable_tile_results(tiles)
+    # session['detections'] = make_persistable_tile_results(tiles)
 
     # post-process the results
     results = []
@@ -488,9 +404,110 @@ def get_objects():
 
     exit_events.free(id(session))
     results = json.dumps(results)
-    session['results'] = results
-    return results
+    process_status[process_id] = { 'status': 'Completed', 'results': results }
 
+# Endpoint for polling results
+@app.route('/getobjects/<process_id>', methods=['GET'])
+def get_objects_process_status(process_id):
+    results = process_status.get(process_id, 'Unknown process ID')
+    return jsonify(results)
+
+# detection route
+@app.route('/getobjects', methods=['POST'])
+def get_objects():
+    try:
+        # check whether this session is over its limit
+        if 'tiles' not in session:
+            session['tiles'] = 0
+
+        print("tiles queried in session:", session['tiles'])
+        if session['tiles'] > MAX_TILES_SESSION:
+            return "-1"
+        
+        bounds = request.form.get("bounds")
+        engine = request.form.get("engine")
+        provider = request.form.get("provider")
+        polygons = request.form.get("polygons")
+       
+        print("incoming detection request:")
+        print(" bounds:", bounds)
+        print(" engine:", engine)
+        print(" map provider:", provider)
+        print(" polygons:", polygons)
+
+        # make the polygons
+        polygons = json.loads(polygons)
+        # print(" parsed polygons:", polygons)
+        polygons = [ts_imgutil.make_boundary(p) for p in polygons]
+        print(" Shapely polygons:", polygons)
+
+        # create a map provider object
+        map = None
+        if provider == "bing":
+            map = BingMap(bing_api_key)
+        elif provider == "google":
+            map = GoogleMap(google_api_key)
+        if map is None:
+            print(" could not instantiate map provider:", provider)
+
+        # divide the map into 640x640 parts
+        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=True)
+        print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
+        # print(" Tile centers:")
+        # for c in tiles:
+        #   print("  ",c)
+
+        tiles = [t for t in tiles if ts_maps.check_tile_against_bounds(t, bounds)]
+        tiles = [t for t in tiles if ts_imgutil.tileIntersectsPolygons(t, polygons)]
+        for i, tile in enumerate(tiles):
+            tile['id'] = i
+        print(" tiles left after viewport and polygon filter:", len(tiles))
+
+        if request.form.get("estimate") == "yes":
+            # reset abort flag
+            exit_events.alloc(id(session))  # todo: might leak some of these
+            print(" returning number of tiles")
+            print()
+            # + ("" if len(tiles) > MAX_TILES else " (exceeds limit)")
+            return str(len(tiles))
+
+        if len(tiles) > MAX_TILES:
+            print(" ---> request contains too many tiles")
+            exit_events.free(id(session))
+            return "[]"
+        else:
+            # tally the new request
+            session['tiles'] += len(tiles)
+
+            # first, clean out the old tempdir
+        if "tmpdirname" in session:
+            rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
+            print("cleaned up tmp dir", session['tmpdirname'])
+            del session['tmpdirname']
+
+        # make a new tempdir name and attach to session
+        tmpdir = tempfile.TemporaryDirectory()
+        tmpdirname = tmpdir.name
+        # tmpfilename = tmpdirname[tmpdirname.rindex("/")+1:]
+        tmpfilename = get_file_name(tmpdirname)
+        print("creating tmp dir", tmpdirname)
+        session['tmpdirname'] = tmpdirname
+        tmpdir.cleanup() 
+        os.mkdir(tmpdirname)
+        print("created tmp dir", tmpdirname)
+        process_id = str(uuid.uuid4())
+        process_status[process_id] = 'Running'
+        thread = threading.Thread(target=process_objects_task, args=( bounds, engine, map, polygons, tiles, process_id, tmpdirname, tmpfilename))
+        thread.start()
+
+        return jsonify({'status': 'Task started', 'process_id': process_id}), 202
+    except Exception as e:
+        logging.error('Error at %s', 'division', exc_info=e)
+
+
+def get_file_name(file_path):
+    file_name_and_extension = os.path.basename(file_path)
+    return file_name_and_extension
 
 def allowed_extension(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
@@ -571,39 +588,39 @@ def drawResult(r, im):
 
 
 # upload a new model
-@ app.route('/uploadmodel', methods=['POST'])
-def upload_model():
-    print("uploading model:")
+# @ app.route('/uploadmodel', methods=['POST'])
+# def upload_model():
+#     print("uploading model:")
 
-    # upload the file
-    if request.method != 'POST':
-        print(" --- POST requests only please")
-        return None
+#     # upload the file
+#     if request.method != 'POST':
+#         print(" --- POST requests only please")
+#         return None
 
-    # check if the post request has the file part
-    if 'model' not in request.files:
-        print(" --- no file part in request")
-        return None
+#     # check if the post request has the file part
+#     if 'model' not in request.files:
+#         print(" --- no file part in request")
+#         return None
 
-    file = request.files['model']
-    if file.filename == '':
-        print(' --- no selected model file')
-        return None
+#     file = request.files['model']
+#     if file.filename == '':
+#         print(' --- no selected model file')
+#         return None
 
-    if not file or not file.filename.endswith(".pt"):
-        print(" --- invalid file or extension:", file.filename)
-        return None
+#     if not file or not file.filename.endswith(".pt"):
+#         print(" --- invalid file or extension:", file.filename)
+#         return None
 
-    # filename = secure_filename(file.filename)
-    filename = file.filename
-    file.save("model_params/"+("EN" if filename.startswith("b5") else "yolov5")+"/" + filename)
-    print(" uploaded file!")
+#     # filename = secure_filename(file.filename)
+#     filename = file.filename
+#     file.save("model_params/"+("EN" if filename.startswith("b5") else "yolov5")+"/" + filename)
+#     print(" uploaded file!")
 
-    add_model(filename)
+#     add_model(filename)
 
-    print(" installed model", file.filename)
+#     print(" installed model", file.filename)
 
-    return "ok"
+#     return "ok"
 
 
 # download results as dataset for formal training /testing
@@ -814,74 +831,74 @@ def write_contents_file(tmpdirname, tiles, keep_ids, additions, meta):
 # upload dataset for further editing:
 #
 
-@app.route('/uploaddataset', methods=['POST'])
-def upload_dataset():
-    print("Dataset upload")
+# @app.route('/uploaddataset', methods=['POST'])
+# def upload_dataset():
+#     print("Dataset upload")
 
-    # make a temp dir as usual
-    # first, clean out the old tempdir
-    if "tmpdirname" in session:
-        rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
-        print(" cleaned up tmp dir", session['tmpdirname'])
-        del session['tmpdirname']
+#     # make a temp dir as usual
+#     # first, clean out the old tempdir
+#     if "tmpdirname" in session:
+#         rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
+#         print(" cleaned up tmp dir", session['tmpdirname'])
+#         del session['tmpdirname']
 
-    # make a new tempdir name and attach to session
-    tmpdirname = tempfile.mkdtemp()
-    print(" creating tmp dir", tmpdirname)
-    session['tmpdirname'] = tmpdirname
+#     # make a new tempdir name and attach to session
+#     tmpdirname = tempfile.mkdtemp()
+#     print(" creating tmp dir", tmpdirname)
+#     session['tmpdirname'] = tmpdirname
 
-    # check if the post request has the file part
-    if 'dataset' not in request.files:
-        print(" --- no file part in request")
-        return None
+#     # check if the post request has the file part
+#     if 'dataset' not in request.files:
+#         print(" --- no file part in request")
+#         return None
 
-    file = request.files['dataset']
-    if file.filename == '':
-        print(' --- no selected dataset file')
-        return None
+#     file = request.files['dataset']
+#     if file.filename == '':
+#         print(' --- no selected dataset file')
+#         return None
 
-    if not file or not file.filename.endswith(".zip"):
-        print(" --- invalid file or extension:", file.filename)
-        return None
+#     if not file or not file.filename.endswith(".zip"):
+#         print(" --- invalid file or extension:", file.filename)
+#         return None
 
-    filename = tmpdirname + "/" + file.filename
-    file.save(filename)
-    new_stem = tmpdirname[tmpdirname.rindex("/")+1:]
+#     filename = tmpdirname + "/" + file.filename
+#     file.save(filename)
+#     new_stem = tmpdirname[tmpdirname.rindex("/")+1:]
 
-    # unzip dataset.zip
-    # - "empty" tiles and labels right into "."
-    # - "train" combine "images" and "labels" folders into "."
-    # content.txt in "."
-    with zipfile.ZipFile(filename) as zipf:
-        # read previous results and tiles from content.txt and add to session
-        # print(" zip contents:")
-        filenames = zipf.namelist()
-        old_stem = filenames[0][:filenames[0].index("/")]
-        files = adapt_filenames(filenames, old_stem, new_stem)
-        # print(files)
-        for f_zip, f_new in zip(zipf.namelist(), files):
-            print(" processing",f_zip,"to:",f_new)
-            if not f_zip.endswith(".xml"):
-                with zipf.open(f_zip) as f:
-                    with open(tmpdirname+"/"+f_new, "wb") as f_target:
-                        print(" writing", tmpdirname+"/"+f_new)
-                        f_target.write(f.read())
+#     # unzip dataset.zip
+#     # - "empty" tiles and labels right into "."
+#     # - "train" combine "images" and "labels" folders into "."
+#     # content.txt in "."
+#     with zipfile.ZipFile(filename) as zipf:
+#         # read previous results and tiles from content.txt and add to session
+#         # print(" zip contents:")
+#         filenames = zipf.namelist()
+#         old_stem = filenames[0][:filenames[0].index("/")]
+#         files = adapt_filenames(filenames, old_stem, new_stem)
+#         # print(files)
+#         for f_zip, f_new in zip(zipf.namelist(), files):
+#             print(" processing",f_zip,"to:",f_new)
+#             if not f_zip.endswith(".xml"):
+#                 with zipf.open(f_zip) as f:
+#                     with open(tmpdirname+"/"+f_new, "wb") as f_target:
+#                         print(" writing", tmpdirname+"/"+f_new)
+#                         f_target.write(f.read())
 
-    # process contents file
-    results = []
-    print("parsing contents.txt in", tmpdirname)
-    with open(tmpdirname+"/contents.txt") as f:
-        results = json.loads(f.read())
+#     # process contents file
+#     results = []
+#     print("parsing contents.txt in", tmpdirname)
+#     with open(tmpdirname+"/contents.txt") as f:
+#         results = json.loads(f.read())
 
-    session['detections'] = adapt_tiles(
-        results[0], tmpdirname, old_stem, new_stem)
-    session['results'] = json.dumps(results[1])
-    session['metadata'] = results[2]
-    # print("Results:", results[1])
-    # return previous results
-    print(" dataset restored.")
+#     session['detections'] = adapt_tiles(
+#         results[0], tmpdirname, old_stem, new_stem)
+#     session['results'] = json.dumps(results[1])
+#     session['metadata'] = results[2]
+#     # print("Results:", results[1])
+#     # return previous results
+#     print(" dataset restored.")
 
-    return session['results']
+#     return session['results']
 
 # carefully unravel the zip structure we created in the dataset, and make it all flat
 
@@ -925,7 +942,6 @@ if __name__ == '__main__':
     # has to be an api key with access to maps, staticmaps and places
     # todo: deploy CDC-owned key in final version
     with open('apikey.txt') as f:
-        google_api_key = f.readline().split()[0]
         bing_api_key = f.readline().split()[0]
         f.close
     # app.run(debug = True)

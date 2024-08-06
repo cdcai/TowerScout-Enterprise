@@ -13,16 +13,13 @@
 # the provider-independent part of maps
 #
 
-import requests
-import time
-import random
-import tempfile
 import math
 import asyncio
 import aiohttp
 import aiofiles
 import ssl
-
+from collections import deque
+import time
 
 class Map:
 
@@ -122,6 +119,9 @@ async def gather_urls(urls, dir, fname, metadata):
     async with aiohttp.ClientSession() as session:
         await fetch_all(session, urls, dir, fname, metadata)
 
+async def rate_limited_fetch(session, url, dir, fname, i, index):
+    await asyncio.sleep(index * (1 / 3))
+    await fetch(session, url, dir, fname, i)
 
 async def fetch(session, url, dir, fname, i):
 
@@ -132,7 +132,10 @@ async def fetch(session, url, dir, fname, i):
  
     async with session.get(url) as response:
         if response.status != 200:
-            response.raise_for_status()
+            print(f"Error: HTTP status code {response.status}")
+            error_text = await response.text()
+            print(f"Error response: {error_text}")
+            # response.raise_for_status()
 
         # write the file
         filename = dir+"/"+fname+str(i)+(".meta.txt" if meta else ".jpg")
@@ -141,14 +144,18 @@ async def fetch(session, url, dir, fname, i):
             await f.write(await response.read())
             await f.close()
 
-
+# limit 3 requests per 1 second period (10 requests per 1 second period would hit 429 rate limitted responses)
 async def fetch_all(session, urls, dir, fname, metadata):
     tasks = []
     for (i, url) in enumerate(urls):
-        task = asyncio.create_task(fetch(session, url, dir, fname, i//2 if metadata else i))
+        suffix = i//2 if metadata else i
+        task = rate_limited_fetch(session, url, dir, fname, suffix, i)
         tasks.append(task)
     results = await asyncio.gather(*tasks)
     return results
+
+
+
 
 
 #
