@@ -121,6 +121,7 @@ steps_per_epoch = converter_length // batch_size
 
 with converter.make_torch_dataloader(**context_args) as dataloader:
     dataloader_iter = iter(dataloader)
+    
     for epoch in range(1):
         for minibatch_num in range(steps_per_epoch):
             minibatch_images = next(dataloader_iter)
