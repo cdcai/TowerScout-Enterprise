@@ -163,6 +163,7 @@ class TowerScoutModelTrainer():
         self.criterion = nn.BCEWithLogitsLoss()
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
         self.loss = 0
+        self.val_loss = 0
         self.threshold = 0.5
     
     def preprocess_data(self):
@@ -170,7 +171,7 @@ class TowerScoutModelTrainer():
 
     def training_step(self, minibatch, **kwargs) -> dict[str, float]:
         images, labels = minibatch
-        total, correct = 0, 0
+        correct = 0 # return the number correct in each minibatch
         images = images.cuda()
         labels = labels.cuda()
         labels = labels.unsqueeze(1).float()
@@ -182,15 +183,28 @@ class TowerScoutModelTrainer():
         self.loss.backward()
         self.optimizer.step()
 
-        total += labels.size(0)
         out = torch.sigmoid(out)
         correct += ((out > self.threshold).int() == labels).sum().item()
 
         return {"loss": self.loss.item(),
-                 correct}
+                 "train_batch_correct": correct}
 
-    def validation_step(self):
-        pass
+    def validation_step(self, minibatch, **kwargs) -> dict[str, float]:
+        correct = 0 # return number correct in each minibatch
+        with torch.no_grad():
+            images, labels = minibatch
+            images = images.cuda()
+            labels = labels.cuda()
+            labels = labels.unsqueeze(1).float()
+
+            out = self.model(images)
+            self.val_loss = self.criterion(out.data, labels)
+            out = torch.sigmoid(out)
+
+            correct = ((out > 0.5).int() == labels).sum().item()
+        return {"val_loss": self.val_loss.item(),
+                "val_batch_correct": correct}
+
     
     def save_model(self):
         pass
