@@ -24,7 +24,7 @@ class CatalogInfo:
     schemas: list[SchemaInfo]
 
     @classmethod
-    def from_spark_config(cls, spark: SparkSession) -> 'CatalogInfo':
+    def from_spark_config(cls, spark: SparkSession) -> "CatalogInfo":
         """
         Create a CatalogInfo instance from Spark configuration.
 
@@ -80,6 +80,7 @@ def cast_to_column(column: "ColumnOrName") -> Column:
     """
     if isinstance(column, str):
         column = F.col(column)
+
     return column
 
 # COMMAND ----------
@@ -113,7 +114,7 @@ def sum_bytes(dataframe, bytes_column: "ColumnOrName") -> int:
         bytes_column: Column that contains counts of bytes
     """
     aggregate_bytes = dataframe.agg(
-        F.sum("bytes").alias("total_bytes")
+        F.sum(bytes_column).alias("total_bytes")
     )
     return aggregate_bytes.collect()[0]["total_bytes"]
 
@@ -122,7 +123,7 @@ def sum_bytes(dataframe, bytes_column: "ColumnOrName") -> int:
 
 from petastorm.spark import SparkDatasetConverter, make_spark_converter
 
-def create_converter(dataframe, byte_column: "ColumnOrName", parallelism: int=0) -> SparkDatasetConverter:
+def create_converter(dataframe, bytes_column: "ColumnOrName", parallelism: int=0) -> SparkDatasetConverter:
     """
     Returns a PetaStorm converter created from dataframe.
 
@@ -134,7 +135,7 @@ def create_converter(dataframe, byte_column: "ColumnOrName", parallelism: int=0)
     if parallelism == 0:
         parallelism = sc.defaultParallelism
 
-    num_bytes = sum_bytes(dataframe, byte_column)
+    num_bytes = sum_bytes(dataframe, bytes_column)
 
     # Cache
     converter = make_spark_converter(
