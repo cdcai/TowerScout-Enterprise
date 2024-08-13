@@ -15,31 +15,13 @@ import torch
 from torch import nn
 from torchvision import transforms, datasets
 from efficientnet_pytorch import EfficientNet
-
-
-# COMMAND ----------
-
-# MAGIC %sh ls
+from enum import Enum
+from collections import namedtuple
 
 # COMMAND ----------
 
 # MAGIC %reload_ext autoreload
 # MAGIC %autoreload 2
-
-# COMMAND ----------
-
-# import sys
-# import os
-
-# Add the current directory to the Python path
-# print(os.getcwd())
-# sys.path.append(os.path.abspath("../.."))
-
-from databricks.notebooks import mytwo
-
-# COMMAND ----------
-
-print(mytwo.two())
 
 # COMMAND ----------
 
@@ -193,53 +175,68 @@ def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):
 
 # COMMAND ----------
 
+class Metrics(Enum):
+    MSE = nn.MSELoss()
+
+# COMMAND ----------
+
+ModelOutput = namedtuple("ModelOutput", ["loss", "logits", "images"])
+
 class TowerScoutModelTrainer():
-    def __init__(self, optimizer):
-        self.optimizer = optimizer
+    def __init__(self, optimizer_args, metrics=None, criterion: str="MSE"):
+        self.model = TowerScoutModel()
+
+        if metrics is None:
+            metrics = [Metrics.MSE]
+        self.metrics = metrics
+
+        optimizer = self.get_optimizer()
+        self.optimizer = optimizer(self.model.parameters(), **optimizer_args)
+
         self.criterion = nn.BCEWithLogitsLoss()
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
         self.loss = 0
         self.val_loss = 0
         self.threshold = 0.5
     
-    def preprocess_data(self):
-        pass
+    @staticmethod
+    def get_optimizer():
+        return torch.optim.Adam
 
-    def training_step(self, minibatch, **kwargs) -> dict[str, float]:
-        images, labels = minibatch
-        correct = 0 # return the number correct in each minibatch
-        images = images.cuda()
-        labels = labels.cuda()
-        labels = labels.unsqueeze(1).float()
+    def forward(self, minibatch) -> ModelOutput:
+        images = minibatch["features"]
+        labels = minibatch["labels"]
         
-        out = self.model(images)
-        self.loss = self.criterion(out, labels)
-        
-        self.optimizer.zero_grad()
-        self.loss.backward()
-        self.optimizer.step()
-
-        out = torch.sigmoid(out)
-        correct += ((out > self.threshold).int() == labels).sum().item()
-
-        return {"loss": self.loss.item(),
-                 "train_batch_correct": correct}
-
-    def validation_step(self, minibatch, **kwargs) -> dict[str, float]:
-        correct = 0 # return number correct in each minibatch
-        with torch.no_grad():
-            images, labels = minibatch
+        if torch.cuda.is_available():
             images = images.cuda()
             labels = labels.cuda()
-            labels = labels.unsqueeze(1).float()
+        
+        logits = self.model(images)
+        loss = self.criterion(logits, images)
 
-            out = self.model(images)
-            self.val_loss = self.criterion(out.data, labels)
-            out = torch.sigmoid(out)
+        return ModelOutput(loss, logits, images)
+    
+    def score(self, logits, labels, step: str):
+        return {
+            f"{metric.name}/{step}": metric.value(logits, labels).cpu().item() 
+            for metric in self.metrics
+        }
 
-            correct = ((out > 0.5).int() == labels).sum().item()
-        return {"val_loss": self.val_loss.item(),
-                "val_batch_correct": correct}
+    def training_step(self, minibatch, step="TRAIN", **kwargs) -> dict:
+        self.model.train()
+
+        output = self.forward(minibatch)
+        self.optimizer.zero_grad()
+        output.loss.backward()
+        self.optimizer.step()
+
+        return self.score(output.logits, output.labels, step)
+
+    @torch.no_grad()
+    def validation_step(self, minibatch, step="VAL", **kwargs) -> dict:
+        self.model.eval()
+        output = self.forward(minibatch)
+        return self.score(output.logits, output.labels, step)
 
     
     def save_model(self):
