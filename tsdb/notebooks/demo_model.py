@@ -2,7 +2,9 @@
 import torch
 from torch import nn
 from enum import Enum
+
 from collections import namedtuple
+from functools import partial
 
 # COMMAND ----------
 
@@ -43,21 +45,25 @@ ModelOutput = namedtuple("ModelOutput", ["loss", "logits", "images"])
 
 
 class ModelTrainer:
-    def __init__(self, optimizer=None, metrics=None, criterion: str="MSE"):
+    def __init__(self, optimizer_args, metrics=None, criterion: str="MSE"):
         self.model = Autoencoder()
-
-        if optimizer is None:
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
         
         if metrics is None:
-            metrics = {
-                "MSE": DemoMetrics.MSE.value,
-            }
+            metrics = [DemoMetrics.MSE]
         
-        self.optimizer = optimizer
+        optimizer = self.get_optimizer()
+        self.optimizer = optimizer(self.model.parameters(), **optimizer_args)
         self.metrics = metrics
-        self.criterion = "MSE"
-    
+
+        # Search through metrics to find criterion index and set reference
+        metrics_names = [metric.name for metric in metrics]
+        criterion_index = metrics_names.index(criterion)
+        self.criterion = self.metrics[criterion_index].value
+
+    @staticmethod
+    def get_optimizer():
+        return torch.optim.Adam
+
     def forward(self, minibatch) -> ModelOutput:
         images = minibatch["features"]
         
@@ -65,14 +71,14 @@ class ModelTrainer:
             images = images.cuda()
         
         logits = self.model(images)
-        loss = self.metrics[self.criterion](logits, images)
+        loss = self.criterion(logits, images)
         
         return ModelOutput(loss, logits, images)
 
     def score(self, logits, labels, step: str):
         return {
-            f"{metric}/{step}": metric_func(logits, labels).cpu().item()
-            for metric, metric_func in self.metrics.items()
+            f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
+            for metric in self.metrics
         }
 
     def training_step(self, minibatch, step="TRAIN") -> dict[str, float]:
@@ -91,3 +97,7 @@ class ModelTrainer:
         self.model.eval()
         output = self.forward(minibatch)
         return self.score(output.logits, output.images, step)
+
+# COMMAND ----------
+
+

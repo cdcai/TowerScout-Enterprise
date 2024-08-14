@@ -106,7 +106,7 @@ context_args = {
     "batch_size": batch_size
 }
 
-trainer = ModelTrainer()
+trainer = ModelTrainer({"lr": 1e-3})
 converter_length = len(converter)
 steps_per_epoch = converter_length // batch_size
 
@@ -132,4 +132,8 @@ with converter.make_torch_dataloader(**context_args) as dataloader:
 
 # Clear Petastorm Cache
 converter.delete()
+
+
+# COMMAND ----------
+
 
