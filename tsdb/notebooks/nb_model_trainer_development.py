@@ -11,6 +11,10 @@ client.do("GET", "/api/2.0/workspace-conf", {"keys": "enableWorkspaceFilesystem"
 
 # COMMAND ----------
 
+# MAGIC %pip install efficientnet_pytorch
+
+# COMMAND ----------
+
 import torch
 from torch import nn
 from torchvision import transforms, datasets
