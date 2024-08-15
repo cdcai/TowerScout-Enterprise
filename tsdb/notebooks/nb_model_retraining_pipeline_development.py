@@ -3,7 +3,7 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./nb_model_trainer_development
+# MAGIC %run ./demo_model
 
 # COMMAND ----------
 
@@ -15,7 +15,7 @@ import mlflow
 from mlflow.models.signature import infer_signature
 from mlflow import MlflowClient
 
-from hyperopt import fmin, tpe, hp, SparkTrials, Trials, STATUS_OK
+from hyperopt import fmin, tpe, hp, SparkTrials, Trials, STATUS_OK, base
 from hyperopt.pyll import scope
 
 from functools import partial # for passing extra arguements to obj func
@@ -27,6 +27,8 @@ from typing import Any
 from enum import Enum
 
 from torch import nn
+
+from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 # COMMAND ----------
 
@@ -94,11 +96,14 @@ dbutils.widgets.multiselect("metrics", "MSE" , choices=metrics)
 
 # COMMAND ----------
 
-objective_metric = dbutils.widgets.get("objective_metric"), 
-epochs = int(dbutils.widgets.get("epochs")), 
-batch_size = int(dbutils.widgets.get("batch_size")), 
-report_interval = int(dbutils.widgets.get("report_interval")), 
+# DBTITLE 1,Retrieve parameters from notebook
+objective_metric = dbutils.widgets.get("objective_metric")
+epochs = int(dbutils.widgets.get("epochs")) 
+batch_size = int(dbutils.widgets.get("batch_size")) 
+report_interval = int(dbutils.widgets.get("report_interval"))
 metrics = [ValidMetric[metric] for metric in dbutils.widgets.get("metrics").split(",")]
+parallelism = int(dbutils.widgets.get("parallelism"))
+max_evals = int(dbutils.widgets.get("max_evals"))
 
 # COMMAND ----------
 
@@ -110,11 +115,11 @@ client = MlflowClient()
 
 # COMMAND ----------
 
-# DBTITLE 1,Data Ingest
+# DBTITLE 1,Data Ingestion and Splitting
 catalog_info = CatalogInfo.from_spark_config(spark) # CatalogInfo class defined in utils nb
 catalog = catalog_info.name
-schema = "towerscout_test_schema" #dbutils.widgets.get("source_schema")
-source_table = "image_metadata" #dbutils.widgets.get("source_table")
+schema = dbutils.widgets.get("source_schema")
+source_table = dbutils.widgets.get("source_table")
 
 table_name = f"{catalog}.{schema}.{source_table}"
 
@@ -129,8 +134,23 @@ train_set, test_set, val_set = split_datanolabel(images)
 # COMMAND ----------
 
 # DBTITLE 1,Data classes and tuples
-SplitDataset = namedtuple('SplitDataset', ['train', 'val', 'test'])
+# SplitDataset = namedtuple('SplitDataset', ['train', 'val', 'test'])
 FminArgs = namedtuple('FminArgs', ['fn', 'space', 'algo', 'max_evals', 'trials'])
+
+@dataclass
+class SplitConverters:
+    """
+    A class to hold the spark dataset converters for the training, testing
+    and validation sets 
+
+    Attributes:
+        train: The spark dataset converter for the training dataset
+        val: The spark dataset converter for the validation dataset
+        test: The spark dataset converter for the testing dataset
+    """
+    train: SparkDatasetConverter = None
+    val: SparkDatasetConverter = None
+    test: SparkDatasetConverter = None
 
 @dataclass
 class TrainingArgs:
@@ -153,7 +173,16 @@ class TrainingArgs:
 
 # COMMAND ----------
 
-def get_converter_df(dataframe):
+def get_converter_df(dataframe: DataFrame) -> callable:
+    """
+    Creates a petastrom converter for a Spark dataframe
+
+    Args:
+        dataframe: The Spark dataframe
+    Returns:
+        callable: A petastorm converter 
+    """
+    
     dataframe = dataframe.transform(compute_bytes, "content")
     converter = create_converter(
         dataframe,
@@ -162,7 +191,28 @@ def get_converter_df(dataframe):
  
     return converter
 
-def process_data(model_trainer, converter, context_args, train_args, mode, epoch_num=0):
+def process_data(
+        model_trainer: ModelTrainer, 
+        converter: callable, 
+        context_args: dict[str, Any], 
+        train_args: TrainingArgs, 
+        mode: str, 
+        epoch_num: int = 0
+    ) -> dict[str, float]:
+    """
+    Perfroms a single pass (epcoh) over the data accessed by the converter
+
+    Args:
+        model_trainer: The model trainer
+        converter: The petastorm converter 
+        context_args: Arguments for the converter context
+        train_args: Contains training arguments such as batch size
+        mode: Specifics if model is in training or evalaution mode
+        epoch_num: The current epoch number for logging metrics across epochs
+    Returns:
+        dict[str, float] A dict containing values of various metrics for the epoch
+    """
+
     metrics = {}
     converter_length = len(converter)
     steps_per_epoch = converter_length // train_args.batch_size
@@ -182,29 +232,30 @@ def process_data(model_trainer, converter, context_args, train_args, mode, epoch
             if minibatch_num % report_interval == 0:
                 is_train = mode == "TRAIN"
                 mlflow.log_metrics(metrics, step=is_train*(minibatch_num + epoch_num*converter_length))
-        
 
     return metrics
 
 def train(
         params: dict[str, Any], 
         train_args: TrainingArgs,
-        split_data: SplitDataset
+        split_convs: SplitConverters
     ) -> dict[str, Any]:
     """
-    Trains a model with given hyperparameter values and returns the value of the evaluation metric on the valdiation dataset
+    Trains a model with given hyperparameter values and returns the value 
+    of the objective metric on the valdiation dataset.
 
     Args:
         params: The hyperparameter values to train model with
         train_args: The arguements for training and validaiton loops
-        split_data: The dataset split into train/val/test splits
+        split_convs: The converters for the train/val/test datasets
     Returns:
         dict[str, float] A dict containing the loss 
     """
 
     with mlflow.start_run(nested=True):
         # Create model and trainer
-        model_trainer = TowerScoutModelTrainer(optimizer_args=params, metrics=train_args.metrics)
+        #model_trainer = TowerScoutModelTrainer(optimizer_args=params, metrics=train_args.metrics)
+        model_trainer = ModelTrainer(optimizer_args=params, metrics=train_args.metrics)
         mlflow.log_params(params)
         
         context_args = {
@@ -214,17 +265,17 @@ def train(
         
         # training
         for epoch in range(train_args.epochs):
-            train_metrics = process_data(model_trainer, split_data.train, context_args, train_args, "TRAIN", epoch)
+            train_metrics = process_data(model_trainer, split_convs.train, context_args, train_args, "TRAIN", epoch)
    
         # validation
         for epoch in range(train_args.epochs):
-            val_metrics = process_data(model_trainer, split_data.val, context_args, train_args, "VAL", epoch) 
+            val_metrics = process_data(model_trainer, split_convs.val, context_args, train_args, "VAL", epoch) 
 
         # testing     
-        test_metrics = process_data(model_trainer, split_data.test, context_args, train_args, "TEST")
+        test_metrics = process_data(model_trainer, split_convs.test, context_args, train_args, "TEST")
 
         
-        with split_data.test.make_torch_dataloader(**context_args) as dataloader:
+        with split_convs.test.make_torch_dataloader(**context_args) as dataloader:
             dataloader_iter = iter(dataloader)
             
             images = next(dataloader_iter) # to get model signature
@@ -241,22 +292,26 @@ def train(
 
 # COMMAND ----------
 
-def tune_hyperparams(fmin_args: FminArgs, train_args: TrainingArgs):
+def tune_hyperparams(
+                    fmin_args: FminArgs, 
+                     train_args: TrainingArgs
+    ) -> tuple[Any, float, dict[str, Any]]:
     """
     Returns the best MLflow run and testing value of objective metric for that run
 
     Args:
-        fmin_args: FminArgs The arguments to HyperOpt's fmin
+        fmin_args: FminArgs The arguments to HyperOpts fmin function
         train_args: TrainingArgs The arguements for training and validaiton loops
     """
     with mlflow.start_run(run_name='towerscout_retrain'):
-        best_params = fmin(**(fmin_args._asdict())) # cant pass raw namedtuple using **, must be mappable (dict)
+        best_params = fmin(**(fmin_args._asdict())) # cant pass raw dataclass using **, must be mappable (dict)
       
     # sort by val objective_metric we minimize, using DESC so assuming higher is better
     best_run = mlflow.search_runs(order_by=[f'metrics.{train_args.objective_metric + "_VAL"} DESC']).iloc[0]
     
     # get test score of best run 
     best_run_test_metric = best_run[f"metrics.{train_args.objective_metric}_TEST"]
+    mlflow.end_run() # end run before exiting
 
     return best_run, best_run_test_metric, best_params
 
@@ -269,36 +324,37 @@ def tune_hyperparams(fmin_args: FminArgs, train_args: TrainingArgs):
 
 # COMMAND ----------
 
-#train_args = TrainingArgs.from_dbutils_args()
-train_args = TrainingArgs(
-    objective_metric=dbutils.widgets.get("objective_metric"), 
-    epochs=int(dbutils.widgets.get("epochs")), 
-    batch_size=int(dbutils.widgets.get("batch_size")), 
-    report_interval=int(dbutils.widgets.get("report_interval")), 
-    metrics=[ValidMetric[metric] for metric in dbutils.widgets.get("metrics").split(",")]
-)
-
 # create converters for train/val/test spark df's
 converter_train = get_converter_df(train_set)
 converter_val = get_converter_df(val_set)
 converter_test = get_converter_df(test_set)
 
-trials = SparkTrials(parallelism=int(dbutils.widgets.get("parallelism")))
+train_args = TrainingArgs(
+    objective_metric=objective_metric, 
+    epochs=epochs, 
+    batch_size=batch_size, 
+    report_interval=report_interval, 
+    metrics=metrics
+)
+
+split_convs = SplitConverters(
+    train=converter_train, 
+    val=converter_val, 
+    test=converter_test
+    )
+
+trials = SparkTrials(parallelism=parallelism)
 
 search_space = {
     'lr': hp.uniform('lr', 1e-4, 1e-3), 
     'weight_decay': hp.uniform('weight_decay', 1e-4, 1e-3)
     }
 
-max_evals = int(dbutils.widgets.get("max_evals"))
-
-split_data = SplitDataset(train=converter_train, val=converter_val, test=converter_test)
-
 # using partial to pass extra arugments to objective function
 objective_func = partial(
     train, 
     train_args=train_args, 
-    split_data=split_data
+    split_convs=split_convs
     )
 
 fmin_args = FminArgs(
@@ -308,6 +364,8 @@ fmin_args = FminArgs(
     max_evals=max_evals,
     trials=trials
     )
+
+# COMMAND ----------
 
 best_run, contender_test_metric, best_params = tune_hyperparams(fmin_args, train_args)
 
@@ -329,34 +387,76 @@ contender_model_metadata = mlflow.register_model(
 
 # COMMAND ----------
 
-# DBTITLE 1,Load current registered production model
-prod_model = mlflow.pytorch.load_model(
-          model_uri=f"models:/{model_name}@{alias}"
-        )
+# client.set_registered_model_alias(
+#         name=contender_model_metadata.name, 
+#         alias=alias, 
+#         version=contender_model_metadata.version # get version of contender modelfrom when it was registered
+#     )
 
 # COMMAND ----------
 
 # DBTITLE 1,Model Promotion Logic
-model_trainer = TowerScoutModelTrainer(optimizer_args=best_params, metrics=train_args.metrics)
-model_trainer.model = prod_model # probs a better way to do this?
+def model_promotion(
+        train_args: TrainingArgs, 
+        model_name: str, 
+        model_version: int, 
+        alias: str, 
+        split_convs: SplitConverters
+    ) -> None:
+    """
+    Trains a model with given hyperparameter values and returns the value 
+    of the objective metric on the valdiation dataset.
 
-context_args = {
-            "transform_spec": get_transform_spec(),
-            "batch_size": train_args.batch_size
-        }
+    Args:
+        train_args: Contains arguements for creating converter context
+        model_name: The name of the ML model
+        model_version: The version of the model that is the contender
+        alias: The alias we are potentially promoting the model to
+        split_convs: The converters for the train/val/test datasets
+    Returns:
+        None
+    """
 
-# get testing score for current produciton model
-prod_model_test_metrics = process_data(model_trainer, context_args, train_args, split_data.test, "TEST")
-prod_test_metric = prod_model_test_metrics[f"{train_args.objective_metric}_TEST"]
+    # load current prod model
+    prod_model = mlflow.pytorch.load_model(
+        model_uri=f"models:/{model_name}@{alias}"
+        )
+    
+    #model_trainer = TowerScoutModelTrainer(optimizer_args=best_params, metrics=train_args.metrics)
+    model_trainer = ModelTrainer(optimizer_args=best_params, metrics=train_args.metrics)
+    model_trainer.model = prod_model # Replace initial model with prod model
 
-if contender_test_metric > prod_test_metric:
-    print("Promoting contender model.")
-    # give alias to contender model, alias is automatically removed from current champion model
-    client.set_registered_model_alias(
-        name=contender_model_metadata.name, 
-        alias=alias, 
-        version=contender_model_metadata.version # get version of contender modelfrom when it was registered
-    )
+    context_args = {
+                "transform_spec": get_transform_spec(),
+                "batch_size": train_args.batch_size
+            }
+
+    # get testing score for current produciton model
+    steps_per_epoch = len(split_convs.test) // train_args.batch_size
+    with split_convs.test.make_torch_dataloader(**context_args) as dataloader:
+        dataloader_iter = iter(dataloader)
+        for minibatch_num in range(steps_per_epoch):
+            minibatch_images = next(dataloader_iter)
+            prod_model_test_metrics = model_trainer.validation_step(minibatch_images, "TEST")
+
+    prod_test_metric = prod_model_test_metrics[f"{train_args.objective_metric}_TEST"]
+    print(f"{train_args.objective_metric} for production model is: {prod_test_metric}")
+
+    if contender_test_metric < prod_test_metric:
+        print(f"Promoting contender model to {alias}.")
+        # give alias to contender model, alias is automatically removed from current champion model
+        client.set_registered_model_alias(
+            name=model_name, 
+            alias=alias, 
+            version=model_version # get version of contender modelfrom when it was registered
+        )
+    else:
+        print("Contender model performs worse than current production model. Promotion aborted.")
+    
+
+# COMMAND ----------
+
+model_promotion(train_args, model_name, contender_model_metadata.version, alias, split_convs)
 
 # COMMAND ----------
 
