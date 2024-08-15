@@ -132,6 +132,7 @@ def create_converter(dataframe, bytes_column: "ColumnOrName", parallelism: int=0
         byte_column: Column that contains the byte count. Used to create the petastorm  cache
         parallelism: integer for parallelism, used to create the petastorm cache
     """
+    # Note this uses spark context 
     if parallelism == 0:
         parallelism = sc.defaultParallelism
 
