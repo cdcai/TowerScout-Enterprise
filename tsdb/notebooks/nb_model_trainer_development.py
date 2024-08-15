@@ -7,7 +7,7 @@
 from databricks.sdk.core import ApiClient
 
 client = ApiClient()
-client.do("GET", "/api/2.0/workspace-conf", {"keys": "enableWorkspaceFilesystem"})
+# client.do("GET", "/api/2.0/workspace-conf", {"keys": "enableWorkspaceFilesystem"})
 
 # COMMAND ----------
 
@@ -16,7 +16,7 @@ client.do("GET", "/api/2.0/workspace-conf", {"keys": "enableWorkspaceFilesystem"
 # COMMAND ----------
 
 import torch
-from torch import nn
+from torch import nn, optim
 from torchvision import transforms, datasets
 from efficientnet_pytorch import EfficientNet
 from enum import Enum
@@ -104,12 +104,12 @@ def get_converter(cat_name="edav_dev_csels", sch_name="towerscout_test_schema", 
 
     return converter
 
-converter, context_args = get_converter()
+# converter, context_args = get_converter()
 
-with converter.make_torch_dataloader(**context_args) as dataloader:
-    for image in dataloader:
-        plt.imshow(image["features"].squeeze(0).permute(1, 2, 0))
-        break
+# with converter.make_torch_dataloader(**context_args) as dataloader:
+#     for image in dataloader:
+#         plt.imshow(image["features"].squeeze(0).permute(1, 2, 0))
+#         break
 
 # COMMAND ----------
 
@@ -151,8 +151,12 @@ class TowerScoutModel(nn.Module):
         self.model._fc = nn.Sequential(
                 nn.Linear(2048, 512), #b5
                 nn.Linear(512, 1))
-        self.model.cuda()
+        if torch.cuda.is_available():
+            self.model.cuda()
         self.model._fc
+    
+    def forward(self, input):
+        return self.model(input)
 
 # COMMAND ----------
 
@@ -198,7 +202,7 @@ class TowerScoutModelTrainer():
         self.optimizer = optimizer(self.model.parameters(), **optimizer_args)
 
         self.criterion = nn.BCEWithLogitsLoss()
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
+        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, 0.95)
         self.loss = 0
         self.val_loss = 0
         self.threshold = 0.5
@@ -222,7 +226,7 @@ class TowerScoutModelTrainer():
     
     def score(self, logits, labels, step: str):
         return {
-            f"{metric.name}/{step}": metric.value(logits, labels).cpu().item() 
+            f"{metric.name}_{step}": metric.value(logits, labels).cpu().item() 
             for metric in self.metrics
         }
 
@@ -233,7 +237,6 @@ class TowerScoutModelTrainer():
         self.optimizer.zero_grad()
         output.loss.backward()
         self.optimizer.step()
-
         return self.score(output.logits, output.labels, step)
 
     @torch.no_grad()
