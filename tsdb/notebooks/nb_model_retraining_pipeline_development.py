@@ -133,8 +133,13 @@ train_set, test_set, val_set = split_datanolabel(images)
 
 # COMMAND ----------
 
-# DBTITLE 1,Data classes and tuples
-# SplitDataset = namedtuple('SplitDataset', ['train', 'val', 'test'])
+print(train_set.count())
+print(val_set.count())
+print(test_set.count())
+
+# COMMAND ----------
+
+# DBTITLE 1,Data classes and named tuples
 FminArgs = namedtuple('FminArgs', ['fn', 'space', 'algo', 'max_evals', 'trials'])
 
 @dataclass
@@ -158,17 +163,41 @@ class TrainingArgs:
     A class to represent model training arguements
 
     Attributes:
-        objective_metric:
-        epochs: 
-        batch_size: 
-        report_interval: 
-        metrics: 
+        objective_metric:The evaluation metric we want to optimize
+        epochs: Number of epochs to optimize model over
+        batch_size: The size of the minibatchs passed to the model
+        report_interval: Interval to log metrics during training
+        metrics: Various model evaluation metrics we want to track 
     """
     objective_metric: str = "recall" # will be selected option for the drop down
     epochs: int = 2
     batch_size: int = 4
     report_interval: int = 5
     metrics: list[ValidMetric] = field(default_factory=dict)
+
+@dataclass
+class PromotionArgs:
+    """
+    A class to represent model promotion arguements
+
+    Attributes:
+        objective_metric: The evaluation metric we want to optimize
+        batch_size: The size of the minibatchs passed to the model
+        metrics: Various model evaluation metrics we want to track 
+        model_version: The version of the model that is the challenger
+        model_name: The name of the model 
+        challenger_metric_value: The value of the objective metric achieved by the challenger model on the test dataset
+        alias: The alias we are promoting the model to
+        test_conv: The converter for the test dataset   
+    """
+    objective_metric: str = "recall"
+    batch_size: int = 4
+    metrics: list[ValidMetric] = field(default_factory=dict)
+    model_version: int = 1
+    model_name: str = "ts"
+    challenger_metric_value: float = 0
+    alias: str = "staging"
+    test_conv: SparkDatasetConverter = None
 
 
 # COMMAND ----------
@@ -191,7 +220,7 @@ def get_converter_df(dataframe: DataFrame) -> callable:
  
     return converter
 
-def process_data(
+def perform_pass(
         model_trainer: ModelTrainer, 
         converter: callable, 
         context_args: dict[str, Any], 
@@ -265,14 +294,14 @@ def train(
         
         # training
         for epoch in range(train_args.epochs):
-            train_metrics = process_data(model_trainer, split_convs.train, context_args, train_args, "TRAIN", epoch)
+            train_metrics = perform_pass(model_trainer, split_convs.train, context_args, train_args, "TRAIN", epoch)
    
         # validation
         for epoch in range(train_args.epochs):
-            val_metrics = process_data(model_trainer, split_convs.val, context_args, train_args, "VAL", epoch) 
+            val_metrics = perform_pass(model_trainer, split_convs.val, context_args, train_args, "VAL", epoch) 
 
         # testing     
-        test_metrics = process_data(model_trainer, split_convs.test, context_args, train_args, "TEST")
+        test_metrics = perform_pass(model_trainer, split_convs.test, context_args, train_args, "TEST")
 
         
         with split_convs.test.make_torch_dataloader(**context_args) as dataloader:
@@ -335,7 +364,7 @@ train_args = TrainingArgs(
     batch_size=batch_size, 
     report_interval=report_interval, 
     metrics=metrics
-)
+    )
 
 split_convs = SplitConverters(
     train=converter_train, 
@@ -367,100 +396,104 @@ fmin_args = FminArgs(
 
 # COMMAND ----------
 
-best_run, contender_test_metric, best_params = tune_hyperparams(fmin_args, train_args)
+best_run, challenger_test_metric, best_params = tune_hyperparams(fmin_args, train_args)
 
 # COMMAND ----------
 
-print(f'Testing metric ({train_args.objective_metric}) value of best run: {contender_test_metric}')
+print(f'Testing metric ({train_args.objective_metric}) value of best run: {challenger_test_metric}')
 
 # COMMAND ----------
 
-# DBTITLE 1,Register contender model
+# DBTITLE 1,Register challenger model
 run_id = best_run.run_id
 model_name = f"{catalog}.{schema}.towerscout_model"  # model name
 alias = dbutils.widgets.get("stage")
 
-contender_model_metadata = mlflow.register_model(
+challenger_model_metadata = mlflow.register_model(
     model_uri=f"runs:/{run_id}/ts-model-mlflow", # path to logged artifact folder called models
     name=model_name # name for model in catalog
     )
 
 # COMMAND ----------
 
-# client.set_registered_model_alias(
-#         name=contender_model_metadata.name, 
-#         alias=alias, 
-#         version=contender_model_metadata.version # get version of contender modelfrom when it was registered
-#     )
+client.set_registered_model_alias(
+        name=challenger_model_metadata.name, 
+        alias=alias, 
+        version=challenger_model_metadata.version # get version of challenger modelfrom when it was registered
+    )
+
+# COMMAND ----------
+
+promo_args = PromotionArgs(
+    objective_metric=train_args.objective_metric,
+    batch_size=train_args.batch_size,
+    metrics=train_args.metrics,
+    model_version=challenger_model_metadata.version,
+    model_name=model_name,
+    challenger_metric_value=challenger_test_metric,
+    alias=alias,
+    test_conv=split_convs.test
+    )
 
 # COMMAND ----------
 
 # DBTITLE 1,Model Promotion Logic
-def model_promotion(
-        train_args: TrainingArgs, 
-        model_name: str, 
-        model_version: int, 
-        alias: str, 
-        split_convs: SplitConverters
-    ) -> None:
+def model_promotion(promo_args: PromotionArgs) -> None:
     """
-    Trains a model with given hyperparameter values and returns the value 
-    of the objective metric on the valdiation dataset.
+    Evaluates the model that has the specficied alias. Promotes the model with the
+    specfied
 
     Args:
-        train_args: Contains arguements for creating converter context
-        model_name: The name of the ML model
-        model_version: The version of the model that is the contender
-        alias: The alias we are potentially promoting the model to
-        split_convs: The converters for the train/val/test datasets
+        promo_args: Contains arguments for the model promotion logic
     Returns:
         None
     """
 
-    # load current prod model
-    prod_model = mlflow.pytorch.load_model(
-        model_uri=f"models:/{model_name}@{alias}"
+    # load current model with matching alias (champion model)
+    champ_model = mlflow.pytorch.load_model(
+        model_uri=f"models:/{promo_args.model_name}@{promo_args.alias}"
         )
     
-    #model_trainer = TowerScoutModelTrainer(optimizer_args=best_params, metrics=train_args.metrics)
-    model_trainer = ModelTrainer(optimizer_args=best_params, metrics=train_args.metrics)
-    model_trainer.model = prod_model # Replace initial model with prod model
+    #model_trainer = TowerScoutModelTrainer(optimizer_args={"lr": 0}, metrics=train_args.metrics)
+    # use dummy optimzer params since optimizer is irrelevant for inference
+    model_trainer = ModelTrainer(optimizer_args={"lr": 0}, metrics=promo_args.metrics)
+    model_trainer.model = champ_model # Replace initial model with prod model
 
     context_args = {
                 "transform_spec": get_transform_spec(),
-                "batch_size": train_args.batch_size
+                "batch_size": promo_args.batch_size
             }
 
     # get testing score for current produciton model
-    steps_per_epoch = len(split_convs.test) // train_args.batch_size
-    with split_convs.test.make_torch_dataloader(**context_args) as dataloader:
+    steps_per_epoch = len(promo_args.test_conv) // promo_args.batch_size
+    with promo_args.test_conv.make_torch_dataloader(**context_args) as dataloader:
         dataloader_iter = iter(dataloader)
         for minibatch_num in range(steps_per_epoch):
             minibatch_images = next(dataloader_iter)
-            prod_model_test_metrics = model_trainer.validation_step(minibatch_images, "TEST")
+            champ_model_test_metrics = model_trainer.validation_step(minibatch_images, "TEST")
 
-    prod_test_metric = prod_model_test_metrics[f"{train_args.objective_metric}_TEST"]
-    print(f"{train_args.objective_metric} for production model is: {prod_test_metric}")
+    champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]
+    print(f"{promo_args.objective_metric} for production model is: {champ_test_metric}")
 
-    if contender_test_metric < prod_test_metric:
-        print(f"Promoting contender model to {alias}.")
-        # give alias to contender model, alias is automatically removed from current champion model
+    if challenger_test_metric > champ_test_metric:
+        print(f"Promoting challenger model to {alias}.")
+        # give alias to challenger model, alias is automatically removed from current champion model
         client.set_registered_model_alias(
-            name=model_name, 
-            alias=alias, 
-            version=model_version # get version of contender modelfrom when it was registered
+            name=promo_args.model_name, 
+            alias=promo_args.alias, 
+            version=promo_args.model_version # version of challenger model from when it was registered
         )
     else:
-        print("Contender model performs worse than current production model. Promotion aborted.")
+        print("Challenger model performs worse than current production model. Promotion aborted.")
     
 
 # COMMAND ----------
 
-model_promotion(train_args, model_name, contender_model_metadata.version, alias, split_convs)
+model_promotion(promo_args)
 
 # COMMAND ----------
 
 # DBTITLE 1,Delete converters
-converter_train.delete()
-converter_val.delete()
-converter_test.delete()
+# converter_train.delete()
+# converter_val.delete()
+# converter_test.delete()
