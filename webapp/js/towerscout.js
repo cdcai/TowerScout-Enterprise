@@ -12,6 +12,8 @@
 // TowerScout.js
 // client-side logic
 
+
+
 // maps
 
 // The location of a spot in central NYC
@@ -213,16 +215,50 @@ class BingMap extends TSMap {
           callback: getBoundary,
           errorCallback: function (e) {
               //If there is an error, alert the user about it.
-             // alert("No results found.");
+              //alert("No results found.");
           }
       };
       searchManager.geocode(geocodeRequest);
     }
 
+//     function Search() {
+//       //Remove all data from the map.
+//       bingMap.entities.clear;
+     
+//         var geocodeRequest = {
+//           where: document.getElementById('search').value,
+//           callback: function (r) {
+           
+//               //Add the first result to the map and zoom into it.
+//               if (r && r.results && r.results.length > 0) {
+//                 if ((r.results[0].entitySubType == "Address") || (r.results[0].entityType == "PostalAddress")){
+// var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
+//                   bingMap.entities.push(pin);
+
+//                   bingMap.setView({ bounds: r.results[0].bestView });
+//                 }
+                  
+//               }
+//               else{
+//                 getBoundary;
+//               }
+             
+//           },
+//           errorCallback: function (e) {
+//               //If there is an error, alert the user about it.
+//               alert("No results found.");
+//           }
+      
+//     }
+      
+//       searchManager.geocode(geocodeRequest);
+//     }
+
       function getBoundary(geocodeResult){
         //Add the first result to the map and zoom into it.
         if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
             //Zoom into the location.
+           
             bingMap.setView({ bounds: geocodeResult.results[0].bestView });
 
             //Create the request options for the GeoData API.
@@ -267,7 +303,7 @@ class BingMap extends TSMap {
         }
       }
 
-function selectedSuggestion(result) {
+    function selectedSuggestion(result) {
       bingMap.entities.clear;
       var geocodeRequest;
       if ((result.entitySubType == "Address") || (result.entityType == "PostalAddress")){
@@ -1018,24 +1054,6 @@ function createElementFromHTML(htmlString) {
   return div.firstChild;
 }
 
-async function getObjectsResults(processId) {
-  try {
-    const response = await fetch(`/getobjects/${processId}`);
-    if(!response.ok) {
-      throw new Error('Network response was not ok ' + response.statusText);
-    }
-    const data = await response.json();
-    if(data.status === 'Completed') {
-      processObjects(JSON.parse(data.results), performance.now());
-    } else {
-      setTimeout(() => getObjectsResults(processId), 2000);
-
-    }
-  } catch (error) {
-    console.error('There has been a problem with fetching results: ', error);
-  }
-}
-
 // retrieve satellite image and detect objects
 function getObjects(estimate) {
   //let center = currentMap.getCenterUrl();
@@ -1088,7 +1106,7 @@ function getObjects(estimate) {
   formData.append('polygons', boundaries);
   formData.append('estimate', "yes");
 
-  fetch("/getobjects",  { method: "POST", body: formData })
+  fetch("/getobjects",  { method: "POST", body: formData, })
     .then(result => result.text()) 
     .then(result => {
       if (Number(result) === -1) {
@@ -1115,9 +1133,8 @@ function getObjects(estimate) {
       formData.delete("estimate");
       fetch("/getobjects", { method: "POST", body: formData })
         .then(response => response.json())
-        .then(data => {
-          console.log(data.status);
-          getObjectsResults(data.process_id);
+        .then(result => {
+          processObjects(result, startTime);
         })
         .catch(e => {
           console.log(e + ": "); disableProgress(0, 0);
@@ -1167,19 +1184,19 @@ function cancelRequest() {
 }
 
 function circleBoundary() {
-  // radius? construct a circle
+   // radius? construct a circle
   let radius = document.getElementById("radius").value;
   if (radius !== "") {
     //Clear any current boundaries before getting coordinates
     clearBoundaries();
     // make circle
     let centerCoords = currentMap.getCenter();
-  
+    
     // convert to m
     radius = Number(radius);
 
     // googleMap.addBoundary(new CircleBoundary(centerCoords, radius));
-    bingMap.addBoundary(new CircleBoundary(centerCoords, radius));
+    currentMap.addBoundary(new CircleBoundary(centerCoords, radius));
 
     // googleMap.showBoundaries();
     
@@ -1198,6 +1215,7 @@ function drawnBoundary() {
 
 function clearBoundaries() {
   // googleMap.resetBoundaries();
+  
   currentMap.resetBoundaries();
   currentMap.drawingManager.clear()
 }
@@ -1262,7 +1280,7 @@ function fillProviders() {
 
       // add change listeners for the backend provider radio box
       let rad = document.providers.provider;
-      currentProvider = rad; //Bing Maps is the defacto provider for now
+      currentProvider = 'bing';//rad; //Bing Maps is the defacto provider for now
 
       // for (let r of rad) {
       //   r.addEventListener('change', function () {
@@ -1386,7 +1404,7 @@ function changeReviewMode() {
 
 function augmentDetections() {
   Detection_detectionsAugmented = 0;
- //for (let det of Detection_detections) {
+  //for (let det of Detection_detections) {
     for (let i = 0; i < Detection_detections.length; i++) {
       let det = Detection_detections[i];
     if (det.address !== "") {
@@ -1397,7 +1415,7 @@ function augmentDetections() {
      // call Bing maps api instead at:
      
      setTimeout((ix)=>{
-     // console.log(ix+1);
+      //console.log(ix+1);
       $.ajax({
       url: "https://dev.virtualearth.net/REST/v1/locationrecog/" + loc,
       data: {
@@ -1412,7 +1430,7 @@ function augmentDetections() {
       }
       
     });
-     },200*i,i)
+     },1000*i,i)
     // $.ajax({
     //   url: "https://maps.googleapis.com/maps/api/geocode/json",
     //   data: {
@@ -1479,7 +1497,7 @@ function download(filename, data) {
   // create blob object with our data
   let blob = new Blob([data], { type: 'text/csv' });
 
-  // create a temp anchor element
+  // create a  anchor element
   let elem = window.document.createElement('a');
 
   // direct it to the blob and filename
@@ -1855,3 +1873,4 @@ about(0);
 
 
 console.log("TowerScout initialized.");
+
