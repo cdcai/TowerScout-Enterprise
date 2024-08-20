@@ -12,8 +12,14 @@
 #
 # the provider-independent part of maps
 #
-
+import requests
+import mapbox_vector_tile
+import json
 import math
+from PIL import Image
+from PIL.ExifTags import TAGS
+from io import BytesIO
+import base64
 import asyncio
 import aiohttp
 import aiofiles
@@ -104,7 +110,9 @@ class Map:
                     'lng': west + (col+0.5) * w_tile * (1-overlap_percent/100.),
                     'h':h_tile, 
                     'w': w_tile,
-                    'id':len(tiles)
+                    'id':len(tiles),
+                    'col': col,
+                    'row': row
                 })
 
         return tiles, nx, ny, meters, h_tile, w_tile
@@ -113,6 +121,28 @@ class Map:
 #
 #  async file download helpers
 #
+
+def vector_tile_to_geojson(vector_tile_data):
+    # Decode the vector tile
+    tile = mapbox_vector_tile.decode(vector_tile_data)
+    
+    features = []
+    for layer_name, layer in tile.items():
+        for feature in layer['features']:
+            # Convert each feature to GeoJSON
+            geojson = mapbox_vector_tile.feature_to_geojson(feature, layer_name)
+            features.append(geojson)
+    
+    return {
+        'type': 'FeatureCollection',
+        'features': features
+    }
+def convert_to_data_uri(image_content):
+    image = Image.open(BytesIO(image_content))
+    buffered = BytesIO()
+    image.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    return img_str
 
 async def gather_urls(urls, dir, fname, metadata):
     # execute
@@ -140,9 +170,66 @@ async def fetch(session, url, dir, fname, i):
         # write the file
         filename = dir+"/"+fname+str(i)+(".meta.txt" if meta else ".jpg")
         # print(" retrieving ",filename,"...")
-        async with aiofiles.open(filename, mode='wb') as f:
-            await f.write(await response.read())
-            await f.close()
+        # metadata = response
+        # if "atlas.microsoft.com" in url:
+        # response = json().dumps(metadata,indent=2)
+        # if (response.headers.get('Content-Type', '').lower() == "application/vnd.mapbox-vector-tile"):
+        # if meta:
+        
+    #     image = Image.open(response.read())
+    #     exifdata = image.getexif()
+ 
+    # # looping through all the tags present in exifdata
+    #     for tagid in exifdata:
+     
+    # # getting the tag name instead of tag id
+    #         tagname = TAGS.get(tagid, tagid)
+ 
+    # # passing the tagid to get its respective value
+    #         value = exifdata.get(tagid)
+   
+    # # printing the final result
+    #         print(f"{tagname:25}: {value}")
+        
+        if (response.headers.get('Content-Type', '').lower() == "application/vnd.mapbox-vector-tile"):
+        #    async with aiofiles.open(filename, mode='rb') as f: 
+        #         azurevector_tile_data = await response.read()
+        #         azurevectortogeojson = vector_tile_to_geojson(azurevector_tile_data)
+            print("Printing Content type " + response.headers.get('Content-Type', '').lower())
+            tile_data = await response.read()
+            tile = mapbox_vector_tile.decode(tile_data)
+            # print(json.dumps(tile, indent=2))
+            json_data = {}
+            for layer_name, layer in tile.items():
+                json_data[layer_name] = {
+                    'features': []
+                }
+                for feature in layer['features']:
+                    json_data[layer_name]['features'].append({
+                'geometry': feature['geometry'],
+                'properties': feature['properties']
+            })
+            with open(filename, 'w') as f:
+                json.dump(json_data, f)
+                f.close()
+        # if (response.headers.get('Content-Type', '').lower() == "application/vnd.mapbox-vector-tile"):
+        #     async with aiofiles.open(filename, mode='wb') as f:
+        #         await f.write(await Image.open(BytesIO(response.content).read()))
+        #         await f.close()
+        else:
+            async with aiofiles.open(filename, mode='wb') as f:
+                await f.write(await response.read())
+                await f.close()
+
+        # async with aiofiles.open(filename, mode='wb') as f:
+        #     if "atlas.microsoft.com" in url:
+        #         print(response.headers.get('Content-Type', '').lower())
+        #         # metadata = await response.json()
+        #         await f.write(await response.read())
+        #     else:
+        #         print(response.headers.get('Content-Type', '').lower())
+        #         await f.write(await response.read())
+        #     await f.close()
 
 # limit 3 requests per 1 second period (10 requests per 1 second period would hit 429 rate limitted responses)
 async def fetch_all(session, urls, dir, fname, metadata):

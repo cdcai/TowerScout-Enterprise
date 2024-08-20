@@ -16,10 +16,11 @@ from ts_en import EN_Classifier
 import ts_imgutil
 from ts_bmaps import BingMap
 from ts_gmaps import GoogleMap
+from ts_azmaps import AzureMap
 from ts_zipcode import Zipcode_Provider
 from ts_events import ExitEvents
 import ts_maps
-from flask import Flask, render_template, send_from_directory, request, session, Response, jsonify
+from flask import Flask, render_template, send_from_directory, request, session, Response
 from flask_session import Session
 from waitress import serve
 import json
@@ -38,7 +39,6 @@ import gc
 import datetime
 import sys
 from functools import reduce 
-import uuid
 
 dev = 0
 
@@ -55,9 +55,6 @@ engine_lock = threading.Lock()
 
 exit_events = ExitEvents()
 
-# Create a dictionary to store session data
-sessions = {}
-process_status = {}
 
 # on-demand instantiate YOLOv5 model
 def get_engine(e):
@@ -111,11 +108,13 @@ def add_model(m):
 providers = {
     # 'google': {'id': 'google', 'name': 'Google Maps'},
     'bing': {'id': 'bing', 'name': 'Bing Maps'},
+    'azure': {'id': 'azure', 'name': 'Azure Maps'},
 }
 
 # other global variables
 google_api_key = ""
 bing_api_key = ""
+azure_api_key = ""
 loop = asyncio.get_event_loop()
 
 # prepare uploads directory
@@ -147,6 +146,7 @@ def start_zipcodes():
 # Flask boilerplate stuff
 app = Flask(__name__)
 # session = Session()
+app.config['UPLOAD_FOLDER'] = "uploads"
 # configure server-sise session
 SESSION_TYPE = 'filesystem'
 SESSION_PERMANENT = False
@@ -296,126 +296,14 @@ def abort():
     exit_events.signal(id(session))
     return "ok"
 
-def process_objects_task(bounds, engine, map, polygons, tiles, process_id, tmpdirname, tmpfilename):
-    if session is None:
-        return
-    # start time, get params
-    start = time.time()
-    results = []
-    # get the proper detector
-    det = get_engine(engine)
-    # main processing:
-
-    # retrieve tiles and metadata if available
-    meta = map.get_sat_maps(tiles, loop, tmpdirname, tmpfilename)
-    # session['metadata'] = meta
-    print(" asynchronously retrieved", len(tiles), "files")
-
-    # check for abort
-    if exit_events.query(id(session)):
-        print(" client aborted request.")
-        exit_events.free(id(session))
-        return "[]"
-
-    # augment tiles with retrieved filenames
-    for i, tile in enumerate(tiles):
-        tile['filename'] = tmpdirname+"/"+tmpfilename+str(i)+".jpg"
-
-    # detect all towers
-    results_raw = det.detect(tiles, exit_events, id(session), crop_tiles=True, secondary=secondary_en)
-    # abort if signaled
-    if exit_events.query(id(session)):
-        print(" client aborted request.")
-        exit_events.free(id(session))
-        return "[]"
-
-    # read metadata if present
-    for tile in tiles:
-        if meta:
-            filename = tmpdirname+"/"+tmpfilename+str(tile['id'])+".meta.txt"
-            with open(filename) as f:
-                tile['metadata'] = map.get_date(f.read())
-                # print(" metadata: "+tile['metadata'])
-                f.close
-        else:
-            tile['metadata'] = ""
-
-    # record some results in session for later saving if desired
-    # session['detections'] = make_persistable_tile_results(tiles)
-
-    # post-process the results
-    results = []
-    for result, tile in zip(results_raw, tiles):
-        # adjust xyxy normalized results to lat, long pairs
-        for i, object in enumerate(result):
-            # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
-            object['x1'] = tile['lng'] - 0.5*tile['w'] + object['x1']*tile['w']
-            object['x2'] = tile['lng'] - 0.5*tile['w'] + object['x2']*tile['w']
-            object['y1'] = tile['lat'] + 0.5*tile['h'] - object['y1']*tile['h']
-            object['y2'] = tile['lat'] + 0.5*tile['h'] - object['y2']*tile['h']
-            object['tile'] = tile['id']
-            object['id_in_tile'] = i
-            object['selected'] = object['secondary'] >= 0.35
-
-            # print(" output:",str(object))
-        results += result
-
-    # mark results out of bounds or polygon
-    for o in results:
-        o['inside'] = ts_imgutil.resultIntersectsPolygons(o['x1'], o['y1'], o['x2'], o['y2'], polygons) and \
-            ts_maps.check_bounds(o['x1'], o['y1'], o['x2'], o['y2'], bounds)
-        #print("in " if o['inside'] else "out ", end="")
-
-    # sort the results by lat, long, conf
-    results.sort(key=lambda x: x['y1']*2*180+2*x['x1']+x['conf'])
-
-    # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
-    if len(results) > 1:
-        i = 0
-        while i < len(results)-1:
-            if ts_maps.get_distance(results[i]['x1'], results[i]['y1'],
-                                    results[i+1]['x1'], results[i+1]['y1']) < 1:
-                print(" removing 1 duplicate result")
-                results.remove(results[i+1])
-            else:
-                i += 1
-
-    # prepend a pseudo-result for each tile, for debugging
-    tile_results = []
-    for tile in tiles:
-        tile_results.append({
-            'x1': tile['lng'] - 0.5*tile['w'],
-            'y1': tile['lat'] + 0.5*tile['h'],
-            'x2': tile['lng'] + 0.5*tile['w'],
-            'y2': tile['lat'] - 0.5*tile['h'],
-            'class': 1,
-            'class_name': 'tile',
-            'conf': 1,
-            'metadata': tile['metadata'],
-            'url': tile['url'],
-            'selected': True
-        })
-
-    # all done
-    selected = str(reduce(lambda a,e: a+(e['selected']),results, 0))
-    print(" request complete," + str(len(results)) +" detections (" + selected +" selected), elapsed time: ", (time.time()-start))
-    results = tile_results+results
-    print()
-
-    exit_events.free(id(session))
-    results = json.dumps(results)
-    process_status[process_id] = { 'status': 'Completed', 'results': results }
-
-# Endpoint for polling results
-@app.route('/getobjects/<process_id>', methods=['GET'])
-def get_objects_process_status(process_id):
-    results = process_status.get(process_id, 'Unknown process ID')
-    return jsonify(results)
-
 # detection route
+
+
 @app.route('/getobjects', methods=['POST'])
 def get_objects():
     try:
+        print(" session:", id(session))
+
         # check whether this session is over its limit
         if 'tiles' not in session:
             session['tiles'] = 0
@@ -423,17 +311,21 @@ def get_objects():
         print("tiles queried in session:", session['tiles'])
         if session['tiles'] > MAX_TILES_SESSION:
             return "-1"
-        
+
+        # start time, get params
+        start = time.time()
         bounds = request.form.get("bounds")
         engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
-       
         print("incoming detection request:")
         print(" bounds:", bounds)
         print(" engine:", engine)
         print(" map provider:", provider)
         print(" polygons:", polygons)
+
+        # cropping
+        crop_tiles = True
 
         # make the polygons
         polygons = json.loads(polygons)
@@ -441,17 +333,26 @@ def get_objects():
         polygons = [ts_imgutil.make_boundary(p) for p in polygons]
         print(" Shapely polygons:", polygons)
 
+        # get the proper detector
+        det = get_engine(engine)
+
+        # empty results
+        results = []
+
         # create a map provider object
         map = None
         if provider == "bing":
             map = BingMap(bing_api_key)
         elif provider == "google":
             map = GoogleMap(google_api_key)
+        elif provider == "azure":
+            map = AzureMap(azure_api_key)        
+            
         if map is None:
             print(" could not instantiate map provider:", provider)
-
+        
         # divide the map into 640x640 parts
-        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=True)
+        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
         print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
         # print(" Tile centers:")
         # for c in tiles:
@@ -479,7 +380,8 @@ def get_objects():
             # tally the new request
             session['tiles'] += len(tiles)
 
-            # first, clean out the old tempdir
+        # main processing:
+        # first, clean out the old tempdir
         if "tmpdirname" in session:
             rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
             print("cleaned up tmp dir", session['tmpdirname'])
@@ -492,22 +394,118 @@ def get_objects():
         tmpfilename = get_file_name(tmpdirname)
         print("creating tmp dir", tmpdirname)
         session['tmpdirname'] = tmpdirname
-        tmpdir.cleanup() 
+        tmpdir.cleanup()  # yeah this is asinine but I need the tmpdir to survive to I will create it manually next
         os.mkdir(tmpdirname)
         print("created tmp dir", tmpdirname)
-        process_id = str(uuid.uuid4())
-        process_status[process_id] = 'Running'
-        thread = threading.Thread(target=process_objects_task, args=( bounds, engine, map, polygons, tiles, process_id, tmpdirname, tmpfilename))
-        thread.start()
 
-        return jsonify({'status': 'Task started', 'process_id': process_id}), 202
+        # retrieve tiles and metadata if available
+        meta = map.get_sat_maps(tiles, loop, tmpdirname, tmpfilename)
+        session['metadata'] = meta
+        print(" asynchronously retrieved", len(tiles), "files")
+
+        # check for abort
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+
+        # augment tiles with retrieved filenames
+        for i, tile in enumerate(tiles):
+            tile['filename'] = tmpdirname+"/"+tmpfilename+str(i)+".jpg"
+
+        # detect all towers
+        results_raw = det.detect(tiles, exit_events, id(session), crop_tiles=crop_tiles, secondary=secondary_en)
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+
+        # read metadata if present
+        for tile in tiles:
+            if meta:
+                filename = tmpdirname+"/"+tmpfilename+str(tile['id'])+".meta.txt"
+                with open(filename) as f:
+                    tile['metadata'] = map.get_date(f.read())
+                    # print(" metadata: "+tile['metadata'])
+                    f.close
+            else:
+                tile['metadata'] = ""
+
+        # record some results in session for later saving if desired
+        session['detections'] = make_persistable_tile_results(tiles)
+
+        # post-process the results
+        results = []
+        for result, tile in zip(results_raw, tiles):
+            # adjust xyxy normalized results to lat, long pairs
+            for i, object in enumerate(result):
+                # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
+                object['x1'] = tile['lng'] - 0.5*tile['w'] + object['x1']*tile['w']
+                object['x2'] = tile['lng'] - 0.5*tile['w'] + object['x2']*tile['w']
+                object['y1'] = tile['lat'] + 0.5*tile['h'] - object['y1']*tile['h']
+                object['y2'] = tile['lat'] + 0.5*tile['h'] - object['y2']*tile['h']
+                object['tile'] = tile['id']
+                object['id_in_tile'] = i
+                object['selected'] = object['secondary'] >= 0.35
+
+                # print(" output:",str(object))
+            results += result
+
+        # mark results out of bounds or polygon
+        for o in results:
+            o['inside'] = ts_imgutil.resultIntersectsPolygons(o['x1'], o['y1'], o['x2'], o['y2'], polygons) and \
+                ts_maps.check_bounds(o['x1'], o['y1'], o['x2'], o['y2'], bounds)
+            #print("in " if o['inside'] else "out ", end="")
+
+        # sort the results by lat, long, conf
+        results.sort(key=lambda x: x['y1']*2*180+2*x['x1']+x['conf'])
+
+        # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
+        if len(results) > 1:
+            i = 0
+            while i < len(results)-1:
+                if ts_maps.get_distance(results[i]['x1'], results[i]['y1'],
+                                        results[i+1]['x1'], results[i+1]['y1']) < 1:
+                    print(" removing 1 duplicate result")
+                    results.remove(results[i+1])
+                else:
+                    i += 1
+
+        # prepend a pseudo-result for each tile, for debugging
+        tile_results = []
+        for tile in tiles:
+            tile_results.append({
+                'x1': tile['lng'] - 0.5*tile['w'],
+                'y1': tile['lat'] + 0.5*tile['h'],
+                'x2': tile['lng'] + 0.5*tile['w'],
+                'y2': tile['lat'] - 0.5*tile['h'],
+                'class': 1,
+                'class_name': 'tile',
+                'conf': 1,
+                'metadata': tile['metadata'],
+                'url': tile['url'],
+                'selected': True
+            })
+
+        # all done
+        selected = str(reduce(lambda a,e: a+(e['selected']),results, 0))
+        print(" request complete," + str(len(results)) +" detections (" + selected +" selected), elapsed time: ", (time.time()-start))
+        results = tile_results+results
+        print()
+
+        exit_events.free(id(session))
+        results = json.dumps(results)
+        session['results'] = results
+        return results
     except Exception as e:
         logging.error('Error at %s', 'division', exc_info=e)
 
 
 def get_file_name(file_path):
-    file_name_and_extension = os.path.basename(file_path)
-    return file_name_and_extension
+    file_path_components = file_path.split('\\')
+    file_name_and_extension = file_path_components[-1]
+    return file_name_and_extension;
 
 def allowed_extension(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
@@ -943,6 +941,7 @@ if __name__ == '__main__':
     # todo: deploy CDC-owned key in final version
     with open('apikey.txt') as f:
         bing_api_key = f.readline().split()[0]
+        azure_api_key = f.readline().split()[0]
         f.close
     # app.run(debug = True)
     # app.secret_key = 'super secret key'
