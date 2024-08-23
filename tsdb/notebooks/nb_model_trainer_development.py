@@ -4,6 +4,10 @@
 
 # COMMAND ----------
 
+
+
+# COMMAND ----------
+
 from databricks.sdk.core import ApiClient
 
 client = ApiClient()
@@ -19,7 +23,7 @@ import torch
 from torch import nn, optim
 from torchvision import transforms, datasets
 from efficientnet_pytorch import EfficientNet
-from enum import Enum
+from enum import Enum, auto
 from collections import namedtuple
 
 # COMMAND ----------
@@ -186,6 +190,11 @@ def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):
 class Metrics(Enum):
     MSE = nn.MSELoss()
 
+class Steps(Enum):
+    TRAIN = auto()
+    VAL = auto()
+    TEST = auto()
+
 # COMMAND ----------
 
 ModelOutput = namedtuple("ModelOutput", ["loss", "logits", "images"])
@@ -230,7 +239,7 @@ class TowerScoutModelTrainer():
             for metric in self.metrics
         }
 
-    def training_step(self, minibatch, step="TRAIN", **kwargs) -> dict:
+    def training_step(self, minibatch, step=Steps.TRAIN, **kwargs) -> dict:
         self.model.train()
 
         output = self.forward(minibatch)
@@ -240,7 +249,7 @@ class TowerScoutModelTrainer():
         return self.score(output.logits, output.labels, step)
 
     @torch.no_grad()
-    def validation_step(self, minibatch, step="VAL", **kwargs) -> dict:
+    def validation_step(self, minibatch, step=Steps.VAL, **kwargs) -> dict:
         self.model.eval()
         output = self.forward(minibatch)
         return self.score(output.logits, output.labels, step)
