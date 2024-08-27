@@ -1,7 +1,7 @@
 # Databricks notebook source
 import mlflow
 
-from typing import Any
+from typing import Any, Protocol
 
 import torch
 from torch import nn
@@ -28,10 +28,15 @@ import sys
 
 # COMMAND ----------
 
+# MAGIC %run ./nb_models
+
+# COMMAND ----------
+
 # MAGIC %run ./dataloader_development
 
 # COMMAND ----------
 
+# set schema and table to read from, set batch size for number of examples to perform inference on per batch
 dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
 dbutils.widgets.text("source_table", defaultValue="image_metadata")
 dbutils.widgets.text("batch_size", defaultValue="5")
@@ -68,85 +73,28 @@ ts_models = []
 for model in registered_models:
     catalog_name, schema_name, name = model.name.split(".")
     if catalog_name == catalog and schema_name == schema:
-        ts_models.append(model.name)
+        ts_models.append(model.name.split(".")[-1])
 
 dbutils.widgets.dropdown("model", ts_models[0], ts_models)
 
-
-# COMMAND ----------
-
-class ModelReturnTypes(Enum):
-    Autoencoder = StructType([StructField("logits", ArrayType(ArrayType(FloatType())), True)])
-    YOLO = StructType([StructField("bbox", ArrayType(FloatType()), True)])
-    EfficientNet = StructType([StructField("score", FloatType(), True)])
-
+# set widget for selecting alias that will be used to select model
+aliases = ["production", "staging"]
+dbutils.widgets.dropdown("mlflow-alias", "production", aliases)
 
 # COMMAND ----------
 
 # DBTITLE 1,Get mode from registry
-model_name = dbutils.widgets.get("model")
-alias = "production"
+# construct model name and path based on user selection
+model_name = f"{catalog}.{schema}.{dbutils.widgets.get('model')}"
 
-model = mlflow.pytorch.load_model(model_uri=f"models:/{model_name}@{alias}")
+# get alias to look up model by
+alias = dbutils.widgets.get('mlflow-alias')
 
-# get return type, ideally the model_type will be information that is stored with the model in the registry 
-# which we can retreive here
-model_type = "Autoencoder"
-return_type = ModelReturnTypes[model_type].value
+# load model from model registry, the assumption is this will have methods outlined in the InferenceModelType protocol
+# in the nb_models notebook so should have attributes like return_type and methods like get_model_files that are called upon instantiation as well as a method called predict
+ts_model = mlflow.pytorch.load_model(model_uri=f"models:/{model_name}@{alias}")
 
-# COMMAND ----------
-
-# make model selection a widget
-def get_yolo_model_files(catalog, schema, cwd) -> None:
-    """
-    Here we move the ultralytics_yolov5_master folder from volumes to the current working directory as 
-    this contains the files needed to run the YOLOv5 model
-    """
-    source_volume_path = f"dbfs:/Volumes/{catalog}/{schema}/ultralytics_yolov5_master/"
-    target_workspace_path = f"file:{cwd}/ultralytics_yolov5_master/"
-    dbutils.fs.cp(source_volume_path, target_workspace_path, recurse=True)
-    repo_or_dir = f"{cwd}/ultralytics_yolov5_master/"
-    
-    # Append to path to let workers have access to these files
-    sys.path.append(repo_or_dir)
-
-# if model is a YOLO model move in the required model files from the volume
-if "yolo" == model_type.lower():
-    get_yolo_model_files(catalog, schema, os.getcwd())
-
-# COMMAND ----------
-
-# DBTITLE 1,Model class
-class InferenceModel(nn.Module):
-    def __init__(self, model, return_type):
-        super().__init__()
-        self.model = model
-        self.model.eval()
-        self.return_type = return_type
-        if torch.cuda.is_available():
-            self.model.cuda()
-
-    def forward(self, input):
-        return self.model(input)
-
-# COMMAND ----------
-
-# DBTITLE 1,Test model class
-# rows = images.collect()
-# content_value = rows[3]["content"] # test with third image in images
-# image = Image.open(io.BytesIO(content_value))
-# transform = transforms.Compose(
-#     [
-#         transforms.Resize(128),
-#         transforms.ToTensor(),
-#     ]
-# )
-
-# image = transform(image)
-# input = image.unsqueeze(0) # Add batch dimension 
-# with torch.no_grad():
-#     out = ts_model.model(input)
-#     print(out)
+return_type = ts_model.model_type
 
 # COMMAND ----------
 
@@ -159,7 +107,8 @@ class InferenceModel(nn.Module):
 # DBTITLE 1,Dataset class
 class TowerScoutDataset(Dataset):
     """
-    Converts image contents into a PyTorch Dataset with preprocessing from nb_model_trainer_development transform_row method.
+    Converts image contents into a PyTorch Dataset with preprocessing 
+    from the nb_model_trainer_development transform_row() method.
     """
 
     def __init__(self, contents):
@@ -175,7 +124,7 @@ class TowerScoutDataset(Dataset):
         """
         Preprocesses the input image content
 
-        See transform_row method in nb_model_trainer_development nb
+        See transform_row() method in nb_model_trainer_development nb
         """
         image = Image.open(io.BytesIO(content))
 
@@ -190,16 +139,18 @@ class TowerScoutDataset(Dataset):
 # COMMAND ----------
 
 # DBTITLE 1,UDF for distributed inference
-def ts_model_udf(model_fn: InferenceModel, batch_size: int, return_type: StructType): 
-    
+def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: StructType) -> DataFrame: 
+    """
+    A pandas UDF for distributed inference with a PyTorch model
+    """
     @torch.no_grad()
     def predict(content_series_iter):
-        model = model_fn()
+        model = model_fn() 
         for content_series in content_series_iter:
-            dataset = TowerScoutDataset(list(content_series))
-            loader = DataLoader(dataset, batch_size=batch_size)
-            for image_batch in loader:
-                output = model(image_batch)
+            dataset: Dataset = TowerScoutDataset(list(content_series)) # create dataset object to apply transformations
+            loader = DataLoader(dataset, batch_size=batch_size) # create PyTorch dataloader
+            for image_batch in loader: # iterate through dataloader
+                output = model.predict(image_batch) # perform inference on batch
                 predicted_labels = output.tolist()
                 yield pd.DataFrame(predicted_labels)
 
@@ -207,7 +158,7 @@ def ts_model_udf(model_fn: InferenceModel, batch_size: int, return_type: StructT
 
 # COMMAND ----------
 
-ts_model = InferenceModel(model, return_type)
+# retrieve batch size
 batch_size = int(dbutils.widgets.get("batch_size"))
 
 # instantiate inference udf
