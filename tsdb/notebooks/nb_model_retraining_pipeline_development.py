@@ -3,6 +3,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./utils
+
+# COMMAND ----------
+
 # MAGIC %run ./demo_model
 
 # COMMAND ----------
@@ -32,6 +36,51 @@ from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 # COMMAND ----------
 
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+from pyspark.dbutils import DBUtils
+
+# Create a DBUtils object
+dbutils = DBUtils(spark.sparkContext)
+import tempfile
+
+# Set up your log path
+temp_file = tempfile.NamedTemporaryFile(delete=False)
+log_path = temp_file.name
+
+# Set up your log path
+dbfs_log_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/logs/towerscout.log"
+
+# Create the log directory if it doesn't exist
+log_dir = os.path.dirname(log_path)
+
+# Set up logging
+logger = logging.getLogger('towerscout')
+logger.setLevel(logging.INFO)
+logger.handlers.clear()
+
+try:
+    # Create a rotating file handler
+    handler = RotatingFileHandler(log_path, maxBytes=1000000, backupCount=1)
+    handler.setLevel(logging.INFO)
+
+    # Create a logging format
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+
+    # Add the handler to the logger
+    logger.addHandler(handler)
+except Exception as e:
+    print(f"Error setting up logging: {e}")
+
+# Now you can use the logger
+logger.info('This is an info message and the first message of the logs.')
+logger.warning('This is a warning message.')
+logger.error('This is an error message.')
+
+# COMMAND ----------
+
 # DBTITLE 1,Data Ingestion functions
 def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
     """
@@ -49,7 +98,7 @@ def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
     images_remaining = images.join(images_train, on='path', how='leftanti') #remaining from images
     images_val = images_remaining.sampleBy(("label"),fractions = {0: 0.5, 1: 0.5}) # 50% of images_remaining
     images_test = images_remaining.join(images_val, on='path', how='leftanti') # remaining 50% from the images_remaining
-
+    logger.info("Splitting data into train, test, and validation sets")
     return images_train, images_test, images_val
 
 
@@ -69,7 +118,7 @@ def split_datanolabel(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
     images_remaining = images.join(images_train, on='path', how='leftanti') #remaining from images
     images_val = images_remaining.sample(fraction = 0.5) # 50% of images_remaining
     images_test = images_remaining.join(images_val, on='path', how='leftanti') # remaining 50% from the images_remaining
-
+    logger.info("Splitting data into train, test, and validation sets (dataframe does not have label)")
     return images_train, images_test, images_val
 
 # COMMAND ----------
@@ -104,6 +153,7 @@ report_interval = int(dbutils.widgets.get("report_interval"))
 metrics = [ValidMetric[metric] for metric in dbutils.widgets.get("metrics").split(",")]
 parallelism = int(dbutils.widgets.get("parallelism"))
 max_evals = int(dbutils.widgets.get("max_evals"))
+logger.info("Loaded parameters.")
 
 # COMMAND ----------
 
@@ -112,6 +162,7 @@ mlflow.set_registry_uri("databricks-uc")
 
 # create MLflow client
 client = MlflowClient()
+logger.info("Created MLflow client.")
 
 # COMMAND ----------
 
@@ -130,6 +181,7 @@ images = (
     )
     
 train_set, test_set, val_set = split_datanolabel(images)
+logger.info("Loaded data.")
 
 # COMMAND ----------
 
@@ -217,7 +269,7 @@ def get_converter_df(dataframe: DataFrame) -> callable:
         dataframe,
         "bytes"
     )
- 
+    logger.info(f"Creating converter for {dataframe.count()} rows")
     return converter
 
 def perform_pass(
@@ -261,7 +313,7 @@ def perform_pass(
             if minibatch_num % report_interval == 0:
                 is_train = mode == "TRAIN"
                 mlflow.log_metrics(metrics, step=is_train*(minibatch_num + epoch_num*converter_length))
-
+    logger.info(f"Epoch {epoch_num} completed")
     return metrics
 
 def train(
@@ -315,7 +367,7 @@ def train(
             mlflow.pytorch.log_model(model_trainer.model, "ts-model-mlflow", signature=signature)
         
         metric = val_metrics[f"{train_args.objective_metric}_VAL"] # minimize loss on val set b/c we are tuning hyperparams
-
+    logger.info(f"Best model has {train_args.objective_metric} of {metric}")
     # Set the loss to -1*f1 so fmin maximizes the f1_score
     return {'status': STATUS_OK, 'loss': -1*metric}
 
@@ -341,7 +393,7 @@ def tune_hyperparams(
     # get test score of best run 
     best_run_test_metric = best_run[f"metrics.{train_args.objective_metric}_TEST"]
     mlflow.end_run() # end run before exiting
-
+    logger.info(f"Best model has {train_args.objective_metric} of {best_run_test_metric}")
     return best_run, best_run_test_metric, best_params
 
 # COMMAND ----------
@@ -373,7 +425,7 @@ split_convs = SplitConverters(
     )
 
 trials = SparkTrials(parallelism=parallelism)
-
+logger.info(f'Training with {train_args.epochs} epochs, {train_args.batch_size} batch size, {train_args.report_interval} report interval, {train_args.objective_metric} objective metric')
 search_space = {
     'lr': hp.uniform('lr', 1e-4, 1e-3), 
     'weight_decay': hp.uniform('weight_decay', 1e-4, 1e-3)
@@ -396,7 +448,15 @@ fmin_args = FminArgs(
 
 # COMMAND ----------
 
-best_run, challenger_test_metric, best_params = tune_hyperparams(fmin_args, train_args)
+try:
+    best_run, challenger_test_metric, best_params = tune_hyperparams(fmin_args, train_args)
+    logger.debug("Hyperparameter tuning completed.")
+except ValueError as e:
+    logger.error(f"Invalid hyperparameter tuning arguments: {e}")
+except RuntimeError as e:
+    logger.error(f"Error during hyperparameter tuning: {e}")
+except Exception as e:
+    logger.error(f"Unexpected error during hyperparameter tuning: {e}")
 
 # COMMAND ----------
 
@@ -413,6 +473,7 @@ challenger_model_metadata = mlflow.register_model(
     model_uri=f"runs:/{run_id}/ts-model-mlflow", # path to logged artifact folder called models
     name=model_name # name for model in catalog
     )
+logger.info(f"Registered model {model_name} with version {challenger_model_metadata.version}")
 
 # COMMAND ----------
 
@@ -489,7 +550,11 @@ def model_promotion(promo_args: PromotionArgs) -> None:
 
 # COMMAND ----------
 
-model_promotion(promo_args)
+try:
+    model_promotion(promo_args)
+    logger.debug("Promotion completed.")
+except Exception as e:
+    logger.error(f"Error during model promotion: {e}")
 
 # COMMAND ----------
 
@@ -497,3 +562,30 @@ model_promotion(promo_args)
 # converter_train.delete()
 # converter_val.delete()
 # converter_test.delete()
+
+# COMMAND ----------
+
+# Close the logger handler and upload the logs to dbfs
+
+# Close the handler to ensure the file is properly closed
+handler.close()
+logger.removeHandler(handler)
+
+# Upload logs to DBFS
+def upload_logs_to_dbfs():
+    try:
+        # Use dbutils to upload the log file to DBFS
+        dbutils.fs.cp(f"file:{log_path}", dbfs_log_path)
+        print("Logs uploaded to DBFS")
+    except Exception as e:
+        logger.error(f"Error uploading logs to DBFS: {e}")
+
+# Call the upload function
+upload_logs_to_dbfs()
+
+# Read the contents of the file from DBFS
+try:
+    dbfs_contents = dbutils.fs.head(dbfs_log_path)
+    print(dbfs_contents)
+except Exception as e:
+    logger.error(f"Error reading logs from DBFS: {e}")
