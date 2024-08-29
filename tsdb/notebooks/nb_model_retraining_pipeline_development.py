@@ -131,7 +131,7 @@ dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
 dbutils.widgets.text("source_table", defaultValue="image_metadata")
 
 dbutils.widgets.text("epochs", defaultValue="5")
-dbutils.widgets.text("batch_size", defaultValue="10")
+dbutils.widgets.text("batch_size", defaultValue="1")
 dbutils.widgets.text("report_interval", defaultValue="5")
 dbutils.widgets.text("max_evals", defaultValue="16")
 dbutils.widgets.text("parallelism", defaultValue="4")
@@ -559,9 +559,9 @@ except Exception as e:
 # COMMAND ----------
 
 # DBTITLE 1,Delete converters
-# converter_train.delete()
-# converter_val.delete()
-# converter_test.delete()
+converter_train.delete()
+converter_val.delete()
+converter_test.delete()
 
 # COMMAND ----------
 
