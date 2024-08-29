@@ -19,11 +19,6 @@ import sys
 
 # COMMAND ----------
 
-# MAGIC %pip install efficientnet_pytorch
-# MAGIC %pip install opencv-python
-
-# COMMAND ----------
-
 # MAGIC %run ./utils
 
 # COMMAND ----------
@@ -48,36 +43,68 @@ mlflow.set_registry_uri("databricks-uc")
 
 # COMMAND ----------
 
+def get_bronze_images(
+    table_name: str, columns: list[str], read_stream: bool = False
+) -> DataFrame:
+    """
+    Retrieve images from a Delta table.
+
+    Parameters:
+    table_name (str): The name of the table to read from.
+    columns (list[str]): The list of columns to select.
+    read_stream (bool): Flag to determine if the table should be read as a stream. Defaults to False.
+
+    Returns:
+    DataFrame: A Spark DataFrame containing the selected columns from the table.
+    """
+    if read_stream:
+        images = spark.readStream.format("delta").table(table_name).select(columns)
+    else:
+        images = spark.read.format("delta").table(table_name).select(columns)
+    return images
+
+# COMMAND ----------
+
+# Retrieve catalog information from Spark configuration
 catalog_info = CatalogInfo.from_spark_config(
     spark
 )  # CatalogInfo class defined in utils nb
 
+# Extract catalog name
 catalog = catalog_info.name
+
+# Get schema and source table from widgets
 schema = dbutils.widgets.get("source_schema")
 source_table = dbutils.widgets.get("source_table")
 
+# Construct the full table name
 table_name = f"{catalog}.{schema}.{source_table}"
 
-images = spark.read.format("delta").table(table_name).select("content", "path")
-#images = spark.readStream.format("delta").table(table_name).select("content", "path")
+# Define the columns to select
+cols = ["content", "path"]
+
+# Retrieve images from the specified Delta table
+images = get_bronze_images(table_name, cols, False)
 
 # COMMAND ----------
 
-# List of all registered models in UC
-# Note that: Argument 'filter_string' is unsupported for models in the Unity Catalog.
+# List of all registered models in Unity Catalog (UC)
+# Note: Argument 'filter_string' is unsupported for models in the Unity Catalog.
 registered_models = mlflow.search_registered_models()
 
 # Filter models by catalog and schema
 ts_models = []
 
+# loop over registered models to retrieve models in the correct catalog and schema
 for model in registered_models:
     catalog_name, schema_name, name = model.name.split(".")
     if catalog_name == catalog and schema_name == schema:
         ts_models.append(model.name.split(".")[-1])
 
+# Create a dropdown widget for model selection
 dbutils.widgets.dropdown("model", ts_models[0], ts_models)
 
-# set widget for selecting alias that will be used to select model
+# Set widget for selecting alias that will be used to select model
 aliases = ["production", "staging"]
 dbutils.widgets.dropdown("mlflow-alias", "production", aliases)
 
@@ -94,6 +121,7 @@ alias = dbutils.widgets.get('mlflow-alias')
 # in the nb_models notebook so should have attributes like return_type and methods like get_model_files that are called upon instantiation as well as a method called predict
 ts_model = mlflow.pytorch.load_model(model_uri=f"models:/{model_name}@{alias}")
 
+# get model return type for inference UDF
 return_type = ts_model.model_type
 
 # COMMAND ----------
@@ -112,19 +140,44 @@ class TowerScoutDataset(Dataset):
     """
 
     def __init__(self, contents):
+        """
+        Initializes the dataset with image contents.
+
+        Args:
+            contents (list): List of image contents in bytes.
+        """
         self.contents = contents
 
     def __len__(self):
+        """
+        Returns the number of items in the dataset.
+
+        Returns:
+            int: Number of items.
+        """
         return len(self.contents)
 
     def __getitem__(self, index):
+        """
+        Retrieves and preprocesses the item at the given index.
+
+        Args:
+            index (int): Index of the item to retrieve.
+
+        Returns:
+            Tensor: Preprocessed image tensor.
+        """
         return self._preprocess(self.contents[index])
 
     def _preprocess(self, content):
         """
-        Preprocesses the input image content
+        Preprocesses the input image content.
 
-        See transform_row() method in nb_model_trainer_development nb
+        Args:
+            content (bytes): Image content in bytes.
+
+        Returns:
+            Tensor: Preprocessed image tensor.
         """
         image = Image.open(io.BytesIO(content))
 
@@ -139,18 +192,38 @@ class TowerScoutDataset(Dataset):
 # COMMAND ----------
 
 # DBTITLE 1,UDF for distributed inference
-def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: StructType) -> DataFrame: 
+def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: StructType) -> DataFrame:
     """
-    A pandas UDF for distributed inference with a PyTorch model
+    A pandas UDF for distributed inference with a PyTorch model.
+
+    Args:
+        model_fn (InferenceModelType): The PyTorch model.
+        batch_size (int): Batch size for the DataLoader.
+        return_type (StructType): Return type for the UDF.
+
+    Returns:
+        DataFrame: DataFrame with predictions.
     """
     @torch.no_grad()
     def predict(content_series_iter):
-        model = model_fn() 
+        """
+        Predict function to be used within the pandas UDF.
+
+        Args:
+            content_series_iter: Iterator over content series.
+
+        Yields:
+            DataFrame: DataFrame with predicted labels.
+        """
+        model = model_fn()
         for content_series in content_series_iter:
-            dataset: Dataset = TowerScoutDataset(list(content_series)) # create dataset object to apply transformations
-            loader = DataLoader(dataset, batch_size=batch_size) # create PyTorch dataloader
-            for image_batch in loader: # iterate through dataloader
-                output = model.predict(image_batch) # perform inference on batch
+            # Create dataset object to apply transformations
+            dataset: Dataset = TowerScoutDataset(list(content_series))
+            # Create PyTorch DataLoader
+            loader = DataLoader(dataset, batch_size=batch_size)
+            for image_batch in loader:
+                # Perform inference on batch
+                output = model.predict(image_batch)
                 predicted_labels = output.tolist()
                 yield pd.DataFrame(predicted_labels)
 
