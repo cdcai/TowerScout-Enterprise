@@ -1,7 +1,7 @@
 # Databricks notebook source
 import mlflow
 
-from typing import Any, Protocol
+from typing import Protocol
 
 import torch
 from torch import nn
@@ -9,7 +9,7 @@ from torch import nn
 import pandas as pd
 
 from pyspark.sql.functions import col, pandas_udf, PandasUDFType
-from pyspark.sql.types import StructType, StructField, IntegerType, ArrayType, FloatType
+from pyspark.sql.types import StructType
 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
@@ -24,10 +24,6 @@ import sys
 # COMMAND ----------
 
 # MAGIC %run ./nb_models
-
-# COMMAND ----------
-
-# MAGIC %run ./dataloader_development
 
 # COMMAND ----------
 
@@ -88,18 +84,32 @@ images = get_bronze_images(table_name, cols, False)
 
 # COMMAND ----------
 
-# List of all registered models in Unity Catalog (UC)
-# Note: Argument 'filter_string' is unsupported for models in the Unity Catalog.
-registered_models = mlflow.search_registered_models()
+def get_model_names(catalog: str, schema: str) -> list[str]:
+    """
+    Retrieve a list of model names from the Unity Catalog based on the specified catalog and schema.
 
-# Filter models by catalog and schema
-ts_models = []
+    Parameters:
+    catalog (str): The catalog name to filter models.
+    schema (str): The schema name to filter models.
 
-# loop over registered models to retrieve models in the correct catalog and schema
-for model in registered_models:
-    catalog_name, schema_name, name = model.name.split(".")
-    if catalog_name == catalog and schema_name == schema:
-        ts_models.append(model.name.split(".")[-1])
+    Returns:
+    list[str]: A list of model names for models regi
+    """
+    registered_models = mlflow.search_registered_models()
+
+    # Initialize an empty list to store filtered model names
+    ts_models = []
+
+    # Loop over registered models to retrieve models in the correct catalog and schema
+    for model in registered_models:
+        catalog_name, schema_name, name = model.name.split(".")
+        if catalog_name == catalog and schema_name == schema:
+            ts_models.append(model.name.split(".")[-1])
+
+    return ts_models
+
+# Retrieve model names based on the specified catalog and schema
+ts_models = get_model_names(catalog, schema)
 
 # Create a dropdown widget for model selection
 dbutils.widgets.dropdown("model", ts_models[0], ts_models)
@@ -122,7 +132,13 @@ alias = dbutils.widgets.get('mlflow-alias')
 ts_model = mlflow.pytorch.load_model(model_uri=f"models:/{model_name}@{alias}")
 
 # get model return type for inference UDF
-return_type = ts_model.model_type
+if hasattr(ts_model, 'return_type'):
+    return_type = ts_model.return_type
+else:
+    raise AttributeError("The loaded model does not have the attribute 'return_type'. Model must adhere to the InferenceModelType protocol. Please load a model which does.")
+
+if not hasattr(model, 'predict'):
+    raise AttributeError("The model does not have a 'predict' method")
 
 # COMMAND ----------
 
