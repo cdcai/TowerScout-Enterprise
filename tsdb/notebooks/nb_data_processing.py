@@ -1,5 +1,9 @@
 # Databricks notebook source
+from pyspark.sql import DataFrame
 
+# COMMAND ----------
+
+# MAGIC %run ./utils
 
 # COMMAND ----------
 
