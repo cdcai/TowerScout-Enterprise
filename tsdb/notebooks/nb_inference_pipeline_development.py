@@ -17,8 +17,11 @@ from dataclasses import dataclass
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
+from PIL import Image
+
 import os
 import sys
+import io
 
 # COMMAND ----------
 
@@ -193,7 +196,7 @@ def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: Str
         DataFrame: DataFrame with predictions.
     """
     @torch.no_grad()
-    def predict(content_series_iter: Iterable[Any]) -> Generator[DataFrame]:
+    def predict(content_series_iter: Iterable[Any]) -> Generator[pd.DataFrame, None, None]:
         """
         Predict function to be used within the pandas UDF.
 
