@@ -11,6 +11,8 @@ import pandas as pd
 from pyspark.sql.functions import col, pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType
 
+from dataclasses import dataclass
+
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
@@ -76,7 +78,7 @@ table_name = f"{catalog}.{schema}.{source_table}"
 cols = ["content", "path"]
 
 # Retrieve images from the specified Delta table
-images = get_bronze_images(table_name, cols, False)
+images = get_bronze_images(table_name, cols)
 
 # COMMAND ----------
 
@@ -145,6 +147,21 @@ if not hasattr(model, 'predict'):
 # COMMAND ----------
 
 # DBTITLE 1,Dataset class
+@dataclass
+class TowerScoutDataset(Dataset):
+    """
+    Converts image contents into a PyTorch Dataset with preprocessing 
+    from the nb_model_trainer_development transform_row() method.
+    """
+    def __len__(self):
+        """
+        Returns the number of items in the dataset.
+
+        Returns:
+            int: Number of items.
+        """
+        return len(self.contents)
+
 class TowerScoutDataset(Dataset):
     """
     Converts image contents into a PyTorch Dataset with preprocessing 
