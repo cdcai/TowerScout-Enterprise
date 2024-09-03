@@ -30,11 +30,15 @@ logged_model_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/
 # load original TowerScout Model weights
 model = EfficientNet.from_pretrained("efficientnet-b5", include_top=True)
 model._fc = nn.Sequential(nn.Linear(2048, 512), nn.Linear(512, 1))  # b5
-model.cuda()
-model._fc
+if torch.cuda.is_available():
+    model.cuda()
+    # model._fc    
+    checkpoint = torch.load(logged_model_path)
+else:
+    checkpoint = torch.load(logged_model_path, map_location=torch.device("cpu"))
 
-checkpoint = torch.load(logged_model_path)
 model.load_state_dict(checkpoint)
+
 print("Loaded TowerScout weights")
 run_name = "TowerScout_benchmark_model"
 
@@ -52,7 +56,8 @@ parent_dir = "/Workspace/Users/nzs0@cdc.gov"
 if not os.path.exists(parent_dir):
     os.makedirs(parent_dir)
 
-mlflow.set_experiment("/Workspace/Users/nzs0@cdc.gov/TowerScout_YOLOv5_Baseline")
+# mlflow.set_experiment("/Workspace/Users/nzs0@cdc.gov/TowerScout_YOLOv5_Baseline")
+mlflow.pytorch.autolog(disable=False)
 
 with mlflow.start_run(run_name="Register_pretrained_YOLOv5_model") as run:
     run_id = run.info.run_id
@@ -61,7 +66,7 @@ with mlflow.start_run(run_name="Register_pretrained_YOLOv5_model") as run:
 
     signature = mlflow.infer_signature(img, y_pred)
 
-    mlflow.pyfunc.log_model(model, run_name)
+    mlflow.pytorch.log_model(model, run_name)
 
 
 ts_baseline_model = mlflow.register_model(
