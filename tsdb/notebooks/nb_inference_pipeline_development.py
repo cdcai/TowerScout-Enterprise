@@ -1,15 +1,16 @@
 # Databricks notebook source
 import mlflow
 
-from typing import Protocol
+from typing import Protocol, Any, Iterable, Generator
 
 import torch
-from torch import nn
+from torch import nn, Tensor
 
 import pandas as pd
 
 from pyspark.sql.functions import col, pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType
+from pyspark.sql import DataFrame
 
 from dataclasses import dataclass
 
@@ -150,66 +151,24 @@ if not hasattr(model, 'predict'):
 @dataclass
 class TowerScoutDataset(Dataset):
     """
-    Converts image contents into a PyTorch Dataset with preprocessing 
-    from the nb_model_trainer_development transform_row() method.
+    Converts image contents into a PyTorch Dataset with preprocessing from nb_model_trainer_development transform_row method.
     """
-    def __len__(self):
-        """
-        Returns the number of items in the dataset.
+    contents: Iterable[Any] = None
 
-        Returns:
-            int: Number of items.
-        """
+    def __len__(self) -> int:
         return len(self.contents)
 
-class TowerScoutDataset(Dataset):
-    """
-    Converts image contents into a PyTorch Dataset with preprocessing 
-    from the nb_model_trainer_development transform_row() method.
-    """
-
-    def __init__(self, contents):
-        """
-        Initializes the dataset with image contents.
-
-        Args:
-            contents (list): List of image contents in bytes.
-        """
-        self.contents = contents
-
-    def __len__(self):
-        """
-        Returns the number of items in the dataset.
-
-        Returns:
-            int: Number of items.
-        """
-        return len(self.contents)
-
-    def __getitem__(self, index):
-        """
-        Retrieves and preprocesses the item at the given index.
-
-        Args:
-            index (int): Index of the item to retrieve.
-
-        Returns:
-            Tensor: Preprocessed image tensor.
-        """
+    def __getitem__(self, index) -> Tensor:
         return self._preprocess(self.contents[index])
 
-    def _preprocess(self, content):
+    def _preprocess(self, content) -> Tensor:
         """
-        Preprocesses the input image content.
+        Preprocesses the input image content
 
-        Args:
-            content (bytes): Image content in bytes.
-
-        Returns:
-            Tensor: Preprocessed image tensor.
+        See transform_row method in nb_model_trainer_development nb
         """
         image = Image.open(io.BytesIO(content))
-
+        # maybe make transform a callable argument to func/class
         transform = transforms.Compose(
             [
                 transforms.Resize(128),
@@ -234,7 +193,7 @@ def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: Str
         DataFrame: DataFrame with predictions.
     """
     @torch.no_grad()
-    def predict(content_series_iter):
+    def predict(content_series_iter: Iterable[Any]) -> Generator[DataFrame]:
         """
         Predict function to be used within the pandas UDF.
 

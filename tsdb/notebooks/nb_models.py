@@ -4,6 +4,7 @@ from typing import Protocol
 from pyspark.sql.types import StructType, StructField, IntegerType, ArrayType, FloatType
 from torch import Tensor
 from torch import nn
+import sys
 
 def instantiate_inference_model(model):
     # Happens in memory but double check
@@ -49,4 +50,4 @@ class InferenceModelType(Protocol):
 
     def preprocess_input(self, input) -> Tensor:
         # torchvision.transforms
-        pass
+        raise NotImplementedError
