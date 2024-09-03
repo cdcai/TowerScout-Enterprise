@@ -40,7 +40,7 @@ mlflow.set_registry_uri("databricks-uc")
 # COMMAND ----------
 
 def get_bronze_images(
-    table_name: str, columns: list[str], read_stream: bool = False
+    table_name: str, columns: list[str]
 ) -> DataFrame:
     """
     Retrieve images from a Delta table.
@@ -48,15 +48,11 @@ def get_bronze_images(
     Parameters:
     table_name (str): The name of the table to read from.
     columns (list[str]): The list of columns to select.
-    read_stream (bool): Flag to determine if the table should be read as a stream. Defaults to False.
 
     Returns:
     DataFrame: A Spark DataFrame containing the selected columns from the table.
     """
-    if read_stream:
-        images = spark.readStream.format("delta").table(table_name).select(columns)
-    else:
-        images = spark.read.format("delta").table(table_name).select(columns)
+    images = spark.read.format("delta").table(table_name).select(columns)
     return images
 
 # COMMAND ----------
