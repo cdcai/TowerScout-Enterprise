@@ -71,6 +71,29 @@ import sys
 
 # COMMAND ----------
 
+# Purpose: Check if the global view 'global_temp_towerscout_configs' exists and extract configuration values from it. 
+# If the view does not exist, exit the notebook with an error message.
+
+# Check if the global view exists
+if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
+    # Query the global temporary view and collect the first row
+    result = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+    
+    # Extract values from the result row
+    env = result['env']
+    catalog = result['catalog_name']
+    schema = result['schema_name']
+    debug_mode = result['debug_mode'] == "true"
+    unit_test_mode = result['unit_test_mode'] == "true"
+    # Get the current notebook name
+    notebook_name = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    notebook_name = notebook_name.split("/")[-1]
+else:
+    # Exit the notebook with an error message if the global view does not exist
+    dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
+
+# COMMAND ----------
+
 # set schema and table to read from, set batch size for number of examples to perform inference on per batch
 dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
 dbutils.widgets.text("source_table", defaultValue="image_metadata")
@@ -110,10 +133,10 @@ def get_bronze_images(
 catalog_info = CatalogInfo.from_spark_config(spark)  # CatalogInfo class defined in utils nb
 
 # Extract catalog name
-catalog = catalog_info.name
+#catalog = catalog_info.name
 
 # Get schema and source table from widgets
-schema = dbutils.widgets.get("source_schema")
+#schema = dbutils.widgets.get("source_schema")
 source_table = dbutils.widgets.get("source_table")
 
 # Construct the full table name
@@ -124,6 +147,9 @@ cols = ["content", "path"]
 
 # Retrieve images from the specified Delta table
 images = get_bronze_images(table_name, cols)
+
+if debug_mode:
+   display(images.limit(2))
 
 # COMMAND ----------
 
@@ -158,7 +184,7 @@ def get_model_names(catalog: str, schema: str) -> list[str]:
 ts_models = get_model_names(catalog, schema)
 
 # Create a dropdown widget for model selection
-dbutils.widgets.dropdown("model", ts_models[0], ts_models)
+dbutils.widgets.dropdown("model", "towerscout_model", ts_models)
 
 # Set widget for selecting alias that will be used to select model
 aliases = ["production", "staging"]
