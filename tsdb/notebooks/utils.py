@@ -167,7 +167,6 @@ def get_cluster_tag_val(key_name: str) -> str:
         if tag_value:
             # Return the tag value if it exists
             return tag_value
-        
         else:
             # Exit the notebook with a failure message if the tag does not exist or has no value
             dbutils.notebook.exit(f"Failure: The tag '{key_name}' does not exist or has no value.")
@@ -194,11 +193,8 @@ def get_catalog_schema_config_sql(cat, schema):
 
 env = get_cluster_tag_val("edav_environment")
 edav_center = get_cluster_tag_val("edav_center").lower() # must lowercase or else LIKE statement will not work
-print(edav_center)
 edav_project = get_cluster_tag_val("edav_project").lower()
-print(edav_project)
 cluster_catalog_name, cluster_schema_name, volumes = get_catalog_schema_config_sql(edav_center, edav_project)
-print(f"Volumes: {volumes}")
 
 # Retrieve the config file path from cluster tags
 cluster_config_path = get_cluster_tag_val("tower_scout_config_file_name").strip() # for some reason there is a leading space
@@ -209,12 +205,9 @@ spark.conf.set("catalog_name", cluster_catalog_name)
 spark.conf.set("schema_name", cluster_schema_name)
 spark.conf.set("config_path", cluster_config_path)
 
-print(f"Env: {spark.conf.get('env')}\nConfig: {spark.conf.get('config_path')}\nCatalog: {spark.conf.get('catalog_name')}\nschema_name: {spark.conf.get('schema_name')}")
-
 if 'configs' in volumes:
     # Construct the volume location path for the config file
     vol_loc = f"/Volumes/{spark.conf.get('catalog_name')}/{spark.conf.get('schema_name')}/configs/{spark.conf.get('config_path')}"
-    print("Vol path:",vol_loc)
     try:
         # Load the configuration data from the specified volume location
         conf = spark.read.format("json").load(vol_loc, multiLine=True)
@@ -225,7 +218,7 @@ if 'configs' in volumes:
             unit_test_mode = spark.conf.set("unit_test_mode", conf.collect()[0][env]['unit_test_mode'])
             key_vault_name = spark.conf.set("key_vault_name", conf.collect()[0][env]['key_vault_name'])
             client_id = conf.collect()[0][env]['azure_config']['client_id']
-            
+
         elif env == 'production':
             debug_mode = spark.conf.set("debug_mode", conf.collect()[0][env]['debug_mode'])
             unit_test_mode = spark.conf.set("unit_test_mode", conf.collect()[0][env]['unit_test_mode'])
@@ -242,9 +235,6 @@ else:
 
 spark.conf.set("vol_location_configs", 
                    f"/Volumes/{cluster_catalog_name}/{spark.conf.get('schema_name')}/configs/")
-                   
-
-print(f"debug_mode: {spark.conf.get('debug_mode')}\n tenant_id: {tenant_id} \n client_id: {client_id} \n unit_test_mode: {spark.conf.get('unit_test_mode')} \n key_vault_name: {spark.conf.get('key_vault_name')}")
 
 # COMMAND ----------
 
@@ -280,5 +270,4 @@ config_df = spark.createDataFrame(config_data, config_columns)
 # Create a global temporary view for the configuration DataFrame
 config_df.createOrReplaceGlobalTempView("global_temp_towerscout_configs")
 
-if debug_mode:
-    display(spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs"))
+display(spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs"))
