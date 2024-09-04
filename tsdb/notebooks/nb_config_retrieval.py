@@ -1,4 +1,26 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Get and Set Configurations
+# MAGIC
+# MAGIC The purpose of this notebook is to get the tags from cluster, get the catalog and schema values from the information schema and read configuratons values from the config file. Create a global temperary view, these values are fetched in various notebooks.
+# MAGIC
+# MAGIC ## Inputs
+# MAGIC * Cluster Tags
+# MAGIC * Information Schema
+# MAGIC * configs/cf_towerscout_config.json
+# MAGIC
+# MAGIC ## Processes
+# MAGIC * Read cluster tags 1. Environment, 2. Configuration file name, project name.
+# MAGIC * Get Catalog and Schema Name based on the env
+# MAGIC * Read the config json file
+# MAGIC * Set the values in variables
+# MAGIC * Create global temp view
+# MAGIC
+# MAGIC ## Outputs
+# MAGIC * Global temp view created with all the configuration values to be accessed by other notebooks.
+
+# COMMAND ----------
+
 import json
 
 # COMMAND ----------
