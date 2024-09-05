@@ -64,7 +64,10 @@ print(bounds)
 
 # COMMAND ----------
 
+
+
 # COMMAND ----------
+
 # Load API keys from Databricks Secrets API
 towerscout_secrets_scope = "dbs-scope-DDPHSS-CSELS-PD-TOWERSCOUT"
 bing_api_key = dbutils.secrets.get(scope=towerscout_secrets_scope, key="bing_api_key")
@@ -83,7 +86,10 @@ print("The Google_API_KEY is set: " + str(google_api_key != "actual_google_api_k
 
 # COMMAND ----------
 
+
+
 # COMMAND ----------
+
 # Import necessary libraries
 import sys
 sys.path.append('/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/scripts')
@@ -250,10 +256,12 @@ def process_objects_task(bounds, engine, map, polygons, tiles, process_id, tmpdi
     process_status[process_id] = { 'status': 'Completed', 'results': results }
 
 # COMMAND ----------
+
 # Define utility functions if any
 # For example, function to process objects, check tile against bounds, etc.
 
 # COMMAND ----------
+
 # Main logic for loading map tiles and storing them
 def load_map_tiles(bounds, engine, provider, polygons):
     # Create a map provider object
