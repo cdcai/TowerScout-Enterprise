@@ -4,10 +4,6 @@
 
 # COMMAND ----------
 
-
-
-# COMMAND ----------
-
 from databricks.sdk.core import ApiClient
 
 client = ApiClient()
