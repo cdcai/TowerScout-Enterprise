@@ -16,26 +16,29 @@ TowerScout detects cooling towers from aerial imagery. This library contains fun
 
 To maintain consistency and ensure high quality code, please follow these guidelines when contributing.
 
-1. Code Style
+**1. Branches**
+* We use the GitHub Flow branching style. No code should be committed to main. Branches should be prepended with `feature`, `bugfix`, `hotfix`, `release`, `test`, `experiment`, `docs`, `refactor`, or `ci`. Additional descriptors may be added over time. Your branch name must include the JIRA ticket associated with it in the format `<prefix>/JIRA-123-what-am-i-doing`. For example, `experiment/DMAC-300-efficientnet-latent-dim`
+
+**2. Code Style**
 
 * All python code must adhere to the [PEP 8][pep8-docs] style guide. We also enforce this using [Pylint][pylint-docs] to ensure code quality. Please run Pylint on your code before submitting any changes.
 
-2. Type Hints
+**3. Type Hints**
 
 * We use [Mypy][mypy-docs] for static checking. Pleasure ensure that all functions and methods include proper type hints to pass Mypy checks. 
 
-3. Modular Design
+**4. Modular Design**
 
 * Functions and logic should be written as isolated modules, separate from any PySpark notebooks. 
 * Notebooks should only import and use these functions, ensuring the notebooks remain clean and focused on orchestrating tasks. 
 * When submitting changes, please move any functions or logic to an appropriate place in the `src` directory. 
 
-4. Unit Tests
+**5. Unit Tests**
 
 * Comprehensive unit tests are required for all new features and bug fixes. Please write your tests using [Pytest][pytest-docs], ensuring they cover edge cases and are isolated from external dependencies. 
 * Tests are run on Databricks with access to Spark. 
 
-5. Submitting Changes:
+**6. Submitting Changes:**
 
 * Ensure your code passes all linting and type-checking tools. Databricks has modules for these.
 
