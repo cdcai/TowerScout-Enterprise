@@ -43,6 +43,17 @@ To maintain consistency and ensure high quality code, please follow these guidel
 
 * Open a pull request with a clear description of the changes you've made and how they contribute to the project. 
 
+### Directories
+* **development**: A directory for notebooks used to develop. This directory is not maintained for long periods of time and is only provided as a convenience. You **SHOULD NOT** submit code in this directory for your PR's. These notebooks can be **converted** into **actual** examples if you want to keep a history
+
+* **examples**: A directory for example usage of functions or classes you've created. These notebooks should include markdown and comments to outline what you're doing and why you're doing it. Examples should be written for someone with Python development experience, but possibly not PySpark.
+
+* **src**: This directory is packaged and installed onto TowerScout Databricks clusters. If you want your code available in these environments, it goes here as code files. 
+
+* **tests**: Unit tests for code in the `src` directory
+
+* **workflows**: Directory for notebooks and YAML/JSON workflow files. Notebooks in this directory **should only** contain orchestration logic.
+
 ## Gotchas
 
 ### MLFlow RESOURCE_DOES_NOT_EXIST
