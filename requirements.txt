@@ -1,0 +1,2 @@
+numpy
+efficientnet_pytorch
