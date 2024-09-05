@@ -85,9 +85,6 @@ if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_confi
     schema = result['schema_name']
     debug_mode = result['debug_mode'] == "true"
     unit_test_mode = result['unit_test_mode'] == "true"
-    # Get the current notebook name
-    notebook_name = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-    notebook_name = notebook_name.split("/")[-1]
 else:
     # Exit the notebook with an error message if the global view does not exist
     dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
