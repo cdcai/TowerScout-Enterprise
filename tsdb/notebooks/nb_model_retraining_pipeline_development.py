@@ -3,15 +3,15 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./utils
-
-# COMMAND ----------
-
 # MAGIC %run ./demo_model
 
 # COMMAND ----------
 
 # MAGIC %run ./dataloader_development
+
+# COMMAND ----------
+
+# MAGIC %run ./nb_data_processing
 
 # COMMAND ----------
 
@@ -22,7 +22,7 @@ from mlflow import MlflowClient
 from hyperopt import fmin, tpe, hp, SparkTrials, Trials, STATUS_OK, base
 from hyperopt.pyll import scope
 
-from functools import partial # for passing extra arguements to obj func
+from functools import partial
 from dataclasses import dataclass, asdict, field
 from collections import namedtuple
 
@@ -34,12 +34,15 @@ from torch import nn
 
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
-# COMMAND ----------
-
 import logging
 from logging.handlers import RotatingFileHandler
+
 import os
+
 from pyspark.dbutils import DBUtils
+from pyspark.sql import DataFrame
+
+# COMMAND ----------
 
 # Create a DBUtils object
 dbutils = DBUtils(spark.sparkContext)
@@ -78,48 +81,6 @@ except Exception as e:
 logger.info('This is an info message and the first message of the logs.')
 logger.warning('This is a warning message.')
 logger.error('This is an error message.')
-
-# COMMAND ----------
-
-# DBTITLE 1,Data Ingestion functions
-def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
-    """
-    Splits a Spark dataframe into train, test, and validation sets.
-
-    Args:
-        df (DataFrame): Input dataframe to be split.
-       
-
-    Returns:
-        tuple: A tuple containing the train, test, and validation dataframes.
-    """
-    # split the dataframe into 3 sets
-    images_train = images.sampleBy(("label"),fractions = {0: 0.8, 1: 0.8})
-    images_remaining = images.join(images_train, on='path', how='leftanti') #remaining from images
-    images_val = images_remaining.sampleBy(("label"),fractions = {0: 0.5, 1: 0.5}) # 50% of images_remaining
-    images_test = images_remaining.join(images_val, on='path', how='leftanti') # remaining 50% from the images_remaining
-    logger.info("Splitting data into train, test, and validation sets")
-    return images_train, images_test, images_val
-
-
-def split_datanolabel(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
-    """
-    Splits a Spark dataframe into train, test, and validation sets.
-
-    Args:
-        df (DataFrame): Input dataframe to be split.
-       
-
-    Returns:
-        tuple: A tuple containing the train, test, and validation dataframes.
-    """
-    # split the dataframe into 3 sets
-    images_train = images.sample(fraction = 0.8)
-    images_remaining = images.join(images_train, on='path', how='leftanti') #remaining from images
-    images_val = images_remaining.sample(fraction = 0.5) # 50% of images_remaining
-    images_test = images_remaining.join(images_val, on='path', how='leftanti') # remaining 50% from the images_remaining
-    logger.info("Splitting data into train, test, and validation sets (dataframe does not have label)")
-    return images_train, images_test, images_val
 
 # COMMAND ----------
 
@@ -181,13 +142,7 @@ images = (
     )
     
 train_set, test_set, val_set = split_datanolabel(images)
-logger.info("Loaded data.")
-
-# COMMAND ----------
-
-print(train_set.count())
-print(val_set.count())
-print(test_set.count())
+logger.info("Loading and splitting data into train, test, and validation sets")
 
 # COMMAND ----------
 
@@ -398,13 +353,6 @@ def tune_hyperparams(
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC Finish testing model promo logic
-# MAGIC Add doc strings and type hints to funcs
-# MAGIC Group funcs into seprate notebooks
-
-# COMMAND ----------
-
 # create converters for train/val/test spark df's
 converter_train = get_converter_df(train_set)
 converter_val = get_converter_df(val_set)
@@ -480,7 +428,7 @@ logger.info(f"Registered model {model_name} with version {challenger_model_metad
 client.set_registered_model_alias(
         name=challenger_model_metadata.name, 
         alias=alias, 
-        version=challenger_model_metadata.version # get version of challenger modelfrom when it was registered
+        version=challenger_model_metadata.version # get version of challenger model
     )
 
 # COMMAND ----------
@@ -502,7 +450,7 @@ promo_args = PromotionArgs(
 def model_promotion(promo_args: PromotionArgs) -> None:
     """
     Evaluates the model that has the specficied alias. Promotes the model with the
-    specfied
+    specfied alias
 
     Args:
         promo_args: Contains arguments for the model promotion logic
@@ -515,7 +463,6 @@ def model_promotion(promo_args: PromotionArgs) -> None:
         model_uri=f"models:/{promo_args.model_name}@{promo_args.alias}"
         )
     
-    #model_trainer = TowerScoutModelTrainer(optimizer_args={"lr": 0}, metrics=train_args.metrics)
     # use dummy optimzer params since optimizer is irrelevant for inference
     model_trainer = ModelTrainer(optimizer_args={"lr": 0}, metrics=promo_args.metrics)
     model_trainer.model = champ_model # Replace initial model with prod model
