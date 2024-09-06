@@ -1,24 +1,63 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Notebook Overview
+# MAGIC
+# MAGIC ## Purpose
+# MAGIC This notebook is designed to perform inference on image data using a pre-trained model. The process involves reading image metadata from a specified table, processing the images in batches, and applying the model to generate predictions.
+# MAGIC
+# MAGIC ## Widgets
+# MAGIC - **source_schema**: The schema from which to read the image metadata (default: `towerscout_test_schema`).
+# MAGIC - **source_table**: The table containing the image metadata (default: `image_metadata`).
+# MAGIC - **batch_size**: The number of examples to perform inference on per batch (default: `5`).
+# MAGIC - **mlflow_alias**: This will be used to select the appropriate model (default: production)
+# MAGIC - **model**: This is the model that will be used for inference pruposes (default: towerscout_model)
+# MAGIC
+# MAGIC ## Inputs
+# MAGIC - Image metadata from the specified schema and table.
+# MAGIC
+# MAGIC ## Processes
+# MAGIC 1. Read image metadata from the specified table.
+# MAGIC 2. Load and preprocess images in batches.
+# MAGIC 3. Apply a pre-trained model to perform inference on the images.
+# MAGIC 4. Store or display the inference results.
+# MAGIC
+# MAGIC ## Outputs
+# MAGIC - Inference results for the processed images.
+
+# COMMAND ----------
+
+# MLflow for model management
 import mlflow
 
+# IO operations
+import io
+
+# Type hinting
 from typing import Protocol, Any, Iterable, Generator
 
+# PyTorch for deep learning
 import torch
 from torch import nn, Tensor
 
+# Data manipulation
 import pandas as pd
 
+# Spark SQL functions and types
 from pyspark.sql.functions import col, pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType
 from pyspark.sql import DataFrame
 
+# Data classes for structured data
 from dataclasses import dataclass
 
+# PyTorch utilities for data handling
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
+# Image processing
 from PIL import Image
 
+# OS and system operations
 import os
 import sys
 import io
@@ -30,6 +69,26 @@ import io
 # COMMAND ----------
 
 # MAGIC %run ./nb_models
+
+# COMMAND ----------
+
+# Purpose: Check if the global view 'global_temp_towerscout_configs' exists and extract configuration values from it. 
+# If the view does not exist, exit the notebook with an error message.
+
+# Check if the global view exists
+if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
+    # Query the global temporary view and collect the first row
+    result = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+    
+    # Extract values from the result row
+    env = result['env']
+    catalog = result['catalog_name']
+    schema = result['schema_name']
+    debug_mode = result['debug_mode'] == "true"
+    unit_test_mode = result['unit_test_mode'] == "true"
+else:
+    # Exit the notebook with an error message if the global view does not exist
+    dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 # COMMAND ----------
 
@@ -45,6 +104,8 @@ mlflow.set_registry_uri("databricks-uc")
 
 # COMMAND ----------
 
+# Purpose: Define a function to retrieve images from a specified Delta table and return them as a Spark DataFrame.
+
 def get_bronze_images(
     table_name: str, columns: list[str]
 ) -> DataFrame:
@@ -58,21 +119,22 @@ def get_bronze_images(
     Returns:
     DataFrame: A Spark DataFrame containing the selected columns from the table.
     """
+    # Read the Delta table and select the specified columns
     images = spark.read.format("delta").table(table_name).select(columns)
     return images
 
 # COMMAND ----------
 
+# Purpose: Retrieve images from a specified Delta table using catalog and schema information from Spark configuration and widgets.
+
 # Retrieve catalog information from Spark configuration
-catalog_info = CatalogInfo.from_spark_config(
-    spark
-)  # CatalogInfo class defined in utils nb
+catalog_info = CatalogInfo.from_spark_config(spark)  # CatalogInfo class defined in utils nb
 
 # Extract catalog name
-catalog = catalog_info.name
+#catalog = catalog_info.name
 
 # Get schema and source table from widgets
-schema = dbutils.widgets.get("source_schema")
+#schema = dbutils.widgets.get("source_schema")
 source_table = dbutils.widgets.get("source_table")
 
 # Construct the full table name
@@ -84,7 +146,13 @@ cols = ["content", "path"]
 # Retrieve images from the specified Delta table
 images = get_bronze_images(table_name, cols)
 
+if debug_mode:
+   display(images.limit(2))
+
 # COMMAND ----------
+
+# Purpose: Retrieve model names from the Unity Catalog based on the specified catalog and schema, 
+#          and create dropdown widgets for model and alias selection.
 
 def get_model_names(catalog: str, schema: str) -> list[str]:
     """
@@ -95,7 +163,7 @@ def get_model_names(catalog: str, schema: str) -> list[str]:
     schema (str): The schema name to filter models.
 
     Returns:
-    list[str]: A list of model names for models regi
+    list[str]: A list of model names for models registered in the specified catalog and schema.
     """
     registered_models = mlflow.search_registered_models()
 
@@ -114,7 +182,7 @@ def get_model_names(catalog: str, schema: str) -> list[str]:
 ts_models = get_model_names(catalog, schema)
 
 # Create a dropdown widget for model selection
-dbutils.widgets.dropdown("model", ts_models[0], ts_models)
+dbutils.widgets.dropdown("model", "towerscout_model", ts_models)
 
 # Set widget for selecting alias that will be used to select model
 aliases = ["production", "staging"]
@@ -123,24 +191,20 @@ dbutils.widgets.dropdown("mlflow-alias", "production", aliases)
 # COMMAND ----------
 
 # DBTITLE 1,Get mode from registry
-# construct model name and path based on user selection
+# Purpose: Load a model from the model registry based on user selection and prepare it for distributed inference.
+
+# Construct model name and path based on user selection
 model_name = f"{catalog}.{schema}.{dbutils.widgets.get('model')}"
 
-# get alias to look up model by
+# Get alias to look up model by
 alias = dbutils.widgets.get('mlflow-alias')
 
-# load model from model registry, the assumption is this will have methods outlined in the InferenceModelType protocol
-# in the nb_models notebook so should have attributes like return_type and methods like get_model_files that are called upon instantiation as well as a method called predict
+# Load model from model registry
+# The model is expected to adhere to the InferenceModelType protocol
 ts_model = mlflow.pytorch.load_model(model_uri=f"models:/{model_name}@{alias}")
 
-# get model return type for inference UDF
-if hasattr(ts_model, 'return_type'):
-    return_type = ts_model.return_type
-else:
-    raise AttributeError("The loaded model does not have the attribute 'return_type'. Model must adhere to the InferenceModelType protocol. Please load a model which does.")
-
-if not hasattr(model, 'predict'):
-    raise AttributeError("The model does not have a 'predict' method")
+# Define the return type for the inference UDF
+return_type = StructType([StructField("logits", ArrayType(ArrayType(FloatType())), True)])
 
 # COMMAND ----------
 
@@ -183,6 +247,9 @@ class TowerScoutDataset(Dataset):
 # COMMAND ----------
 
 # DBTITLE 1,UDF for distributed inference
+# Purpose: Define a pandas UDF for distributed inference with a PyTorch model.
+# This function creates a UDF that can be used to perform batch inference on a Spark DataFrame column.
+
 def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: StructType) -> DataFrame:
     """
     A pandas UDF for distributed inference with a PyTorch model.
@@ -196,7 +263,7 @@ def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: Str
         DataFrame: DataFrame with predictions.
     """
     @torch.no_grad()
-    def predict(content_series_iter: Iterable[Any]) -> Generator[pd.DataFrame, None, None]:
+    def predict(content_series_iter: Iterable[Any]):
         """
         Predict function to be used within the pandas UDF.
 
@@ -206,7 +273,7 @@ def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: Str
         Yields:
             DataFrame: DataFrame with predicted labels.
         """
-        model = model_fn()
+        model = model_fn()  # Load the model
         for content_series in content_series_iter:
             # Create dataset object to apply transformations
             dataset: Dataset = TowerScoutDataset(list(content_series))
@@ -214,7 +281,7 @@ def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: Str
             loader = DataLoader(dataset, batch_size=batch_size)
             for image_batch in loader:
                 # Perform inference on batch
-                output = model.predict(image_batch)
+                output = model(image_batch)
                 predicted_labels = output.tolist()
                 yield pd.DataFrame(predicted_labels)
 
@@ -222,17 +289,26 @@ def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: Str
 
 # COMMAND ----------
 
+# Purpose: Retrieve batch size from Databricks widget and instantiate the inference UDF for distributed inference.
+# The UDF is created using the ts_model_udf function, which performs batch inference on a Spark DataFrame column.
+
 # retrieve batch size
 batch_size = int(dbutils.widgets.get("batch_size"))
 
 # instantiate inference udf
-inference_udf = ts_model_udf(model_fn=lambda: ts_model,  batch_size=batch_size, return_type=ts_model.return_type)
+inference_udf = ts_model_udf(model_fn=lambda: ts_model, batch_size=batch_size, return_type=return_type)
 
 # COMMAND ----------
+
+# Purpose: Perform distributed inference on the 'content' column of the 'images' DataFrame using the instantiated UDF.
+# The UDF is applied to each row in the 'content' column to generate predictions.
 
 # perform distributed inference with pandas udf
 predictions = images.withColumn("prediction", inference_udf(col("content")))
 
 # COMMAND ----------
+
+# Purpose: Display the predictions DataFrame with the generated predictions.
+# The display function is used to render the DataFrame in a rich format.
 
 display(predictions)
