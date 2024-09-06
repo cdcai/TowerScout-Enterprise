@@ -1,10 +1,12 @@
 # Databricks notebook source
+# MAGIC %run ./demo_model
+
+# COMMAND ----------
+
 import mlflow
 from mlflow.models.signature import infer_signature
-from mlflow import MlflowClient
 
-from hyperopt import fmin, tpe, hp, SparkTrials, Trials, STATUS_OK, base
-from hyperopt.pyll import scope
+from hyperopt import fmin, STATUS_OK
 
 from dataclasses import dataclass, asdict, field
 from collections import namedtuple
@@ -12,6 +14,8 @@ from collections import namedtuple
 from typing import Any
 
 from enum import Enum
+
+from torch import nn
 
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
@@ -128,10 +132,8 @@ def perform_pass(
             if minibatch_num % report_interval == 0:
                 is_train = mode == "TRAIN"
                 mlflow.log_metrics(metrics, step=is_train*(minibatch_num + epoch_num*converter_length))
-
+    
     return metrics
-
-# COMMAND ----------
 
 def train(
         params: dict[str, Any], 
@@ -152,7 +154,6 @@ def train(
 
     with mlflow.start_run(nested=True):
         # Create model and trainer
-        #model_trainer = TowerScoutModelTrainer(optimizer_args=params, metrics=train_args.metrics)
         model_trainer = ModelTrainer(optimizer_args=params, metrics=train_args.metrics)
         mlflow.log_params(params)
         
@@ -210,5 +211,54 @@ def tune_hyperparams(
     # get test score of best run 
     best_run_test_metric = best_run[f"metrics.{train_args.objective_metric}_TEST"]
     mlflow.end_run() # end run before exiting
-
+    
     return best_run, best_run_test_metric, best_params
+
+# COMMAND ----------
+
+def model_promotion(promo_args: PromotionArgs) -> None:
+    """
+    Evaluates the model that has the specficied alias. Promotes the model with the
+    specfied alias
+
+    Args:
+        promo_args: Contains arguments for the model promotion logic
+    Returns:
+        None
+    """
+
+    # load current model with matching alias (champion model)
+    champ_model = mlflow.pytorch.load_model(
+        model_uri=f"models:/{promo_args.model_name}@{promo_args.alias}"
+        )
+    
+    # use dummy optimzer params since optimizer is irrelevant for inference
+    model_trainer = ModelTrainer(optimizer_args={"lr": 0}, metrics=promo_args.metrics)
+    model_trainer.model = champ_model # Replace initial model with prod model
+
+    context_args = {
+                "transform_spec": get_transform_spec(),
+                "batch_size": promo_args.batch_size
+            }
+
+    # get testing score for current produciton model
+    steps_per_epoch = len(promo_args.test_conv) // promo_args.batch_size
+    with promo_args.test_conv.make_torch_dataloader(**context_args) as dataloader:
+        dataloader_iter = iter(dataloader)
+        for minibatch_num in range(steps_per_epoch):
+            minibatch_images = next(dataloader_iter)
+            champ_model_test_metrics = model_trainer.validation_step(minibatch_images, "TEST")
+
+    champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]
+    print(f"{promo_args.objective_metric} for production model is: {champ_test_metric}")
+
+    if challenger_test_metric > champ_test_metric:
+        print(f"Promoting challenger model to {alias}.")
+        # give alias to challenger model, alias is automatically removed from current champion model
+        client.set_registered_model_alias(
+            name=promo_args.model_name, 
+            alias=promo_args.alias, 
+            version=promo_args.model_version # version of challenger model from when it was registered
+        )
+    else:
+        print("Challenger model performs worse than current production model. Promotion aborted.")
