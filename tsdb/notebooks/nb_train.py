@@ -5,6 +5,7 @@
 
 import mlflow
 from mlflow.models.signature import infer_signature
+from mlflow import MlflowClient
 
 from hyperopt import fmin, STATUS_OK
 
@@ -88,6 +89,7 @@ class PromotionArgs:
     challenger_metric_value: float = 0
     alias: str = "staging"
     test_conv: SparkDatasetConverter = None
+    client: MlflowClient = None
 
 # COMMAND ----------
 
@@ -201,6 +203,9 @@ def tune_hyperparams(
     Args:
         fmin_args: FminArgs The arguments to HyperOpts fmin function
         train_args: TrainingArgs The arguements for training and validaiton loops
+    
+    Returns:
+        tuple[Any, float, dict[str, Any]] A tuple containing the best run, the value of the objective metric for that run, and the hyperparameters of that run and the assocaited best hyperparameters
     """
     with mlflow.start_run(run_name='towerscout_retrain'):
         best_params = fmin(**(fmin_args._asdict())) # cant pass raw dataclass using **, must be mappable (dict)
@@ -252,13 +257,13 @@ def model_promotion(promo_args: PromotionArgs) -> None:
     champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]
     print(f"{promo_args.objective_metric} for production model is: {champ_test_metric}")
 
-    if challenger_test_metric > champ_test_metric:
-        print(f"Promoting challenger model to {alias}.")
+    if promo_args.challenger_metric_value > champ_test_metric:
+        print(f"Promoting challenger model to {promo_args.alias}.")
         # give alias to challenger model, alias is automatically removed from current champion model
-        client.set_registered_model_alias(
+        promo_args.client.set_registered_model_alias(
             name=promo_args.model_name, 
             alias=promo_args.alias, 
             version=promo_args.model_version # version of challenger model from when it was registered
         )
     else:
-        print("Challenger model performs worse than current production model. Promotion aborted.")
+        print(f"Challenger model does not perform better than current {promo_args.alias} model. Promotion aborted.")

@@ -37,6 +37,12 @@ from pyspark.sql import DataFrame
 
 # COMMAND ----------
 
+catalog_info = CatalogInfo.from_spark_config(spark) # CatalogInfo class defined in utils nb
+catalog = catalog_info.name
+schema = dbutils.widgets.get("source_schema")
+
+# COMMAND ----------
+
 # Create a DBUtils object
 dbutils = DBUtils(spark.sparkContext)
 
@@ -45,7 +51,7 @@ temp_file = tempfile.NamedTemporaryFile(delete=False)
 log_path = temp_file.name
 
 # Set up your log path
-dbfs_log_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/logs/towerscout.log"
+dbfs_log_path = f"/Volumes/{catalog}/{schema}/test_volume/logs/towerscout.log"
 
 # Create the log directory if it doesn't exist
 log_dir = os.path.dirname(log_path)
@@ -116,9 +122,6 @@ logger.info("Created MLflow client.")
 # COMMAND ----------
 
 # DBTITLE 1,Data Ingestion and Splitting
-catalog_info = CatalogInfo.from_spark_config(spark) # CatalogInfo class defined in utils nb
-catalog = catalog_info.name
-schema = dbutils.widgets.get("source_schema")
 source_table = dbutils.widgets.get("source_table")
 
 table_name = f"{catalog}.{schema}.{source_table}"
@@ -224,7 +227,8 @@ promo_args = PromotionArgs(
     model_name=model_name,
     challenger_metric_value=challenger_test_metric,
     alias=alias,
-    test_conv=split_convs.test
+    test_conv=split_convs.test,
+    client=client
     )
 
 # COMMAND ----------
