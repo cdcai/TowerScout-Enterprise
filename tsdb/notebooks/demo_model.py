@@ -97,7 +97,3 @@ class ModelTrainer:
         self.model.eval()
         output = self.forward(minibatch)
         return self.score(output.logits, output.images, step)
-
-# COMMAND ----------
-
-
