@@ -31,14 +31,18 @@ print(sys.path)
 
 
 
+# COMMAND ----------
+
+
+
 # set registry to be UC en_model registry
 mlflow.set_registry_uri("databricks-uc")
 
 # create MLflow client
 client = MlflowClient()
 
-logged_en_model_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/en_model_params/en/b5_unweighted_best.pt"
-logged_yolo_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/en_model_params/yolo/xl_250_best.pt"
+logged_en_model_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/en/b5_unweighted_best.pt"
+logged_yolo_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/yolo/xl_250_best.pt"
 
 # load original TowerScout EfficientNet Model weights
 en_model = EfficientNet.from_pretrained("efficientnet-b5", include_top=True)
