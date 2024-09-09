@@ -37,6 +37,24 @@ from pyspark.sql import DataFrame
 
 # COMMAND ----------
 
+dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
+dbutils.widgets.text("source_table", defaultValue="image_metadata")
+
+dbutils.widgets.text("epochs", defaultValue="5")
+dbutils.widgets.text("batch_size", defaultValue="1")
+dbutils.widgets.text("report_interval", defaultValue="5")
+dbutils.widgets.text("max_evals", defaultValue="16")
+dbutils.widgets.text("parallelism", defaultValue="4")
+
+stages = ["Dev", "Staging", "Production"]
+dbutils.widgets.dropdown("stage", "Production", stages)
+
+metrics = [member.name for member in ValidMetric]
+dbutils.widgets.dropdown("objective_metric", "MSE", metrics)
+dbutils.widgets.multiselect("metrics", "MSE" , choices=metrics)
+
+# COMMAND ----------
+
 catalog_info = CatalogInfo.from_spark_config(spark) # CatalogInfo class defined in utils nb
 catalog = catalog_info.name
 schema = dbutils.widgets.get("source_schema")
@@ -79,24 +97,6 @@ except Exception as e:
 logger.info('This is an info message and the first message of the logs.')
 logger.warning('This is a warning message.')
 logger.error('This is an error message.')
-
-# COMMAND ----------
-
-dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
-dbutils.widgets.text("source_table", defaultValue="image_metadata")
-
-dbutils.widgets.text("epochs", defaultValue="5")
-dbutils.widgets.text("batch_size", defaultValue="1")
-dbutils.widgets.text("report_interval", defaultValue="5")
-dbutils.widgets.text("max_evals", defaultValue="16")
-dbutils.widgets.text("parallelism", defaultValue="4")
-
-stages = ["Dev", "Staging", "Production"]
-dbutils.widgets.dropdown("stage", "Production", stages)
-
-metrics = [member.name for member in ValidMetric]
-dbutils.widgets.dropdown("objective_metric", "MSE", metrics)
-dbutils.widgets.multiselect("metrics", "MSE" , choices=metrics)
 
 # COMMAND ----------
 
