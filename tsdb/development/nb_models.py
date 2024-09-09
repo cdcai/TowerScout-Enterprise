@@ -4,8 +4,9 @@ from typing import Protocol
 from pyspark.sql.types import StructType, StructField, IntegerType, ArrayType, FloatType
 from torch import Tensor
 from torch import nn
+import sys
 
-def instantiate_inference_model(model):
+def instantiate_inference_model(model: nn.Module) -> nn.Module:
     # Happens in memory but double check
     model.eval()
     if torch.cuda.is_available():
@@ -30,12 +31,8 @@ class InferenceModelType(Protocol):
     """
     A model class to wrap the model and provide the required methods to run 
     distributed inference
+    TODO: model instantiation logic should be moved to the model class
     """
-    def __init__(self, model, return_type):
-        # Leaving this for now
-        self.model = instantiate_inference_model(model)
-        self.return_type = return_type
-    
     @property
     def model(self) -> nn.Module:
         raise NotImplementedError
@@ -49,4 +46,4 @@ class InferenceModelType(Protocol):
 
     def preprocess_input(self, input) -> Tensor:
         # torchvision.transforms
-        pass
+        raise NotImplementedError

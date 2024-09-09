@@ -19,7 +19,7 @@
 .freview { grid-area: freview; }
 .fversion { grid-area: fversion; }
 .fmodel { grid-area: fmodel; }
-.fuploadmodel { grid-area: fuploadmodel; }
+/* .fuploadmodel { grid-area: fuploadmodel; } */
 .fadd { grid-area: fadd; }
 .fdetect { grid-area: fdetect; font-size: smaller;}
 .fmap { grid-area: fmap; }
@@ -47,7 +47,8 @@
         'fmodel fmap freview'
         'fmodel fmap ftowers'
         'fmodel fmap fadd'
-        'fuploadmodel fmap fsave'
+        /* 'fuploadmodel fmap fsave' */
+        'fmodel fmap fsave'
         'ftext ftext ftext';
     grid-template-rows: 50px 50px 40px 1fr 50px 50px 120px;
     grid-template-columns: 12% 1fr 30%;
