@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: tower-scout-library
+Version: 0.1.0
+Summary: Custom library for TowerScout use cases
+Author: AIX Development Team
+Author-email: ac84@cdc.gov
+Classifier: Programming Language :: Python :: 3
+Requires-Python: >=3.7
