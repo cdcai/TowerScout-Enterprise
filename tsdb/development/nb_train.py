@@ -267,3 +267,7 @@ def model_promotion(promo_args: PromotionArgs) -> None:
         )
     else:
         print(f"Challenger model does not perform better than current {promo_args.alias} model. Promotion aborted.")
+
+# COMMAND ----------
+
+
