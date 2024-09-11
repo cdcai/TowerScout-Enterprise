@@ -15,12 +15,17 @@ def spark():
         .appName("test_functions_transformation")
         .getOrCreate()
     )
+    
     return spark
 
 
 def test_cast_to_column_string_input(spark):
+    """
+    What are you testing?
+    Why are you testing
+    """
     col_name = "test_column"
-    test_dataframe = spark.createDataFrame([(1,), (2,), (3,)], ["test_column"])
+    test_dataframe = spark.createDataFrame([(1,), (2,), (3,)], [col_name])
     
     result = tsf.cast_to_column(col_name)
 
