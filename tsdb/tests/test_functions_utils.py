@@ -1,5 +1,5 @@
 """
-This module tests code in tsdb.preprocessing.functions that are transformation based. If needed,
+This module tests code in tsdb.preprocessing.utils that are help transforms. If needed,
 function docstrings can include examples of what is being tested.
 """
 import pytest
