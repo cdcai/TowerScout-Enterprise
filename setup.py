@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='tower_scout_library',           # Name of the package
+    name='tsdb',           # Name of the package
     version='0.1.0',                      # Version number
     description='Custom library for TowerScout use cases',  # A short description of the package
     author='AIX Development Team',        # AIX ML team
