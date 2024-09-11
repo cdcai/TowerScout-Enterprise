@@ -3,8 +3,11 @@
 
 # COMMAND ----------
 
+pip install shapely
+
+# COMMAND ----------
+
 import mlflow
-import mlflow.pyfunc
 from mlflow.models.signature import ModelSignature
 from mlflow.types import Schema, TensorSpec
 from mlflow import MlflowClient
@@ -17,19 +20,10 @@ import torch.utils.data as utils
 from torchvision import transforms, datasets
 from PIL import Image
 import sys, os
+from webapp.ts_yolov5 import YOLOv5_Detector
 
-sys.path.append(
-    "/Workspace/Repos/DDPHSS-CSELS-PD-TOWERSCOUT/TowerScout/Models/baseline"
-)
-sys.path.append(
-    "/Workspace/Repos/DDPHSS-CSELS-PD-TOWERSCOUT/TowerScout/webapp/ts_yolov5/"
-)
 # from ts_yolov5 import YOLOv5_Detector
-print(sys.path)
-
-# COMMAND ----------
-
-
+# print(sys.path)
 
 # COMMAND ----------
 
@@ -55,11 +49,11 @@ else:
     checkpoint = torch.load(logged_en_model_path, map_location=torch.device("cpu"))
 
 en_model.load_state_dict(checkpoint)
-print("Loaded TowerScout EffificentNet weights")
+print("Loaded TowerScout EfficentNet weights")
 
 # load YOLO v5 Model Weights
-yolo_model = YOLOv5_Detector(logged_yolo_path)
-print("Loaded TowerScout YOLO Weight")
+# yolo_model = YOLOv5_Detector(logged_yolo_path)
+# print("Loaded TowerScout YOLO Weight")
 
 run_name = "TowerScout_benchmark_en_model"
 
@@ -70,7 +64,7 @@ mlflow.autolog()
 im_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/test_images/tmp5j0qh5k10.jpg"
 img = Image.open(im_path)
 en_model.eval()
-yolo_model.eval()
+# yolo_model.eval()
 
 catalog = "edav_dev_csels"
 schema = "towerscout_test_schema"
@@ -86,15 +80,15 @@ transform = transforms.ToTensor()
 with mlflow.start_run(run_name="Register_pretrained_YOLOv5_model_2") as run:
     run_id = run.info.run_id
     x_test = transform(img).unsqueeze(0)
-    y_pred = yolo_model.detect(x_test, secondary=en_model)
-    # y_pred = model.forward(x_test)
+    # y_pred = yolo_model.detect(x_test, secondary=en_model)
+    y_pred = en_model.forward(x_test)
 
     input_schema = Schema([TensorSpec(np.dtype("float32"), x_test.shape)])
     output_schema = Schema([TensorSpec(np.dtype("float32"), y_pred.shape)])
     signature = ModelSignature(inputs=input_schema, outputs=output_schema)
 
-    mlflow.pytorch.log_model(yolo_model, run_name)
-    # mlflow.pytorch.log_model(en_model, run_name)
+    # mlflow.pytorch.log_model(yolo_model, run_name)
+    mlflow.pytorch.log_model(en_model, run_name)
     
     client.set_tag(run_id=run_id, key="model_type", value="baseline_yoloV5")
 
