@@ -3,7 +3,7 @@ This module tests code in tsdb.preprocessing.functions that are transformation b
 function docstrings can include examples of what is being tested.
 """
 import pytest
-import tsdb.preprocessing.functions as tsf
+import tsdb.preprocessing.utils as putils
 
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
@@ -32,7 +32,7 @@ def test_cast_to_column_string_input(spark: SparkSession) -> None:
     col_name = "test_column"
     test_dataframe = spark.createDataFrame([(1,), (2,), (3,)], [col_name])
     
-    result = tsf.cast_to_column(col_name)
+    result = putils.cast_to_column(col_name)
 
     # Result should be a PySpark Column object
     assert isinstance(result, F.Column), f"Expected a PySpark Column object, got {type(result)}"
