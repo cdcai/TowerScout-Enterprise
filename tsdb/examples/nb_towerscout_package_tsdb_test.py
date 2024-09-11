@@ -28,18 +28,33 @@ else:
 
 # COMMAND ----------
 
-import tower_scout_library
-print(f"Package {tower_scout_library.__name__} imported successfully!")
+# Import the tsdb package to ensure it is installed and accessible
+import tsdb
+
+# Print a confirmation message indicating successful import of the tsdb package
+print(f"Package {tsdb.__name__} imported successfully!")
 
 # COMMAND ----------
 
-# MAGIC %pip install -r ./requirements.txt
+# MAGIC %pip install -r /Workspace/Users/ac84@cdc.gov/TowerScout/requirements.txt
+# MAGIC
+# MAGIC
 # MAGIC
 
 # COMMAND ----------
 
-from tower_scout_library.utils import calculate_square_root
+from tsdb.preprocessing.utils import calculate_square_root
 
 num = 16
 result = calculate_square_root(num)
 print(f"The square root of {num} is {result}")
+
+# COMMAND ----------
+
+
+# Perform the import
+from tsdb import preprocessing
+print(f"{preprocessing} imported successfuly")
+
+
+
