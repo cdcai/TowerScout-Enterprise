@@ -1,8 +1,0 @@
-setup.py
-tower_scout_library/__init__.py
-tower_scout_library/utils.py
-towerscout.egg-info/PKG-INFO
-towerscout.egg-info/SOURCES.txt
-towerscout.egg-info/dependency_links.txt
-towerscout.egg-info/requires.txt
-towerscout.egg-info/top_level.txt
