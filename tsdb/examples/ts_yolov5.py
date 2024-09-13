@@ -14,31 +14,39 @@
 
 import math
 import torch
-from PIL import Image
+import sys
 import numpy as np
-from mlflow.pyfunc import PythonModel
+from mlflow.pyfunc import PythonModel, PythonModelContext
+from torch import nn
 
-class YOLOv5_Detector(PythonModel): # needs to follow the Protocol in inference pipeline
+
+class YOLOv5_Detector(
+    PythonModel
+):  # needs to follow the Protocol in inference pipeline
     def __init__(self, model, batch_size):
-        # Model
-        # model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
-        self.model = model # model should be passed as a param to init, create model outside of class
-        self.batch_size = batch_size  # For our Tesla K8, this means 8 batches can run in parallel
- 
-    def predict(self, context, model_input: list[np.ndarray], secondary=None): # change detect to predict to follow mlflow conventions and remove crop
-        
+        self.model = model  # model should be passed as a param to init, create model outside of class
+        self.batch_size = (
+            batch_size  # For our Tesla K8, this means 8 batches can run in parallel
+        )
+
+    def predict(
+        self,
+        context: PythonModelContext,
+        model_input: list[np.ndarray],
+        secondary: nn.Module = None,
+    ):  # change detect to predict to follow mlflow conventions and remove crop
         # Inference in batches
         results = []
         count = 0
-        print(" detecting ...")
+        #print(f"Detecting with secondary model {secondary}")
 
         for i in range(0, len(model_input), self.batch_size):
-            #img_batch = model_input[i:i+self.batch_size] #[Image.open(tile['filename']) for tile in tile_batch]
+            # img_batch = model_input[i:i+self.batch_size] #[Image.open(tile['filename']) for tile in tile_batch]
             # the model expectes a LIST of images, list of np arrays or Image objects.
             # a np array of images doesn't appear to work
             # see: ultralytics_yolov5_master/models/common.py
             # error: ValueError: axes don't match array
-            img_batch = [ model_input[j] for j in range(i, i+self.batch_size) ]
+            img_batch = [model_input[j] for j in range(i, i + self.batch_size)]
             # retain a copy of the images
             if secondary is not None:
                 img_batch2 = [img.copy() for img in img_batch]
@@ -46,14 +54,14 @@ class YOLOv5_Detector(PythonModel): # needs to follow the Protocol in inference 
                 img_batch2 = [None] * len(img_batch)
 
             # detect, remove self.semaphore and events.query
-            
+
             result_obj = self.model(img_batch)
-            
+
             # get the important part
             results_raw = result_obj.xyxyn
-            #print(results_raw)
+            # print(results_raw)
             # result is tile by tile, imma just remove "tile" here
-            for (img, result) in zip(img_batch2, results_raw):
+            for img, result in zip(img_batch2, results_raw):
                 results_cpu = result.cpu().numpy().tolist()
 
                 # secondary classifier processing
@@ -61,18 +69,21 @@ class YOLOv5_Detector(PythonModel): # needs to follow the Protocol in inference 
                     # classifier will append its own prob to every detection
                     secondary.classify(img, results_cpu, batch_id=count)
                     count += 1
-                
+
                 # yolo_resuts(*item) named tuple
-                tile_results = [{
-                    'x1': item[0],
-                    'y1': item[1],
-                    'x2': item[2],
-                    'y2': item[3],
-                    'conf': item[4],
-                    'class': int(item[5]),
-                    'class_name': result_obj.names[int(item[5])],
-                    'secondary': item[6] if len(item) > 6 else 1
-                    } for item in results_cpu]
+                tile_results = [
+                    {
+                        "x1": item[0],
+                        "y1": item[1],
+                        "x2": item[2],
+                        "y2": item[3],
+                        "conf": item[4],
+                        "class": int(item[5]),
+                        "class_name": result_obj.names[int(item[5])],
+                        "secondary": item[6] if len(item) > 6 else 1,
+                    }
+                    for item in results_cpu
+                ]
                 results.append(tile_results)
 
                 # record the detections in the tile
@@ -86,7 +97,6 @@ class YOLOv5_Detector(PythonModel): # needs to follow the Protocol in inference 
                 #     boxes.append(box)
                 # tile['detections'] = boxes
 
-            print(f" batch of {len(img_batch)} processed")
+            #print(f" batch of {len(img_batch)} processed")
 
         return results
-

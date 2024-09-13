@@ -1,5 +1,7 @@
 # Databricks notebook source
-!pip install opencv-python # need for yolo model
+# MAGIC %pip install opencv-python # need for yolo model
+# MAGIC %pip install ultralytics==8.2.92 # need for yolo model
+# MAGIC %pip install gitpython==3.1.30 pillow==10.3.0 requests==2.32.0 setuptools==70.0.0 # need for loading yolo with torch.hub.load from ultralytics
 
 # COMMAND ----------
 
@@ -35,10 +37,14 @@ schema = "towerscout_test_schema"
 
 # COMMAND ----------
 
-filename = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/yolo/xl_250_best.pt"
+yolo_dep_path = "/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master"
+
+model_weights_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/yolo/xl_250_best.pt"
 
 # load YOLOv5 model
-model = torch.hub.load("ultralytics/yolov5", "custom", path=filename)
+model = torch.hub.load(repo_or_dir=yolo_dep_path, model="custom", path=model_weights_path, source="local")
+
+# COMMAND ----------
 
 # create MLflow yolov5 model
 yolo_model = YOLOv5_Detector(model=model, batch_size=1)
@@ -66,7 +72,7 @@ with mlflow.start_run() as run:
 
     y_pred = yolo_model.predict(context=None, model_input=x_test)
 
-    # hard coding model_output because model currently doesnt detect stuff
+    # hard coding model_output because current test images yield no detection output
     sig = infer_signature(
         model_input=x_test,
         model_output=[
@@ -90,6 +96,10 @@ with mlflow.start_run() as run:
         signature=sig,
         pip_requirements=[
             "ultralytics==8.2.92",
+            "gitpython==3.1.30",
+            "pillow==10.3.0", 
+            "requests==2.32.0",
+            "setuptools==70.0.0"
         ],
     )
 
@@ -116,7 +126,7 @@ client.set_registered_model_alias(
 # COMMAND ----------
 
 model_name = f"{catalog}.{schema}.towerscout_baseline_model"  # model name in UC
-# get requierments.txt file to install dependecies for yolov5 module i.e. ultralyitcs
+# get requierments.txt file to install dependencies for yolov5 module i.e. ultralyitcs, pillow etc
 path_to_req_txt = mlflow.pyfunc.get_model_dependencies(f"models:/{model_name}@{alias}")
 
 # COMMAND ----------
@@ -126,10 +136,7 @@ path_to_req_txt = mlflow.pyfunc.get_model_dependencies(f"models:/{model_name}@{a
 # COMMAND ----------
 
 # DBTITLE 1,Load registred model for inference
-# make this attroibute of detecotr class and append path to sys in the __init__ method
-yolo_dep_path = "/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master"
-
-# IMPORTANT when loading the model you must append the path to this directory to the system path so
+# IMPORTANT: when loading the model you must append the path to this directory to the system path so
 # Python looks there for the files/modules needed to load the yolov5 module
 sys.path.append(yolo_dep_path)
 
@@ -142,9 +149,42 @@ registered_model = mlflow.pyfunc.load_model(
 # COMMAND ----------
 
 x_test = np.array(
-    [np.asarray(Image.open(jpg_files[i]), dtype=np.float32) for i in range(5, 10)]
+    [np.asarray(Image.open(jpg_files[i]), dtype=np.float32) for i in range(0, 10)]
 )
 
 y_pred = registered_model.predict(x_test)  # perform inference
 
 print(f"Inference results for 5 images: {y_pred}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Unzip training data file and retrieve some more test images
+
+# COMMAND ----------
+
+# import zipfile
+# zip_file_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/towerscout-training-data.zip"
+
+# extract_to_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/sample/"
+
+# os.makedirs(extract_to_path, exist_ok=True)
+
+# # Unzip only the first 40 files
+# with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+#     for i, file in enumerate(zip_ref.namelist()):
+#         if i >= 40:
+#             break
+#         zip_ref.extract(file, extract_to_path)
+
+# COMMAND ----------
+
+img_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/sample/Training Data/nyc"
+
+png_files = glob.glob(os.path.join(img_path, "*.png"))
+
+x_test = np.array(
+    [np.asarray(Image.open(png_files[i]), dtype=np.float32) for i in range(0, 10)]
+)
+
+yolo_model.predict(context=None, model_input=x_test)
