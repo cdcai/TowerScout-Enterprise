@@ -10,17 +10,9 @@
 # COMMAND ----------
 
 import mlflow
-import mlflow.pyfunc
-from mlflow.models.signature import ModelSignature
-from mlflow import MlflowClient
 from mlflow.models.signature import infer_signature
 import numpy as np
 import torch
-from torch import Tensor
-import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
-import torch.utils.data as utils
-from torchvision import transforms, datasets
 from PIL import Image
 import os, glob, sys
 
@@ -34,7 +26,9 @@ schema = "towerscout_test_schema"
 
 # COMMAND ----------
 
-yolo_dep_path = f"/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master"
+yolo_dep_path = (
+    f"/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master"
+)
 
 model_weights_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/yolo/xl_250_best.pt"
 
@@ -45,7 +39,7 @@ model = torch.hub.load(
 
 # COMMAND ----------
 
-# create MLflow yolov5 model
+# create YOLOv5_Detector Mlflow PythonModel
 yolo_model = YOLOv5_Detector(model=model, batch_size=1)
 
 # COMMAND ----------
@@ -61,7 +55,8 @@ x_test = np.array(
 
 # COMMAND ----------
 
-# we will pass a list of Image objects or np arrays instead of the images transformed into tensors or else we get an error where .xyxyn is avaiable in the output of the model
+# we will pass a list of Image objects or np arrays instead of the images transformed into tensors
+# or else we get an error where .xyxyn is not avaiable in the output of the model
 
 with mlflow.start_run() as run:
     run_id = run.info.run_id
@@ -104,7 +99,7 @@ with mlflow.start_run() as run:
 # COMMAND ----------
 
 # DBTITLE 1,Register model
-model_name = f"{catalog}.{schema}.towerscout_baseline_model"
+model_name = f"{catalog}.{schema}.towerscout_baseline_model"  # will be model name in UC
 
 registered_model_metadata = yolo_model.register_model(
     model_name, run_id, "base_yolov5_model"
@@ -118,13 +113,12 @@ yolo_model.set_model_alias(model_name, alias, registered_model_metadata.version)
 
 # COMMAND ----------
 
-# model_name = f"{catalog}.{schema}.towerscout_baseline_model"  # model name in UC
 # get requierments.txt file to install dependencies for yolov5 module i.e. ultralyitcs, pillow etc
-# path_to_req_txt = mlflow.pyfunc.get_model_dependencies(f"models:/{model_name}@{alias}")
+path_to_req_txt = mlflow.pyfunc.get_model_dependencies(f"models:/{model_name}@{alias}")
 
 # COMMAND ----------
 
-# %pip install -r {path_to_req_txt}
+# MAGIC %pip install -r {path_to_req_txt}
 
 # COMMAND ----------
 
@@ -140,39 +134,3 @@ x_test = np.array(
 y_pred = loaded_yolo_model.predict(x_test)  # perform inference
 
 print(f"Inference results for {len(x_test)} images: {y_pred}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Unzip training data file and retrieve some more test images
-
-# COMMAND ----------
-
-# import zipfile
-
-# zip_file_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/towerscout-training-data.zip"
-
-# extract_to_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/sample/"
-
-# os.makedirs(extract_to_path, exist_ok=True)
-
-# # Unzip only the first 40 files
-# with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
-#     for i, file in enumerate(zip_ref.namelist()):
-#         if i >= 40:
-#             break
-#         zip_ref.extract(file, extract_to_path)
-
-# COMMAND ----------
-
-# img_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/sample/Training Data/nyc"
-
-# png_files = glob.glob(os.path.join(img_path, "*.png"))
-
-# x_test = np.array(
-#     [np.asarray(Image.open(png_files[i]), dtype=np.float32) for i in range(0, 10)]
-# )
-
-# y_pred = loaded_yolo_model.predict(x_test)  # perform inference
-
-# print(f"Inference results for {len(x_test)} images: {y_pred}")

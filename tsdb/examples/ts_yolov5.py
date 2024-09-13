@@ -12,8 +12,6 @@
 
 # YOLOv5 detector class
 
-import math
-import torch
 import sys
 import numpy as np
 import mlflow
@@ -22,15 +20,34 @@ from mlflow.pyfunc import PythonModel, PythonModelContext
 from mlflow.entities.model_registry import ModelVersion
 from torch import nn
 from typing import Self
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    StringType,
+    FloatType,
+    IntegerType,
+)
 
 
-class YOLOv5_Detector(
-    PythonModel
-):  # needs to follow the Protocol in inference pipeline
+class YOLOv5_Detector(PythonModel):
     def __init__(self, model: nn.Module, batch_size: int):
-        self.model = model  # model should be passed as a param to init, create model outside of class
+        self.model = model
         self.batch_size = batch_size
         self.client = MlflowClient()
+
+        # follows the InferenceModelType protocol
+        self.return_type = StructType(
+            [
+                StructField("x1", FloatType(), True),
+                StructField("y1", FloatType(), True),
+                StructField("x2", FloatType(), True),
+                StructField("y2", FloatType(), True),
+                StructField("conf", FloatType(), True),
+                StructField("class", IntegerType(), True),
+                StructField("class_name", StringType(), True),
+                StructField("secondary", FloatType(), True),
+            ]
+        )
 
     @classmethod
     def from_uc_registry(cls, model_name: str, alias: str) -> Self:
@@ -83,21 +100,24 @@ class YOLOv5_Detector(
             name=model_name, alias=alias, version=model_version
         )
 
+    def preprocess_input(self, model_input: np.ndarray[np.ndarray]) -> list[np.ndarray]:
+        # the model expects a list of images: list of np arrays or Image objects.
+        # see: ultralytics_yolov5_master/models/common.py
+        return [model_input[j] for j in range(len(model_input))]
+
     def predict(
         self,
         context: PythonModelContext,
-        model_input: list[np.ndarray],
+        model_input: np.ndarray[np.ndarray],
         secondary: nn.Module = None,
     ) -> list[dict[str, float]]:
         results = []
         count = 0
-        # print(f"Detecting with secondary model {secondary}")
+        model_input = self.preprocess_input(model_input)
 
         for i in range(0, len(model_input), self.batch_size):
-            # the model expects a LIST of images, list of np arrays or Image objects.
-            # see: ultralytics_yolov5_master/models/common.py
+            img_batch = model_input[i : i + self.batch_size]
 
-            img_batch = [model_input[j] for j in range(i, i + self.batch_size)]
             # retain a copy of the images
             if secondary is not None:
                 img_batch2 = [img.copy() for img in img_batch]
@@ -142,7 +162,5 @@ class YOLOv5_Detector(
                 #         " "+str(tr['y2']-tr['y1'])+"\n"
                 #     boxes.append(box)
                 # tile['detections'] = boxes
-
-            # print(f" batch of {len(img_batch)} processed")
 
         return results
