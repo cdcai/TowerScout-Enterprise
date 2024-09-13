@@ -1,0 +1,19 @@
+resources:
+  jobs:
+    wf_towerscout_package_tsdb:
+      name: wf_towerscout_package_tsdb
+      tasks:
+        - task_key: env_variables
+          notebook_task:
+            notebook_path: /Workspace/Users/ac84@cdc.gov/TowerScout/tsdb/development/nb_config_retrieval
+            source: WORKSPACE
+          existing_cluster_id: 0716-145402-9y5hpr1s
+        - task_key: towerscout_installation
+          depends_on:
+            - task_key: env_variables
+          notebook_task:
+            notebook_path: /Workspace/Users/ac84@cdc.gov/TowerScout/tsdb/notebooks/nb_build_wheel
+            source: WORKSPACE
+          existing_cluster_id: 0716-145402-9y5hpr1s
+      queue:
+        enabled: true
