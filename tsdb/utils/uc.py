@@ -1,6 +1,5 @@
 """
 This module contains classes and functions that interact with unity catalog
-
 """
 from collections import namedtuple
 from dataclasses import dataclass
