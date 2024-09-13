@@ -1,8 +1,0 @@
-LICENSE.TXT
-README.md
-setup.py
-tsdb.egg-info/PKG-INFO
-tsdb.egg-info/SOURCES.txt
-tsdb.egg-info/dependency_links.txt
-tsdb.egg-info/requires.txt
-tsdb.egg-info/top_level.txt
