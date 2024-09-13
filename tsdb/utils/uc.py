@@ -60,7 +60,7 @@ class CatalogInfo:
     @classmethod
     def from_spark_config(cls, spark: SparkSession) -> "CatalogInfo":
         """
-        Create a CatalogInfo instance from Spark configuration.
+        Create a CatalogInfo instance from Spark cluster configuration.
 
         Args:
             spark (SparkSession): The Spark session object.
