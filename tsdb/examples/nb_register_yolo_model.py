@@ -26,23 +26,22 @@ import os, glob, sys
 
 # COMMAND ----------
 
-# set registry to be UC en_model registry
+# set registry to be UC model registry
 mlflow.set_registry_uri("databricks-uc")
-
-# create MLflow client
-client = MlflowClient()
 
 catalog = "edav_dev_csels"
 schema = "towerscout_test_schema"
 
 # COMMAND ----------
 
-yolo_dep_path = "/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master"
+yolo_dep_path = f"/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master"
 
 model_weights_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/yolo/xl_250_best.pt"
 
 # load YOLOv5 model
-model = torch.hub.load(repo_or_dir=yolo_dep_path, model="custom", path=model_weights_path, source="local")
+model = torch.hub.load(
+    repo_or_dir=yolo_dep_path, model="custom", path=model_weights_path, source="local"
+)
 
 # COMMAND ----------
 
@@ -56,7 +55,6 @@ img_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/test_imag
 jpg_files = glob.glob(os.path.join(img_path, "*.jpg"))
 
 # get 5 test images as np arrays
-# must be a np array of np arrays not list of np arrays or else signature enforcement breaks...
 x_test = np.array(
     [np.asarray(Image.open(jpg_files[i]), dtype=np.float32) for i in range(5)]
 )
@@ -97,54 +95,41 @@ with mlflow.start_run() as run:
         pip_requirements=[
             "ultralytics==8.2.92",
             "gitpython==3.1.30",
-            "pillow==10.3.0", 
+            "pillow==10.3.0",
             "requests==2.32.0",
-            "setuptools==70.0.0"
+            "setuptools==70.0.0",
         ],
     )
 
 # COMMAND ----------
 
 # DBTITLE 1,Register model
-model_name = "towerscout_baseline_model"
+model_name = f"{catalog}.{schema}.towerscout_baseline_model"
 
-ts_baseline_model_metadata = mlflow.register_model(
-    model_uri=f"runs:/{run_id}/base_yolov5_model",  # path to logged artifact folder called models
-    name=f"{catalog}.{schema}.{model_name}",
+registered_model_metadata = yolo_model.register_model(
+    model_name, run_id, "base_yolov5_model"
 )
 
 # COMMAND ----------
 
 # DBTITLE 1,Set registered model alias
 alias = "testing"
-client.set_registered_model_alias(
-    name=ts_baseline_model_metadata.name,
-    alias=alias,
-    version=ts_baseline_model_metadata.version,  # get version of model from when it was registered
-)
+yolo_model.set_model_alias(model_name, alias, registered_model_metadata.version)
 
 # COMMAND ----------
 
-model_name = f"{catalog}.{schema}.towerscout_baseline_model"  # model name in UC
+# model_name = f"{catalog}.{schema}.towerscout_baseline_model"  # model name in UC
 # get requierments.txt file to install dependencies for yolov5 module i.e. ultralyitcs, pillow etc
-path_to_req_txt = mlflow.pyfunc.get_model_dependencies(f"models:/{model_name}@{alias}")
+# path_to_req_txt = mlflow.pyfunc.get_model_dependencies(f"models:/{model_name}@{alias}")
 
 # COMMAND ----------
 
-# MAGIC %pip install -r {path_to_req_txt}
+# %pip install -r {path_to_req_txt}
 
 # COMMAND ----------
 
 # DBTITLE 1,Load registred model for inference
-# IMPORTANT: when loading the model you must append the path to this directory to the system path so
-# Python looks there for the files/modules needed to load the yolov5 module
-sys.path.append(yolo_dep_path)
-
-model_name = f"{catalog}.{schema}.towerscout_baseline_model"  # model name in UC
-
-registered_model = mlflow.pyfunc.load_model(
-    model_uri=f"models:/{model_name}@{alias}"
-)
+loaded_yolo_model = YOLOv5_Detector.from_uc_registry(model_name, alias)
 
 # COMMAND ----------
 
@@ -152,9 +137,9 @@ x_test = np.array(
     [np.asarray(Image.open(jpg_files[i]), dtype=np.float32) for i in range(0, 10)]
 )
 
-y_pred = registered_model.predict(x_test)  # perform inference
+y_pred = loaded_yolo_model.predict(x_test)  # perform inference
 
-print(f"Inference results for 5 images: {y_pred}")
+print(f"Inference results for {len(x_test)} images: {y_pred}")
 
 # COMMAND ----------
 
@@ -164,6 +149,7 @@ print(f"Inference results for 5 images: {y_pred}")
 # COMMAND ----------
 
 # import zipfile
+
 # zip_file_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/towerscout-training-data.zip"
 
 # extract_to_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/sample/"
@@ -171,7 +157,7 @@ print(f"Inference results for 5 images: {y_pred}")
 # os.makedirs(extract_to_path, exist_ok=True)
 
 # # Unzip only the first 40 files
-# with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+# with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
 #     for i, file in enumerate(zip_ref.namelist()):
 #         if i >= 40:
 #             break
@@ -179,12 +165,14 @@ print(f"Inference results for 5 images: {y_pred}")
 
 # COMMAND ----------
 
-img_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/sample/Training Data/nyc"
+# img_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/raw-training-data/sample/Training Data/nyc"
 
-png_files = glob.glob(os.path.join(img_path, "*.png"))
+# png_files = glob.glob(os.path.join(img_path, "*.png"))
 
-x_test = np.array(
-    [np.asarray(Image.open(png_files[i]), dtype=np.float32) for i in range(0, 10)]
-)
+# x_test = np.array(
+#     [np.asarray(Image.open(png_files[i]), dtype=np.float32) for i in range(0, 10)]
+# )
 
-yolo_model.predict(context=None, model_input=x_test)
+# y_pred = loaded_yolo_model.predict(x_test)  # perform inference
+
+# print(f"Inference results for {len(x_test)} images: {y_pred}")

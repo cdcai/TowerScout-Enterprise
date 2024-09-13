@@ -16,17 +16,71 @@ import math
 import torch
 import sys
 import numpy as np
+import mlflow
+from mlflow import MlflowClient
 from mlflow.pyfunc import PythonModel, PythonModelContext
+from mlflow.entities.model_registry import ModelVersion
 from torch import nn
+from typing import Self
 
 
 class YOLOv5_Detector(
     PythonModel
 ):  # needs to follow the Protocol in inference pipeline
-    def __init__(self, model, batch_size):
+    def __init__(self, model: nn.Module, batch_size: int):
         self.model = model  # model should be passed as a param to init, create model outside of class
-        self.batch_size = (
-            batch_size  # For our Tesla K8, this means 8 batches can run in parallel
+        self.batch_size = batch_size
+        self.client = MlflowClient()
+
+    @classmethod
+    def from_uc_registry(cls, model_name: str, alias: str) -> Self:
+        # IMPORTANT: when loading the model you must append the path to this directory to the system path so
+        # Python looks there for the files/modules needed to load the yolov5 module
+        client = MlflowClient()
+        model_version_info = client.get_model_version_by_alias(
+            name=model_name, alias=alias
+        )
+        model_version = model_version_info.version
+        model_version_details = client.get_model_version(
+            name=model_name, version=model_version
+        )
+        model_tags = model_version_details.tags
+
+        try:
+            yolo_version = model_tags["yolo_version"]
+        except KeyError:
+            print("YOLO version not found in model tags.")
+
+        yolo_dep_path = f"/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolo{yolo_version}_master"
+        sys.path.append(yolo_dep_path)
+
+        registered_model = mlflow.pyfunc.load_model(
+            model_uri=f"models:/{model_name}@{alias}"
+        )
+
+        return registered_model
+
+    def register_model(
+        self, model_name: str, run_id: str, artifact_path: str
+    ) -> ModelVersion:
+        registered_model_metadata = mlflow.register_model(
+            model_uri=f"runs:/{run_id}/{artifact_path}",  # path to logged artifact folder called models
+            name=model_name,
+        )
+
+        # set YOLO model version tag
+        self.client.set_model_version_tag(
+            name=model_name,
+            version=registered_model_metadata.version,
+            key="yolo_version",
+            value="v5",
+        )
+
+        return registered_model_metadata
+
+    def set_model_alias(self, model_name: str, alias: str, model_version: str) -> None:
+        self.client.set_registered_model_alias(
+            name=model_name, alias=alias, version=model_version
         )
 
     def predict(
@@ -34,18 +88,15 @@ class YOLOv5_Detector(
         context: PythonModelContext,
         model_input: list[np.ndarray],
         secondary: nn.Module = None,
-    ):  # change detect to predict to follow mlflow conventions and remove crop
-        # Inference in batches
+    ) -> list[dict[str, float]]:
         results = []
         count = 0
-        #print(f"Detecting with secondary model {secondary}")
+        # print(f"Detecting with secondary model {secondary}")
 
         for i in range(0, len(model_input), self.batch_size):
-            # img_batch = model_input[i:i+self.batch_size] #[Image.open(tile['filename']) for tile in tile_batch]
-            # the model expectes a LIST of images, list of np arrays or Image objects.
-            # a np array of images doesn't appear to work
+            # the model expects a LIST of images, list of np arrays or Image objects.
             # see: ultralytics_yolov5_master/models/common.py
-            # error: ValueError: axes don't match array
+
             img_batch = [model_input[j] for j in range(i, i + self.batch_size)]
             # retain a copy of the images
             if secondary is not None:
@@ -53,14 +104,10 @@ class YOLOv5_Detector(
             else:
                 img_batch2 = [None] * len(img_batch)
 
-            # detect, remove self.semaphore and events.query
-
             result_obj = self.model(img_batch)
 
-            # get the important part
             results_raw = result_obj.xyxyn
-            # print(results_raw)
-            # result is tile by tile, imma just remove "tile" here
+
             for img, result in zip(img_batch2, results_raw):
                 results_cpu = result.cpu().numpy().tolist()
 
@@ -70,7 +117,6 @@ class YOLOv5_Detector(
                     secondary.classify(img, results_cpu, batch_id=count)
                     count += 1
 
-                # yolo_resuts(*item) named tuple
                 tile_results = [
                     {
                         "x1": item[0],
@@ -97,6 +143,6 @@ class YOLOv5_Detector(
                 #     boxes.append(box)
                 # tile['detections'] = boxes
 
-            #print(f" batch of {len(img_batch)} processed")
+            # print(f" batch of {len(img_batch)} processed")
 
         return results
