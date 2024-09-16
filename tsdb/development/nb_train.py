@@ -14,6 +14,8 @@ from collections import namedtuple
 
 from typing import Any, Callable, Union
 
+from functools import partial
+
 from enum import Enum
 
 from torch import nn
@@ -105,22 +107,20 @@ class PromotionArgs:
 # COMMAND ----------
 
 def perform_pass(
-    model_trainer: ModelTrainer,
-    converter: callable,
+    step_func: Callable,
+    converter: Callable,
     context_args: dict[str, Any],
-    report_interval: int,
-    mode: str,
+    report_interval: int
     epoch_num: int = 0,
 ) -> dict[str, float]:
     """
     Perfroms a single pass (epcoh) over the data accessed by the converter
 
     Args:
-        model_trainer: The model trainer
+        step_func: A callable that performs either a training or inference step
         converter: The petastorm converter
         context_args: Arguments for the converter context
         report_interval: How often to report metrics during pass
-        mode: Specifics if model is in training or evalaution mode
         epoch_num: The current epoch number for logging metrics across epochs
     Returns:
         dict[str, float] A dict containing values of various metrics for the epoch
@@ -132,17 +132,16 @@ def perform_pass(
 
     with converter.make_torch_dataloader(**context_args) as dataloader:
         dataloader_iter = iter(dataloader)
+        
         for minibatch_num in range(steps_per_epoch):
             minibatch_images = next(dataloader_iter)
-            if mode == "TRAIN":
-                metrics = model_trainer.training_step(minibatch_images, mode)
-            else:
-                metrics = model_trainer.validation_step(minibatch_images, mode)
+            metrics = step_func(minibatch_images, mode)
+            
             if minibatch_num % report_interval == 0:
-                is_train = mode == "TRAIN"
+                step_num = minibatch_num + (epoch_num * converter_length)
                 mlflow.log_metrics(
                     metrics,
-                    step=is_train * (minibatch_num + epoch_num * converter_length),
+                    step=step_num
                 )
 
     return metrics
@@ -176,28 +175,29 @@ def train(
         # training
         for epoch in range(train_args.epochs):
             train_metrics = perform_pass(
-                model_trainer,
-                split_convs.train,
-                context_args,
-                train_args.report_interval,
-                "TRAIN",
-                epoch,
+                step_func=model_trainer.training_step,
+                converter=split_convs.train,
+                context_args=context_args,
+                report_interval=train_args.report_interval,
+                epoch_num=epoch,
             )
 
         # validation
         for epoch in range(train_args.epochs):
             val_metrics = perform_pass(
-                model_trainer,
-                split_convs.val,
-                context_args,
-                len(split_convs.val),
-                "VAL",
-                epoch,
+                step_func=model_trainer.validation_step,
+                converter=split_convs.val,
+                context_args=context_args,
+                report_interval=len(split_convs.val),
+                epoch_num=epoch,
             )
 
         # testing
         test_metrics = perform_pass(
-            model_trainer, split_convs.test, context_args, len(split_convs.test), "TEST"
+            step_func=partial(inference_step, step=Steps.TEST, metrics=train_args.metrics), 
+            converter=split_convs.test, 
+            context_args=context_args, 
+            report_interval=len(split_convs.test)
         )
 
         with split_convs.test.make_torch_dataloader(**context_args) as dataloader:
@@ -207,7 +207,7 @@ def train(
 
             signature = infer_signature(
                 model_input=images["features"].numpy(),
-                model_output=model_trainer.forward(images).logits.detach().numpy(),
+                model_output=model_trainer.model(images["features"]).detach().numpy(),
             )
 
             mlflow.pytorch.log_model(
@@ -268,10 +268,6 @@ def model_promotion(promo_args: PromotionArgs) -> None:
         model_uri=f"models:/{promo_args.model_name}@{promo_args.alias}"
     )
 
-    # use dummy optimzer params since optimizer is irrelevant for inference
-    model_trainer = ModelTrainer(optimizer_args={"lr": 0}, metrics=promo_args.metrics)
-    model_trainer.model = champ_model  # Replace initial model with prod model
-
     context_args = {
         "transform_spec": get_transform_spec(),
         "batch_size": promo_args.batch_size,
@@ -279,12 +275,10 @@ def model_promotion(promo_args: PromotionArgs) -> None:
 
     # get testing score for current produciton model
     champ_model_test_metrics = perform_pass(
-        model_trainer=model_trainer,
+        step_func=partial(inference_step, step=Steps.TEST, metrics=promo_args.metrics),
         converter=promo_args.test_conv,
         context_args=context_args,
-        report_interval=len(promo_args.test_conv),
-        mode="TEST",
-        epoch_num=0,
+        report_interval=len(promo_args.test_conv)
     )
 
     champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]

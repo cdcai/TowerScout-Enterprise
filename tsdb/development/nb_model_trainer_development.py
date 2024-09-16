@@ -184,6 +184,33 @@ class Steps(Enum):
 
 # COMMAND ----------
 
+def score(logits, labels, step: str, metrics: Metrics):
+        return {
+            f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
+            for metric in metrics
+        }
+
+def forward_func(model, minibatch) -> ModelOutput:
+        images = minibatch["features"]
+        labels = minibatch["labels"]
+
+        if torch.cuda.is_available():
+            images = images.cuda()
+            labels = labels.cuda()
+
+        logits = model(images)
+
+        return logits, images, labels
+    
+
+@torch.no_grad()
+def inference_step(model, minibatch, metrics, step) -> dict:
+    model.eval()
+    logits, _, labels = forward_func(model, minibatch)
+    return score(logits, labels, step, metrics)
+
+# COMMAND ----------
+
 ModelOutput = namedtuple("ModelOutput", ["loss", "logits", "images"])
 
 
@@ -208,39 +235,41 @@ class TowerScoutModelTrainer:
     def get_optimizer():
         return torch.optim.Adam
 
-    def forward(self, minibatch) -> ModelOutput:
-        images = minibatch["features"]
-        labels = minibatch["labels"]
+    # def forward(self, minibatch) -> ModelOutput:
+    #     images = minibatch["features"]
+    #     labels = minibatch["labels"]
 
-        if torch.cuda.is_available():
-            images = images.cuda()
-            labels = labels.cuda()
+    #     if torch.cuda.is_available():
+    #         images = images.cuda()
+    #         labels = labels.cuda()
 
-        logits = self.model(images)
-        loss = self.criterion(logits, images)
+    #     logits = self.model(images)
+    #     loss = self.criterion(logits, images)
 
-        return ModelOutput(loss, logits, images)
+    #     return ModelOutput(loss, logits, images)
 
-    def score(self, logits, labels, step: str):
-        return {
-            f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
-            for metric in self.metrics
-        }
+    # def score(self, logits, labels, step: str):
+    #     return {
+    #         f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
+    #         for metric in self.metrics
+    #     }
 
-    def training_step(self, minibatch, step=Steps.TRAIN, **kwargs) -> dict:
+    def training_step(self, minibatch, **kwargs) -> dict:
         self.model.train()
 
-        output = self.forward(minibatch)
+        logits, images, labels = forward_func(self.model, minibatch)
+        loss = self.criterion(logits, images)
         self.optimizer.zero_grad()
         output.loss.backward()
         self.optimizer.step()
-        return self.score(output.logits, output.labels, step)
+        return score(logits, labels, Steps.TRAIN, self.metrics)
 
     @torch.no_grad()
-    def validation_step(self, minibatch, step=Steps.VAL, **kwargs) -> dict:
-        self.model.eval()
-        output = self.forward(minibatch)
-        return self.score(output.logits, output.labels, step)
+    def validation_step(self, minibatch, **kwargs) -> dict:
+        return inference_step(self.model, minibatch, self.metrics, Steps.VAL)
+        # self.model.eval()
+        # output = forward_func(self.model, minibatch)
+        # return score(output.logits, output.labels, step, self.metrics)
 
     def save_model(self):
         pass
