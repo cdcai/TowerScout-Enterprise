@@ -34,6 +34,7 @@ class ValidMetric(Enum):
 
 # COMMAND ----------
 
+# using a dataclass instead results in sparkcontext error
 FminArgs = namedtuple("FminArgs", ["fn", "space", "algo", "max_evals", "trials"])
 
 
@@ -237,7 +238,7 @@ def tune_hyperparams(
     with mlflow.start_run(run_name="towerscout_retrain"):
         best_params = fmin(
             **(fmin_args._asdict())
-        )  # cant pass raw dataclass using **, must be mappable (dict)
+        ) 
 
     # sort by val objective_metric we minimize, using DESC so assuming higher is better
     best_run = mlflow.search_runs(
