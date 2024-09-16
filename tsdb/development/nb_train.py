@@ -108,7 +108,7 @@ def perform_pass(
     model_trainer: ModelTrainer,
     converter: callable,
     context_args: dict[str, Any],
-    train_args: TrainingArgs,
+    report_interval: int,
     mode: str,
     epoch_num: int = 0,
 ) -> dict[str, float]:
@@ -119,7 +119,7 @@ def perform_pass(
         model_trainer: The model trainer
         converter: The petastorm converter
         context_args: Arguments for the converter context
-        train_args: Contains training arguments such as batch size
+        report_interval: How often to report metrics during pass
         mode: Specifics if model is in training or evalaution mode
         epoch_num: The current epoch number for logging metrics across epochs
     Returns:
@@ -128,11 +128,7 @@ def perform_pass(
 
     metrics = {}
     converter_length = len(converter)
-    steps_per_epoch = converter_length // train_args.batch_size
-    if mode == "TRAIN":
-        report_interval = train_args.report_interval
-    else:
-        report_interval = converter_length
+    steps_per_epoch = converter_length // context_args["batch_size"]
 
     with converter.make_torch_dataloader(**context_args) as dataloader:
         dataloader_iter = iter(dataloader)
@@ -183,7 +179,7 @@ def train(
                 model_trainer,
                 split_convs.train,
                 context_args,
-                train_args,
+                train_args.report_interval,
                 "TRAIN",
                 epoch,
             )
@@ -191,12 +187,17 @@ def train(
         # validation
         for epoch in range(train_args.epochs):
             val_metrics = perform_pass(
-                model_trainer, split_convs.val, context_args, train_args, "VAL", epoch
+                model_trainer,
+                split_convs.val,
+                context_args,
+                len(split_convs.val),
+                "VAL",
+                epoch,
             )
 
         # testing
         test_metrics = perform_pass(
-            model_trainer, split_convs.test, context_args, train_args, "TEST"
+            model_trainer, split_convs.test, context_args, len(split_convs.test), "TEST"
         )
 
         with split_convs.test.make_torch_dataloader(**context_args) as dataloader:
@@ -236,9 +237,7 @@ def tune_hyperparams(
         tuple[Any, float, dict[str, Any]] A tuple containing the best run, the value of the objective metric for that run, and the hyperparameters of that run and the assocaited best hyperparameters
     """
     with mlflow.start_run(run_name="towerscout_retrain"):
-        best_params = fmin(
-            **(fmin_args._asdict())
-        ) 
+        best_params = fmin(**(fmin_args._asdict()))
 
     # sort by val objective_metric we minimize, using DESC so assuming higher is better
     best_run = mlflow.search_runs(
@@ -279,14 +278,14 @@ def model_promotion(promo_args: PromotionArgs) -> None:
     }
 
     # get testing score for current produciton model
-    steps_per_epoch = len(promo_args.test_conv) // promo_args.batch_size
-    with promo_args.test_conv.make_torch_dataloader(**context_args) as dataloader:
-        dataloader_iter = iter(dataloader)
-        for minibatch_num in range(steps_per_epoch):
-            minibatch_images = next(dataloader_iter)
-            champ_model_test_metrics = model_trainer.validation_step(
-                minibatch_images, "TEST"
-            )
+    champ_model_test_metrics = perform_pass(
+        model_trainer=model_trainer,
+        converter=promo_args.test_conv,
+        context_args=context_args,
+        report_interval=len(promo_args.test_conv),
+        mode="TEST",
+        epoch_num=0,
+    )
 
     champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]
     promo_args.logger.info(
