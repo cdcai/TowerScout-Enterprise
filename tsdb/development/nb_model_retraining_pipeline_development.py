@@ -14,13 +14,9 @@ from hyperopt import tpe, hp, SparkTrials
 
 from functools import partial
 
+from datetime import datetime
+
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
-
-import logging
-from logging.handlers import RotatingFileHandler
-
-import os
-import tempfile
 
 # COMMAND ----------
 
@@ -28,10 +24,7 @@ import tempfile
 petastorm_path = "file:///dbfs/TowerScout/tmp/petastorm/dataloader_development_cache"
 
 # Create petastorm cache
-spark.conf.set(
-    SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF, 
-    petastorm_path
-)
+spark.conf.set(SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF, petastorm_path)
 
 # COMMAND ----------
 
@@ -61,38 +54,10 @@ schema = dbutils.widgets.get("source_schema")
 
 # COMMAND ----------
 
-# Set up your log path
-temp_file = tempfile.NamedTemporaryFile(delete=False)
-log_path = temp_file.name
-
-# Set up your log path
-dbfs_log_path = f"/Volumes/{catalog}/{schema}/test_volume/logs/towerscout.log"
-
-# Create the log directory if it doesn't exist
-log_dir = os.path.dirname(log_path)
-
-# Set up logging
-logger = logging.getLogger("towerscout")
-logger.setLevel(logging.INFO)
-logger.handlers.clear()
-
-try:
-    # Create a rotating file handler
-    handler = RotatingFileHandler(log_path, maxBytes=1000000, backupCount=1)
-    handler.setLevel(logging.INFO)
-
-    # Create a logging format
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    handler.setFormatter(formatter)
-
-    # Add the handler to the logger
-    logger.addHandler(handler)
-except Exception as e:
-    print(f"Error setting up logging: {e}")
-
-# Now you can use the logger
+timestamp = str(datetime.now().strftime("%Y-%m-%d %H:%M"))
+log_path = f"/Volumes/{catalog}/{schema}/test_volume/logs/towerscout_{timestamp}.log"
+logger_name = "towerscout"
+logger, handler = setup_logger(log_path, logger_name)
 logger.info("This is an info message and the first message of the logs.")
 logger.warning("This is a warning message.")
 logger.error("This is an error message.")
@@ -228,6 +193,7 @@ promo_args = PromotionArgs(
     alias=alias,
     test_conv=split_convs.test,
     client=client,
+    logger=logger,
 )
 
 # COMMAND ----------
@@ -247,33 +213,6 @@ converter_test.delete()
 
 # COMMAND ----------
 
-# Close the logger handler and upload the logs to dbfs
-
 # Close the handler to ensure the file is properly closed
 handler.close()
 logger.removeHandler(handler)
-
-
-# Upload logs to DBFS
-def upload_logs_to_dbfs():
-    try:
-        # Use dbutils to upload the log file to DBFS
-        dbutils.fs.cp(f"file:{log_path}", dbfs_log_path)
-        print("Logs uploaded to DBFS")
-    except Exception as e:
-        logger.error(f"Error uploading logs to DBFS: {e}")
-
-
-# Call the upload function
-upload_logs_to_dbfs()
-
-# Read the contents of the file from DBFS
-try:
-    dbfs_contents = dbutils.fs.head(dbfs_log_path)
-    print(dbfs_contents)
-except Exception as e:
-    logger.error(f"Error reading logs from DBFS: {e}")
-
-# COMMAND ----------
-
-
