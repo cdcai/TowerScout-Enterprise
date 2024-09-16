@@ -7,18 +7,20 @@ import mlflow
 from mlflow.models.signature import infer_signature
 from mlflow import MlflowClient
 
-from hyperopt import fmin, STATUS_OK
+from hyperopt import fmin, STATUS_OK, SparkTrials, Trials
 
 from dataclasses import dataclass, asdict, field
 from collections import namedtuple
 
-from typing import Any
+from typing import Any, Callable, Union
 
 from enum import Enum
 
 from torch import nn
 
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
+
+from logging import Logger
 
 # COMMAND ----------
 
@@ -97,6 +99,7 @@ class PromotionArgs:
     alias: str = "staging"
     test_conv: SparkDatasetConverter = None
     client: MlflowClient = None
+    logger: Logger = None
 
 # COMMAND ----------
 
@@ -285,10 +288,12 @@ def model_promotion(promo_args: PromotionArgs) -> None:
             )
 
     champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]
-    print(f"{promo_args.objective_metric} for production model is: {champ_test_metric}")
+    promo_args.logger.info(
+        f"{promo_args.objective_metric} for production model is: {champ_test_metric}"
+    )
 
     if promo_args.challenger_metric_value > champ_test_metric:
-        print(f"Promoting challenger model to {promo_args.alias}.")
+        promo_args.logger.info(f"Promoting challenger model to {promo_args.alias}.")
         # give alias to challenger model, alias is automatically removed from current champion model
         promo_args.client.set_registered_model_alias(
             name=promo_args.model_name,
@@ -296,10 +301,6 @@ def model_promotion(promo_args: PromotionArgs) -> None:
             version=promo_args.model_version,  # version of challenger model from when it was registered
         )
     else:
-        print(
+        promo_args.logger.info(
             f"Challenger model does not perform better than current {promo_args.alias} model. Promotion aborted."
         )
-
-# COMMAND ----------
-
-
