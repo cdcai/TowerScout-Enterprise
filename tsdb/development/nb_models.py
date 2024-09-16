@@ -1,10 +1,9 @@
 # Databricks notebook source
 import torch
 from typing import Protocol
-from pyspark.sql.types import StructType, StructField, IntegerType, ArrayType, FloatType
+from pyspark.sql.types import StructType
 from torch import Tensor
 from torch import nn
-import sys
 
 
 def instantiate_inference_model(model: nn.Module) -> nn.Module:
