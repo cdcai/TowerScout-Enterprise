@@ -24,6 +24,17 @@ import tempfile
 
 # COMMAND ----------
 
+# project name folder
+petastorm_path = "file:///dbfs/TowerScout/tmp/petastorm/dataloader_development_cache"
+
+# Create petastorm cache
+spark.conf.set(
+    SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF, 
+    petastorm_path
+)
+
+# COMMAND ----------
+
 dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
 dbutils.widgets.text("source_table", defaultValue="image_metadata")
 
