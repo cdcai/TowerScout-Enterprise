@@ -1,7 +1,7 @@
 # Databricks notebook source
 import torch
-from torch import nn
-from enum import Enum
+from torch import nn, Tensor
+from enum import Enum, auto
 
 from collections import namedtuple
 from functools import partial
@@ -10,6 +10,11 @@ from functools import partial
 
 class DemoMetrics(Enum):
     MSE = nn.MSELoss()
+
+class DemoSteps(Enum):
+    TRAIN = auto()
+    VAL = auto()
+    TEST = auto()
 
 # COMMAND ----------
 
@@ -41,6 +46,31 @@ class Autoencoder(nn.Module):
 
 # COMMAND ----------
 
+def score_demo(logits, labels, step: str, metrics):
+        return {
+            f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
+            for metric in metrics
+        }
+
+def forward_func_demo(model, minibatch) -> tuple[Tensor,Tensor,Tensor]:
+        images = minibatch["features"]
+
+        if torch.cuda.is_available():
+            images = images.cuda()
+
+        logits = model(images)
+        # labels are image features 
+        return logits, images, images
+    
+
+@torch.no_grad()
+def inference_step_demo(minibatch, model, metrics, step) -> dict:
+    model.eval()
+    logits, _, labels = forward_func_demo(model, minibatch)
+    return score_demo(logits, labels, step, metrics)
+
+# COMMAND ----------
+
 ModelOutput = namedtuple("ModelOutput", ["loss", "logits", "images"])
 
 
@@ -64,36 +94,35 @@ class ModelTrainer:
     def get_optimizer():
         return torch.optim.Adam
 
-    def forward(self, minibatch) -> ModelOutput:
-        images = minibatch["features"]
+    # def forward(self, minibatch) -> ModelOutput:
+    #     images = minibatch["features"]
         
-        if torch.cuda.is_available():
-            images = images.cuda()
+    #     if torch.cuda.is_available():
+    #         images = images.cuda()
         
-        logits = self.model(images)
-        loss = self.criterion(logits, images)
+    #     logits = self.model(images)
+    #     loss = self.criterion(logits, images)
         
-        return ModelOutput(loss, logits, images)
+    #     return ModelOutput(loss, logits, images)
 
-    def score(self, logits, labels, step: str):
-        return {
-            f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
-            for metric in self.metrics
-        }
-
-    def training_step(self, minibatch, step="TRAIN") -> dict[str, float]:
+    def training_step(self, minibatch) -> dict[str, float]:
         self.model.train()
 
-        output = self.forward(minibatch)
-        
+        logits, images, labels = forward_func_demo(self.model, minibatch)
+        loss = self.criterion(logits, images)
         self.optimizer.zero_grad()
-        output.loss.backward()
+        loss.backward()
         self.optimizer.step()
-
-        return self.score(output.logits, output.images, "TRAIN")
+        return score_demo(logits, labels, DemoSteps["TRAIN"].name, self.metrics)
 
     @torch.no_grad()
-    def validation_step(self, minibatch, step="VAL"):
-        self.model.eval()
-        output = self.forward(minibatch)
-        return self.score(output.logits, output.images, step)
+    def validation_step(self, minibatch):
+        return inference_step_demo(minibatch, self.model, self.metrics, DemoSteps["VAL"].name)
+        # self.model.eval()
+        # output = self.forward(minibatch)
+        # return self.score(output.logits, output.images, step)
+
+# COMMAND ----------
+
+f = ModelTrainer(optimizer_args={"lr": 0.001})
+f.training_step

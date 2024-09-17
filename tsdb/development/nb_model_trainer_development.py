@@ -1,22 +1,15 @@
 # Databricks notebook source
-# MAGIC %pip install databricks-sdk --upgrade
-# MAGIC dbutils.library.restartPython()
-
-# COMMAND ----------
-
-from databricks.sdk.core import ApiClient
-
-client = ApiClient()
-# client.do("GET", "/api/2.0/workspace-conf", {"keys": "enableWorkspaceFilesystem"})
-
-# COMMAND ----------
-
 # MAGIC %pip install efficientnet_pytorch
+
+# COMMAND ----------
+
+from tsdb.ml.models import TowerScoutModel
 
 # COMMAND ----------
 
 import torch
 from torch import nn, optim
+from torch import Tensor
 from torchvision import transforms, datasets
 from efficientnet_pytorch import EfficientNet
 from enum import Enum, auto
@@ -138,22 +131,6 @@ class Autoencoder(nn.Module):
 
 # COMMAND ----------
 
-class TowerScoutModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.model = EfficientNet.from_pretrained("efficientnet-b5", include_top=True)
-        for param in self.model.parameters():
-            param.requires_grad = False
-        self.model._fc = nn.Sequential(nn.Linear(2048, 512), nn.Linear(512, 1))  # b5
-        if torch.cuda.is_available():
-            self.model.cuda()
-        self.model._fc
-
-    def forward(self, input):
-        return self.model(input)
-
-# COMMAND ----------
-
 transform = transforms.Compose([transforms.Resize((64, 64)), transforms.ToTensor()])
 
 # COMMAND ----------
@@ -176,7 +153,6 @@ def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):
 class Metrics(Enum):
     MSE = nn.MSELoss()
 
-
 class Steps(Enum):
     TRAIN = auto()
     VAL = auto()
@@ -190,7 +166,7 @@ def score(logits, labels, step: str, metrics: Metrics):
             for metric in metrics
         }
 
-def forward_func(model, minibatch) -> ModelOutput:
+def forward_func(model, minibatch) -> tuple[Tensor,Tensor,Tensor]:
         images = minibatch["features"]
         labels = minibatch["labels"]
 
@@ -204,7 +180,7 @@ def forward_func(model, minibatch) -> ModelOutput:
     
 
 @torch.no_grad()
-def inference_step(model, minibatch, metrics, step) -> dict:
+def inference_step(minibatch, model, metrics, step) -> dict:
     model.eval()
     logits, _, labels = forward_func(model, minibatch)
     return score(logits, labels, step, metrics)
@@ -260,20 +236,16 @@ class TowerScoutModelTrainer:
         logits, images, labels = forward_func(self.model, minibatch)
         loss = self.criterion(logits, images)
         self.optimizer.zero_grad()
-        output.loss.backward()
+        loss.backward()
         self.optimizer.step()
-        return score(logits, labels, Steps.TRAIN, self.metrics)
+        return score(logits, labels, Steps["TRAIN"].name, self.metrics)
 
     @torch.no_grad()
     def validation_step(self, minibatch, **kwargs) -> dict:
-        return inference_step(self.model, minibatch, self.metrics, Steps.VAL)
+        return inference_step(minibatch, self.model, self.metrics, Steps["VAL"].name)
         # self.model.eval()
         # output = forward_func(self.model, minibatch)
         # return score(output.logits, output.labels, step, self.metrics)
 
     def save_model(self):
         pass
-
-# COMMAND ----------
-
-

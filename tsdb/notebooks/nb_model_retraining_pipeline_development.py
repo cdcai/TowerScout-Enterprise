@@ -1,9 +1,9 @@
 # Databricks notebook source
-# MAGIC %run ./nb_data_processing
+# MAGIC %run ../development/nb_data_processing
 
 # COMMAND ----------
 
-# MAGIC %run ./nb_train
+# MAGIC %run ../development/nb_train
 
 # COMMAND ----------
 
@@ -34,8 +34,8 @@ dbutils.widgets.text("source_table", defaultValue="image_metadata")
 dbutils.widgets.text("epochs", defaultValue="5")
 dbutils.widgets.text("batch_size", defaultValue="1")
 dbutils.widgets.text("report_interval", defaultValue="5")
-dbutils.widgets.text("max_evals", defaultValue="16")
-dbutils.widgets.text("parallelism", defaultValue="4")
+dbutils.widgets.text("max_evals", defaultValue="8")
+dbutils.widgets.text("parallelism", defaultValue="2")
 
 stages = ["Dev", "Staging", "Production"]
 dbutils.widgets.dropdown("stage", "Production", stages)
@@ -171,14 +171,6 @@ challenger_model_metadata = mlflow.register_model(
 )
 logger.info(
     f"Registered model {model_name} with version {challenger_model_metadata.version}"
-)
-
-# COMMAND ----------
-
-client.set_registered_model_alias(
-    name=challenger_model_metadata.name,
-    alias=alias,
-    version=challenger_model_metadata.version,  # get version of challenger model
 )
 
 # COMMAND ----------

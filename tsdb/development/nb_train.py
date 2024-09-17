@@ -3,6 +3,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./nb_model_trainer_development
+
+# COMMAND ----------
+
 import mlflow
 from mlflow.models.signature import infer_signature
 from mlflow import MlflowClient
@@ -110,7 +114,7 @@ def perform_pass(
     step_func: Callable,
     converter: Callable,
     context_args: dict[str, Any],
-    report_interval: int
+    report_interval: int,
     epoch_num: int = 0,
 ) -> dict[str, float]:
     """
@@ -135,7 +139,7 @@ def perform_pass(
         
         for minibatch_num in range(steps_per_epoch):
             minibatch_images = next(dataloader_iter)
-            metrics = step_func(minibatch_images, mode)
+            metrics = step_func(minibatch=minibatch_images)
             
             if minibatch_num % report_interval == 0:
                 step_num = minibatch_num + (epoch_num * converter_length)
@@ -143,7 +147,7 @@ def perform_pass(
                     metrics,
                     step=step_num
                 )
-
+    
     return metrics
 
 
@@ -194,7 +198,7 @@ def train(
 
         # testing
         test_metrics = perform_pass(
-            step_func=partial(inference_step, step=Steps.TEST, metrics=train_args.metrics), 
+            step_func=partial(inference_step_demo, model=model_trainer.model, step=Steps["TEST"].name, metrics=train_args.metrics), 
             converter=split_convs.test, 
             context_args=context_args, 
             report_interval=len(split_convs.test)
@@ -275,7 +279,7 @@ def model_promotion(promo_args: PromotionArgs) -> None:
 
     # get testing score for current produciton model
     champ_model_test_metrics = perform_pass(
-        step_func=partial(inference_step, step=Steps.TEST, metrics=promo_args.metrics),
+        step_func=partial(inference_step_demo, model=champ_model, step=Steps["TEST"].name, metrics=promo_args.metrics),
         converter=promo_args.test_conv,
         context_args=context_args,
         report_interval=len(promo_args.test_conv)
