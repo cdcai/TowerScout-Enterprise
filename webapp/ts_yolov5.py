@@ -14,7 +14,7 @@
 import math
 import torch
 from PIL import Image
-from ts_imgutil import crop
+from webapp.ts_imgutil import crop
 import threading
 
 
