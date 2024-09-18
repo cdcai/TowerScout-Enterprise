@@ -121,8 +121,3 @@ class ModelTrainer:
         # self.model.eval()
         # output = self.forward(minibatch)
         # return self.score(output.logits, output.images, step)
-
-# COMMAND ----------
-
-f = ModelTrainer(optimizer_args={"lr": 0.001})
-f.training_step

@@ -4,12 +4,46 @@ from functools import partial
 import numpy as np
 
 from petastorm import TransformSpec
-from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
+from petastorm.spark import SparkDatasetConverter, make_spark_converter
 
 import torchvision
 
 from PIL import Image
 from pyspark.sql import DataFrame
+
+from tsdb.ml.utils import cast_to_column
+import pyspark.sql.functions as F
+
+from databricks.sdk.runtime import sc
+
+
+def compute_bytes(dataframe: DataFrame, binary_column: "ColumnOrName") -> DataFrame:
+    """
+    Returns a dataframe with a bytes column, which calculates the number of bytes
+    in a binary column
+
+    Args:
+        dataframe: DataFrame
+        binary_column: Name or col that has bit data
+    """
+    binary_column = cast_to_column(binary_column)
+    num_bytes = F.lit(4) + F.length(binary_column)
+
+    return dataframe.withColumn("bytes", num_bytes)
+
+
+def sum_bytes(dataframe, bytes_column: "ColumnOrName") -> int:
+    """
+    Returns the sum of bytes in a bytes column from a dataframe. Primarily used
+    to start a Petastorm cache.
+
+    Args:
+        dataframe: DataFrame
+        bytes_column: Column that contains counts of bytes
+    """
+    aggregate_bytes = dataframe.agg(F.sum(bytes_column).alias("total_bytes"))
+    return aggregate_bytes.collect()[0]["total_bytes"]
+
 
 
 def transform_row(batch_pd):
@@ -50,6 +84,59 @@ def get_transform_spec():
     )
 
     return spec
+
+
+def create_converter(
+    dataframe, bytes_column: "ColumnOrName", parallelism: int = 0
+) -> SparkDatasetConverter:
+    """
+    Returns a PetaStorm converter created from dataframe.
+
+    Args:
+        dataframe: DataFrame
+        byte_column: Column that contains the byte count. Used to create the petastorm  cache
+        parallelism: integer for parallelism, used to create the petastorm cache
+    """
+    # Note this uses spark context
+    if parallelism == 0:
+        parallelism = sc.defaultParallelism
+
+    num_bytes = sum_bytes(dataframe, bytes_column)
+
+    # Cache
+    converter = make_spark_converter(
+        dataframe, parquet_row_group_size_bytes=int(num_bytes / parallelism)
+    )
+
+    return converter
+
+
+def get_converter(
+    cat_name="edav_dev_csels", sch_name="towerscout_test_schema", batch_size=8
+):
+    petastorm_path = "file:///dbfs/tmp/petastorm/cache"
+    images = spark.table(f"{cat_name}.{sch_name}.image_metadata").select(
+        "content", "path"
+    )
+
+    spark.conf.set(SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF, petastorm_path)
+
+    # Calculate bytes
+    num_bytes = (
+        images.withColumn("bytes", F.lit(4) + F.length("content"))
+        .groupBy()
+        .agg(F.sum("bytes").alias("bytes"))
+        .collect()[0]["bytes"]
+    )
+
+    # Cache
+    converter = make_spark_converter(
+        images, parquet_row_group_size_bytes=int(num_bytes / sc.defaultParallelism)
+    )
+
+    context_args = {"transform_spec": get_transform_spec(), "batch_size": 8}
+
+    return converter
 
 
 def get_converter_df(dataframe: DataFrame) -> callable:
