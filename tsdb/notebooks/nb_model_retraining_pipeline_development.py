@@ -1,9 +1,13 @@
 # Databricks notebook source
-# MAGIC %run ../development/nb_data_processing
+# MAGIC %pip install efficientnet_pytorch
 
 # COMMAND ----------
 
-# MAGIC %run ../development/nb_train
+#%run ../development/nb_data_processing
+
+# COMMAND ----------
+
+#%run ../development/nb_train
 
 # COMMAND ----------
 
@@ -17,6 +21,10 @@ from functools import partial
 from datetime import datetime
 
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
+
+from tsdb.ml.train import perform_pass, train, tune_hyperparams, model_promotion
+from tsdb.ml.utils import ValidMetric, CatalogInfo, TrainingArgs, FminArgs, SplitConverters, PromotionArgs, setup_logger
+from tsdb.ml.data_processing import split_datanolabel, get_converter_df
 
 # COMMAND ----------
 
@@ -49,8 +57,8 @@ dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)
 catalog_info = CatalogInfo.from_spark_config(
     spark
 )  # CatalogInfo class defined in utils nb
-catalog = catalog_info.name
-schema = dbutils.widgets.get("source_schema")
+catalog = 'edav_dev_csels' #catalog_info.name
+schema = "towerscout_test_schema"#dbutils.widgets.get("source_schema")
 
 # COMMAND ----------
 
@@ -154,7 +162,7 @@ except Exception as e:
 
 # COMMAND ----------
 
-print(
+logger.info(
     f"Testing metric ({train_args.objective_metric}) value of best run: {challenger_test_metric}"
 )
 

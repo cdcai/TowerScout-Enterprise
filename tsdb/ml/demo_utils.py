@@ -1,4 +1,3 @@
-# Databricks notebook source
 import torch
 from torch import nn, Tensor
 from enum import Enum, auto
@@ -6,7 +5,8 @@ from enum import Enum, auto
 from collections import namedtuple
 from functools import partial
 
-# COMMAND ----------
+from tsdb.ml.models import Autoencoder
+
 
 class DemoMetrics(Enum):
     MSE = nn.MSELoss()
@@ -16,35 +16,6 @@ class DemoSteps(Enum):
     VAL = auto()
     TEST = auto()
 
-# COMMAND ----------
-
-class Autoencoder(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-
-        self.encoder = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(16, 8, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2)
-        )
-
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(8, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(16, 3, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(),
-            nn.Sigmoid()
-        )
-    
-    def forward(self, images):
-        images = self.encoder(images)
-        return self.decoder(images)
-
-# COMMAND ----------
 
 def score_demo(logits, labels, step: str, metrics):
         return {
@@ -69,10 +40,6 @@ def inference_step_demo(minibatch, model, metrics, step) -> dict:
     logits, _, labels = forward_func_demo(model, minibatch)
     return score_demo(logits, labels, step, metrics)
 
-# COMMAND ----------
-
-ModelOutput = namedtuple("ModelOutput", ["loss", "logits", "images"])
-
 
 class ModelTrainer:
     def __init__(self, optimizer_args, metrics=None, criterion: str="MSE"):
@@ -94,17 +61,6 @@ class ModelTrainer:
     def get_optimizer():
         return torch.optim.Adam
 
-    # def forward(self, minibatch) -> ModelOutput:
-    #     images = minibatch["features"]
-        
-    #     if torch.cuda.is_available():
-    #         images = images.cuda()
-        
-    #     logits = self.model(images)
-    #     loss = self.criterion(logits, images)
-        
-    #     return ModelOutput(loss, logits, images)
-
     def training_step(self, minibatch) -> dict[str, float]:
         self.model.train()
 
@@ -118,6 +74,4 @@ class ModelTrainer:
     @torch.no_grad()
     def validation_step(self, minibatch):
         return inference_step_demo(minibatch, self.model, self.metrics, DemoSteps["VAL"].name)
-        # self.model.eval()
-        # output = self.forward(minibatch)
-        # return self.score(output.logits, output.images, step)
+

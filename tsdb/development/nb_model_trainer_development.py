@@ -131,10 +131,6 @@ class Autoencoder(nn.Module):
 
 # COMMAND ----------
 
-transform = transforms.Compose([transforms.Resize((64, 64)), transforms.ToTensor()])
-
-# COMMAND ----------
-
 def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):
     params_to_update = []
     for name, param in model.named_parameters():
