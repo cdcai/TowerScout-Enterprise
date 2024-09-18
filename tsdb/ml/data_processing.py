@@ -10,11 +10,10 @@ import torchvision
 
 from PIL import Image
 from pyspark.sql import DataFrame
+from pyspark.context import SparkContext
 
 from tsdb.ml.utils import cast_to_column
 import pyspark.sql.functions as F
-
-from databricks.sdk.runtime import sc
 
 
 def compute_bytes(dataframe: DataFrame, binary_column: "ColumnOrName") -> DataFrame:
@@ -87,7 +86,7 @@ def get_transform_spec():
 
 
 def create_converter(
-    dataframe, bytes_column: "ColumnOrName", parallelism: int = 0
+    dataframe, bytes_column: "ColumnOrName", sc: SparkContext, parallelism: int = 0
 ) -> SparkDatasetConverter:
     """
     Returns a PetaStorm converter created from dataframe.
@@ -139,7 +138,7 @@ def get_converter(
     return converter
 
 
-def get_converter_df(dataframe: DataFrame) -> callable:
+def get_converter_df(dataframe: DataFrame, sc: SparkContext) -> callable:
     """
     Creates a petastrom converter for a Spark dataframe
 
@@ -150,7 +149,7 @@ def get_converter_df(dataframe: DataFrame) -> callable:
     """
 
     dataframe = dataframe.transform(compute_bytes, "content")
-    converter = create_converter(dataframe, "bytes")
+    converter = create_converter(dataframe, "bytes", sc)
 
     return converter
 

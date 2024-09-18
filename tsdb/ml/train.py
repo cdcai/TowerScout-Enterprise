@@ -18,6 +18,7 @@ from torch import nn
 from tsdb.ml.utils import TrainingArgs, FminArgs, SplitConverters, PromotionArgs
 from tsdb.ml.demo_utils import ModelTrainer, inference_step_demo
 from tsdb.ml.data_processing import get_transform_spec
+from tsdb.ml.model_trainer import Steps
 
 
 def perform_pass(

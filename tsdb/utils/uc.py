@@ -2,7 +2,7 @@
 This module contains classes and functions that interact with unity catalog
 """
 from collections import namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
 
 from pyspark.sql import SparkSession
@@ -10,7 +10,6 @@ from pyspark.sql.types import Row
 from pyspark.sql.functions import col
 
 SchemaInfo = namedtuple("SchemaInfo", ["name", "location"])
-
 
 @dataclass
 class CatalogInfo:
@@ -103,7 +102,7 @@ class CatalogInfo:
         return (
             spark_session
             .table(schema_location)
-            .filter(F.col("volume_type") != "MANAGED")
+            .filter(col("volume_type") != "MANAGED")
             .select("volume_schema", "storage_location")
             .collect()
         )
