@@ -57,7 +57,7 @@ class CatalogInfo:
         return iter(self.schemas)
 
     @classmethod
-    def from_spark_config(cls, spark: SparkSession) -> "CatalogInfo":
+    def from_spark_config(cls, spark_session: SparkSession) -> "CatalogInfo":
         """
         Create a CatalogInfo instance from Spark cluster configuration.
 
@@ -69,13 +69,13 @@ class CatalogInfo:
         """
         # Get the initial catalog name from Spark configuration
         initial_catalog_name = (
-            spark.conf.get("spark.databricks.sql.initial.catalog.name")
+            spark_session.conf.get("spark.databricks.sql.initial.catalog.name")
         )
 
         if not initial_catalog_name:
             dbutils.notebook.exit("Initial catalog name is empty in cluster")
         
-        schema_info = cls.query_schema_info(initial_catalog_name)
+        schema_info = cls.query_schema_info(initial_catalog_name, spark_session)
         
         display(schema_info)
         if not schema_info:
@@ -91,7 +91,7 @@ class CatalogInfo:
         return cls(initial_catalog_name, volumes)
 
     @staticmethod
-    def query_schema_info(initial_catalog_name: str) -> list[Row]:
+    def query_schema_info(initial_catalog_name: str, spark_session: SparkSession) -> list[Row]:
         """
         Returns the EXTERNAL volume schemas and storage locations of the provided catalog
         
@@ -100,7 +100,7 @@ class CatalogInfo:
         """
         schema_location = f"{initial_catalog_name}.information_schema.volumes"
         return (
-            spark
+            spark_session
             .table(schema_location)
             .filter(F.col("volume_type") != "MANAGED")
             .select("volume_schema", "storage_location")
