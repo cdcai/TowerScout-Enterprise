@@ -23,7 +23,8 @@ from datetime import datetime
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 from tsdb.ml.train import perform_pass, train, tune_hyperparams, model_promotion
-from tsdb.ml.utils import ValidMetric, CatalogInfo, TrainingArgs, FminArgs, SplitConverters, PromotionArgs, setup_logger
+from tsdb.ml.utils import ValidMetric, TrainingArgs, FminArgs, SplitConverters, PromotionArgs, setup_logger
+from tsdb.utils.uc import CatalogInfo
 from tsdb.ml.data_processing import split_datanolabel, get_converter_df
 
 # COMMAND ----------
@@ -57,8 +58,8 @@ dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)
 catalog_info = CatalogInfo.from_spark_config(
     spark
 )  # CatalogInfo class defined in utils nb
-catalog = 'edav_dev_csels' #catalog_info.name
-schema = "towerscout_test_schema"#dbutils.widgets.get("source_schema")
+catalog = catalog_info.name
+schema = dbutils.widgets.get("source_schema")
 
 # COMMAND ----------
 
@@ -107,9 +108,10 @@ train_set, test_set, val_set = split_datanolabel(images)
 
 logger.info(f"Creating converter for train/val/test datasets")
 # create converters for train/val/test spark df's
-converter_train = get_converter_df(train_set)
-converter_val = get_converter_df(val_set)
-converter_test = get_converter_df(test_set)
+sc = spark.sparkContext
+converter_train = get_converter_df(train_set, sc)
+converter_val = get_converter_df(val_set, sc)
+converter_test = get_converter_df(test_set, sc)
 
 train_args = TrainingArgs(
     objective_metric=objective_metric,
