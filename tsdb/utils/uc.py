@@ -2,7 +2,7 @@
 This module contains classes and functions that interact with unity catalog
 """
 from collections import namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
 
 from pyspark.sql import SparkSession
