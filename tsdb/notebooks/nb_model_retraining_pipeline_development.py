@@ -23,7 +23,8 @@ from datetime import datetime
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 from tsdb.ml.train import perform_pass, train, tune_hyperparams, model_promotion
-from tsdb.ml.utils import ValidMetric, CatalogInfo, TrainingArgs, FminArgs, SplitConverters, PromotionArgs, setup_logger
+from tsdb.ml.utils import ValidMetric, TrainingArgs, FminArgs, SplitConverters, PromotionArgs, setup_logger
+from tsdb.utils.uc import CatalogInfo
 from tsdb.ml.data_processing import split_datanolabel, get_converter_df
 
 # COMMAND ----------

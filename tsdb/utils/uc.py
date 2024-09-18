@@ -92,7 +92,7 @@ class CatalogInfo:
         # Instantiate
         return cls(initial_catalog_name, volumes)
 
-    def panic(self, error_message: str, dbutils: DButils):
+    def panic(self, error_message: str, dbutils: DBUtils):
         """
         If dbutils is provided, prints the error message and exits the notebook.
         Otherwise, raises a ValueError.
