@@ -62,7 +62,8 @@ class CatalogInfo:
         Create a CatalogInfo instance from Spark cluster configuration.
 
         Args:
-            spark (SparkSession): The Spark session object.
+            spark (SparkSession): The Spark session object. Note that this must be the 
+            Spark session object of the notebook you are running this code in.
 
         Returns:
             CatalogInfo: An instance of CatalogInfo with the catalog details.
