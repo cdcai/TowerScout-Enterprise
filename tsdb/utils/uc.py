@@ -8,6 +8,7 @@ from typing import Iterable
 from pyspark.sql import SparkSession
 from pyspark.sql.types import Row
 from pyspark.sql.functions import col
+from pyspark.dbutils import DBUtils
 
 SchemaInfo = namedtuple("SchemaInfo", ["name", "location"])
 
@@ -57,13 +58,13 @@ class CatalogInfo:
         return iter(self.schemas)
 
     @classmethod
-    def from_spark_config(cls, spark_session: SparkSession) -> "CatalogInfo":
+    def from_spark_config(cls, spark_session: SparkSession, dbutils_: DBUtils=None) -> "CatalogInfo":
         """
         Create a CatalogInfo instance from Spark cluster configuration.
 
         Args:
             spark (SparkSession): The Spark session object. Note that this must be the 
-            Spark session object of the notebook you are running this code in.
+            Spark session object of the notebook or workflow you are running this code in.
 
         Returns:
             CatalogInfo: An instance of CatalogInfo with the catalog details.
@@ -74,13 +75,13 @@ class CatalogInfo:
         )
 
         if not initial_catalog_name:
-            dbutils.notebook.exit("Initial catalog name is empty in cluster")
+            panic("Initial catalog name is empty in cluster", dbutils_)
         
         schema_info = cls.query_schema_info(initial_catalog_name, spark_session)
         
         display(schema_info)
         if not schema_info:
-            dbutils.notebook.exit("No schema exists in the catalog")
+            panic("No schema exists in the catalog", dbutils_)
         
         # Set in namedtuple for easy access
         volumes = [
@@ -90,6 +91,18 @@ class CatalogInfo:
 
         # Instantiate
         return cls(initial_catalog_name, volumes)
+
+    def panic(self, error_message: str, dbutils: DButils):
+        """
+        If dbutils is provided, prints the error message and exits the notebook.
+        Otherwise, raises a ValueError.
+
+        """
+        if dbutils:
+            dbutils.notebook.exit(error_message)
+            return
+
+        raise ValueError(error_message)
 
     @staticmethod
     def query_schema_info(initial_catalog_name: str, spark_session: SparkSession) -> list[Row]:
