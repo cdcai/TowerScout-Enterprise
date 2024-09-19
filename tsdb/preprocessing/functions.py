@@ -31,6 +31,18 @@ def sum_column(dataframe, column: "str") -> Union[int, float]:
     return result[0]
 
 
+def sum_bytes(dataframe, bytes_column: "ColumnOrName") -> int:
+    """
+    Returns the sum of bytes in a bytes column from a dataframe. Primarily used
+    to start a Petastorm cache.
+
+    Args:
+        dataframe: DataFrame
+        bytes_column: Column that contains counts of bytes
+    """
+    aggregate_bytes = dataframe.agg(F.sum(bytes_column).alias("total_bytes"))
+    return aggregate_bytes.collect()[0]["total_bytes"]
+
 def image_statistics_udf(image_binary: pst.BinaryType) -> statistics_schema:
     """
     Returns a struct containing the mean, median, stddev, and extrema of an image binary

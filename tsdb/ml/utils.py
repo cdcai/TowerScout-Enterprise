@@ -5,12 +5,6 @@ from pyspark.sql import SparkSession, DataFrame, Column
 from pyspark.sql.types import Row
 import pyspark.sql.functions as F
 
-import logging
-from logging.handlers import RotatingFileHandler
-from logging import Logger
-
-from pathlib import Path
-
 from enum import Enum
 
 from torch import nn
@@ -19,13 +13,7 @@ from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 from mlflow import MlflowClient
 
-
-
-SchemaInfo = namedtuple("SchemaInfo", ["name", "location"])
-
-# using a dataclass instead results in sparkcontext error
-FminArgs = namedtuple("FminArgs", ["fn", "space", "algo", "max_evals", "trials"])
-
+from logging import Logger
 
 class ValidMetric(Enum):
     """
@@ -35,6 +23,9 @@ class ValidMetric(Enum):
     BCE = nn.BCEWithLogitsLoss()
     MSE = nn.MSELoss()
 
+
+# using a dataclass instead results in sparkcontext error
+FminArgs = namedtuple("FminArgs", ["fn", "space", "algo", "max_evals", "trials"])
 
 @dataclass
 class SplitConverters:
@@ -99,53 +90,3 @@ class PromotionArgs:
     test_conv: SparkDatasetConverter = None
     client: MlflowClient = None
     logger: Logger = None
-
-
-def setup_logger(log_path: str, logger_name: str) -> tuple[Logger, RotatingFileHandler]:
-    """
-    Creates and returns a Logger object
-
-    Args:
-        log_path: Path to store the log file
-    Returns:
-        The Logger object and the RotatingFileHandler object
-    """
-    # TODO: Log file may become too large, may need to be partitioned by date/week/month
-
-    # Create the log directory if it doesn't exist
-    log_dir = str(Path(log_path).parent)
-
-    # Set up logging
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.INFO)
-    logger.handlers.clear()
-
-    try:
-        # Create a rotating file handler
-        handler = RotatingFileHandler(log_path, maxBytes=1000000, backupCount=1)
-        handler.setLevel(logging.INFO)
-
-        # Create a logging format
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
-
-        # Add the handler to the logger and then you can use the logger
-        logger.addHandler(handler)
-    except Exception as e:
-        print(f"Error setting up logging: {e}")
-        raise e
-
-    return logger, handler
-
-
-def cast_to_column(column: "ColumnOrName") -> Column:
-    """
-    Returns a column data type. Used so functions can flexibly accept
-    column or string names.
-    """
-    if isinstance(column, str):
-        column = F.col(column)
-
-    return column
