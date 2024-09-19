@@ -3,14 +3,6 @@
 
 # COMMAND ----------
 
-#%run ../development/nb_data_processing
-
-# COMMAND ----------
-
-#%run ../development/nb_train
-
-# COMMAND ----------
-
 import mlflow
 from mlflow import MlflowClient
 
