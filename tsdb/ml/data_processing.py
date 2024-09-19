@@ -8,41 +8,15 @@ from petastorm.spark import SparkDatasetConverter, make_spark_converter
 
 import torchvision
 
+
 from PIL import Image
 from pyspark.sql import DataFrame
 from pyspark.context import SparkContext
-
-from tsdb.ml.utils import cast_to_column
 import pyspark.sql.functions as F
 
-
-def compute_bytes(dataframe: DataFrame, binary_column: "ColumnOrName") -> DataFrame:
-    """
-    Returns a dataframe with a bytes column, which calculates the number of bytes
-    in a binary column
-
-    Args:
-        dataframe: DataFrame
-        binary_column: Name or col that has bit data
-    """
-    binary_column = cast_to_column(binary_column)
-    num_bytes = F.lit(4) + F.length(binary_column)
-
-    return dataframe.withColumn("bytes", num_bytes)
-
-
-def sum_bytes(dataframe, bytes_column: "ColumnOrName") -> int:
-    """
-    Returns the sum of bytes in a bytes column from a dataframe. Primarily used
-    to start a Petastorm cache.
-
-    Args:
-        dataframe: DataFrame
-        bytes_column: Column that contains counts of bytes
-    """
-    aggregate_bytes = dataframe.agg(F.sum(bytes_column).alias("total_bytes"))
-    return aggregate_bytes.collect()[0]["total_bytes"]
-
+from tsdb.preprocessing.utils import cast_to_column
+from tsdb.preprocessing.transformations import compute_bytes
+from tsdb.preprocessing.preprocess import create_converter
 
 
 def transform_row(batch_pd):
@@ -84,30 +58,6 @@ def get_transform_spec():
 
     return spec
 
-
-def create_converter(
-    dataframe, bytes_column: "ColumnOrName", sc: SparkContext, parallelism: int = 0
-) -> SparkDatasetConverter:
-    """
-    Returns a PetaStorm converter created from dataframe.
-
-    Args:
-        dataframe: DataFrame
-        byte_column: Column that contains the byte count. Used to create the petastorm  cache
-        parallelism: integer for parallelism, used to create the petastorm cache
-    """
-    # Note this uses spark context
-    if parallelism == 0:
-        parallelism = sc.defaultParallelism
-
-    num_bytes = sum_bytes(dataframe, bytes_column)
-
-    # Cache
-    converter = make_spark_converter(
-        dataframe, parquet_row_group_size_bytes=int(num_bytes / parallelism)
-    )
-
-    return converter
 
 
 def get_converter(
