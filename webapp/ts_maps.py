@@ -12,6 +12,10 @@
 #
 # the provider-independent part of maps
 #
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
+import os
+import aiofiles
+from azure.identity import DefaultAzureCredential
 import requests
 import mapbox_vector_tile
 import json
@@ -169,6 +173,7 @@ async def fetch(session, url, dir, fname, i):
 
         # write the file
         filename = dir+"/"+fname+str(i)+(".meta.txt" if meta else ".jpg")
+        blobname = fname+str(i)+(".meta.txt" if meta else ".jpg")
         # print(" retrieving ",filename,"...")
         # metadata = response
         # if "atlas.microsoft.com" in url:
@@ -217,9 +222,13 @@ async def fetch(session, url, dir, fname, i):
         #         await f.write(await Image.open(BytesIO(response.content).read()))
         #         await f.close()
         else:
+            # Code to write to Temp directory - This is required for now as there are other processes using these files
+            # Need to change all the processes to read from the AIX Team's container later
             async with aiofiles.open(filename, mode='wb') as f:
                 await f.write(await response.read())
                 await f.close()
+            # Adding code to write to the AIX container directory
+            blob_url=uploadImagetodirUnqFileName(await response.read(),'ddphss-csels','PD/TowerScout/Unstructured/maps/bronze/',blobname)
 
         # async with aiofiles.open(filename, mode='wb') as f:
         #     if "atlas.microsoft.com" in url:
@@ -284,3 +293,35 @@ def check_tile_against_bounds(t, bounds):
     y2 = t['lat']-t['h']/2
 
     return not (y1 < south or y2 > north or x2 < west or x1 > east)
+
+def uploadImagetodirUnqFileName(blobcontent,containername,directoryname,filename):
+    
+# Replace with your Azure Storage account details
+    # Get the token using DefaultAzureCredential
+    credential = DefaultAzureCredential()
+
+# Initialize the BlobServiceClient
+    storage_account_name = "davsynapseanalyticsdev"
+    blob_service_client = BlobServiceClient(
+    account_url=f"https://{storage_account_name}.blob.core.windows.net/",
+    credential=credential
+)
+    
+    container_name = containername
+    container_client = blob_service_client.get_container_client(container_name)
+
+    # Define the directory where the file will be uploaded
+    directory_name = directoryname
+    
+    # Generate a unique file name using UUID
+    unique_file_name = f"{uuid.uuid4()}_{filename}"
+    # Create a BlobClient for the unique file in the directory
+    blob_name = f"{directory_name}{unique_file_name}"
+    blob_client = container_client.get_blob_client(blob_name)
+   
+    blob_client.upload_blob(blobcontent, overwrite=True)
+    return blob_client.url
+   
+    # uploadimagecontent = readimagecontent(local_file_path)
+
+    # container_client.upload_blob(name=blob_name, data=uploadimagecontent)
