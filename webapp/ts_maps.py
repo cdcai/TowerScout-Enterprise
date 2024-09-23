@@ -14,6 +14,7 @@
 #
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 import os
+import uuid
 import aiofiles
 from azure.identity import DefaultAzureCredential
 import requests
@@ -227,8 +228,11 @@ async def fetch(session, url, dir, fname, i):
             async with aiofiles.open(filename, mode='wb') as f:
                 await f.write(await response.read())
                 await f.close()
-            # Adding code to write to the AIX container directory
-            blob_url=uploadImagetodirUnqFileName(await response.read(),'ddphss-csels','PD/TowerScout/Unstructured/maps/bronze/',blobname)
+            # try:
+            # # Adding code to write to the AIX container directory
+            #  blob_url=uploadImagetodirUnqFileName(await response.read(),'ddphss-csels','PD/TowerScout/Unstructured/maps/bronze/',blobname)
+            # except Exception as e:
+            #  print("Error at %s {e}")
 
         # async with aiofiles.open(filename, mode='wb') as f:
         #     if "atlas.microsoft.com" in url:
