@@ -48,7 +48,7 @@ def promote_silver_to_gold(
 
     df = spark.read.csv(silver_csv, header=True, inferSchema=True)
     df.reateOrReplaceTempView('temp_delta_table')
-
+    # dont use spark.slq use the code from bottom of: https://docs.delta.io/latest/delta-update.html#-delta-merge
     spark.sql(
         f"""
     MERGE INTO {catalog}.{schema}.{gold_table} AS target
