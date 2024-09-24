@@ -133,7 +133,3 @@ with converter.make_torch_dataloader(**context_args) as dataloader:
 # Clear Petastorm Cache
 converter.delete()
 
-
-# COMMAND ----------
-
-

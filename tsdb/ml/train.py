@@ -1,12 +1,3 @@
-# Databricks notebook source
-# MAGIC %run ./demo_model
-
-# COMMAND ----------
-
-# MAGIC %run ./nb_model_trainer_development
-
-# COMMAND ----------
-
 import mlflow
 from mlflow.models.signature import infer_signature
 from mlflow import MlflowClient
@@ -24,91 +15,11 @@ from enum import Enum
 
 from torch import nn
 
-from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
+from tsdb.ml.utils import TrainingArgs, FminArgs, SplitConverters, PromotionArgs
+from tsdb.ml.demo_utils import ModelTrainer, inference_step_demo
+from tsdb.ml.data_processing import get_transform_spec
+from tsdb.ml.model_trainer import Steps
 
-from logging import Logger
-
-# COMMAND ----------
-
-class ValidMetric(Enum):
-    """
-    An Enum which is used to represent valid evaluation metrics for the model
-    """
-
-    BCE = nn.BCEWithLogitsLoss()
-    MSE = nn.MSELoss()
-
-# COMMAND ----------
-
-# using a dataclass instead results in sparkcontext error
-FminArgs = namedtuple("FminArgs", ["fn", "space", "algo", "max_evals", "trials"])
-
-
-@dataclass
-class SplitConverters:
-    """
-    A class to hold the spark dataset converters for the training, testing
-    and validation sets
-
-    Attributes:
-        train: The spark dataset converter for the training dataset
-        val: The spark dataset converter for the validation dataset
-        test: The spark dataset converter for the testing dataset
-    """
-
-    train: SparkDatasetConverter = None
-    val: SparkDatasetConverter = None
-    test: SparkDatasetConverter = None
-
-
-@dataclass
-class TrainingArgs:
-    """
-    A class to represent model training arguements
-
-    Attributes:
-        objective_metric:The evaluation metric we want to optimize
-        epochs: Number of epochs to optimize model over
-        batch_size: The size of the minibatchs passed to the model
-        report_interval: Interval to log metrics during training
-        metrics: Various model evaluation metrics we want to track
-    """
-
-    objective_metric: str = "recall"  # will be selected option for the drop down
-    epochs: int = 2
-    batch_size: int = 4
-    report_interval: int = 5
-    metrics: list[ValidMetric] = field(default_factory=dict)
-
-
-@dataclass
-class PromotionArgs:
-    """
-    A class to represent model promotion arguements
-
-    Attributes:
-        objective_metric: The evaluation metric we want to optimize
-        batch_size: The size of the minibatchs passed to the model
-        metrics: Various model evaluation metrics we want to track
-        model_version: The version of the model that is the challenger
-        model_name: The name of the model
-        challenger_metric_value: The value of the objective metric achieved by the challenger model on the test dataset
-        alias: The alias we are promoting the model to
-        test_conv: The converter for the test dataset
-    """
-
-    objective_metric: str = "recall"
-    batch_size: int = 4
-    metrics: list[ValidMetric] = field(default_factory=list)
-    model_version: int = 1
-    model_name: str = "ts"
-    challenger_metric_value: float = 0
-    alias: str = "staging"
-    test_conv: SparkDatasetConverter = None
-    client: MlflowClient = None
-    logger: Logger = None
-
-# COMMAND ----------
 
 def perform_pass(
     step_func: Callable,
@@ -225,7 +136,6 @@ def train(
     # Set the loss to -1*f1 so fmin maximizes the f1_score
     return {"status": STATUS_OK, "loss": -1 * metric}
 
-# COMMAND ----------
 
 def tune_hyperparams(
     fmin_args: FminArgs, train_args: TrainingArgs
@@ -254,7 +164,6 @@ def tune_hyperparams(
 
     return best_run, best_run_test_metric, best_params
 
-# COMMAND ----------
 
 def model_promotion(promo_args: PromotionArgs) -> None:
     """

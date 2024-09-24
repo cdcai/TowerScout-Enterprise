@@ -1,22 +1,23 @@
-# Databricks notebook source
-# MAGIC %run ./utils
-
-# COMMAND ----------
-
 import io
 from functools import partial
 
 import numpy as np
 
 from petastorm import TransformSpec
-from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
+from petastorm.spark import SparkDatasetConverter, make_spark_converter
 
 import torchvision
 
+
 from PIL import Image
 from pyspark.sql import DataFrame
+from pyspark.context import SparkContext
+import pyspark.sql.functions as F
 
-# COMMAND ----------
+from tsdb.preprocessing.utils import cast_to_column
+from tsdb.preprocessing.transformations import compute_bytes
+from tsdb.preprocessing.preprocess import create_converter
+
 
 def transform_row(batch_pd):
     """
@@ -57,7 +58,51 @@ def get_transform_spec():
 
     return spec
 
-# COMMAND ----------
+
+
+def get_converter(
+    cat_name="edav_dev_csels", sch_name="towerscout_test_schema", batch_size=8
+):
+    petastorm_path = "file:///dbfs/tmp/petastorm/cache"
+    images = spark.table(f"{cat_name}.{sch_name}.image_metadata").select(
+        "content", "path"
+    )
+
+    spark.conf.set(SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF, petastorm_path)
+
+    # Calculate bytes
+    num_bytes = (
+        images.withColumn("bytes", F.lit(4) + F.length("content"))
+        .groupBy()
+        .agg(F.sum("bytes").alias("bytes"))
+        .collect()[0]["bytes"]
+    )
+
+    # Cache
+    converter = make_spark_converter(
+        images, parquet_row_group_size_bytes=int(num_bytes / sc.defaultParallelism)
+    )
+
+    context_args = {"transform_spec": get_transform_spec(), "batch_size": 8}
+
+    return converter
+
+
+def get_converter_df(dataframe: DataFrame, sc: SparkContext) -> callable:
+    """
+    Creates a petastrom converter for a Spark dataframe
+
+    Args:
+        dataframe: The Spark dataframe
+    Returns:
+        callable: A petastorm converter
+    """
+
+    dataframe = dataframe.transform(compute_bytes, "content")
+    converter = create_converter(dataframe, "bytes", sc)
+
+    return converter
+
 
 def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
     """
@@ -112,20 +157,3 @@ def split_datanolabel(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
         images_val, on="path", how="leftanti"
     )  # remaining 50% from the images_remaining
     return images_train, images_test, images_val
-
-# COMMAND ----------
-
-def get_converter_df(dataframe: DataFrame) -> callable:
-    """
-    Creates a petastrom converter for a Spark dataframe
-
-    Args:
-        dataframe: The Spark dataframe
-    Returns:
-        callable: A petastorm converter
-    """
-
-    dataframe = dataframe.transform(compute_bytes, "content")
-    converter = create_converter(dataframe, "bytes")
-
-    return converter
