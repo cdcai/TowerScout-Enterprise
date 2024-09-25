@@ -81,7 +81,7 @@ with mlflow.start_run() as run:
     y_pred = yolo_model.predict(context=None, model_input=x_test, secondary=en_model)
 
     # hard coding model_output because current test images yield no detection output
-    sig = infer_signature(
+    yolo_sig = infer_signature(
         model_input=x_test,
         model_output=[
             {
@@ -97,11 +97,16 @@ with mlflow.start_run() as run:
         ],
     )
 
+    en_sig = infer_signature(
+        model_input=x_test,
+        model_output=0.0
+    )
+
     # log model as custom model using pyfunc flavor. Note that the model must inheret from PythonModel Mlflow class
     mlflow.pyfunc.log_model(
         python_model=yolo_model,
         artifact_path="base_yolov5_model",
-        signature=sig,
+        signature=yolo_sig,
         pip_requirements=[
             "ultralytics==8.2.92",
             "gitpython==3.1.30",
