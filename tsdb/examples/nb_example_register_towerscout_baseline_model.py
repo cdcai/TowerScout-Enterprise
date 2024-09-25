@@ -20,10 +20,6 @@ en_model = EN_Classifier(en_model_weight_path)
 
 # COMMAND ----------
 
-dir(en_model)
-
-# COMMAND ----------
-
 import mlflow
 from mlflow.models.signature import infer_signature
 import numpy as np
@@ -118,7 +114,7 @@ with mlflow.start_run() as run:
     mlflow.pytorch.log_model(
         pytorch_model=en_model,
         artifact_path="base_EN_model",
-        signature=sig,
+        signature=en_sig,
     )
     
 
@@ -137,3 +133,34 @@ registered_en_model_metadata = mlflow.register_model(
     model_uri=f"runs:/{run_id}/base_EN_model",
     name=f"{catalog}.{schema}.base_EN_model",
 )
+
+# COMMAND ----------
+
+### Test retrieval
+# Identify test image
+img_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/test_images/"
+
+jpg_files = glob.glob(os.path.join(img_path, "*.jpg"))
+
+# get 5 test images as np arrays
+x_test = np.array(
+    [np.asarray(Image.open(jpg_files[i]), dtype=np.float32) for i in range(5)])
+
+# COMMAND ----------
+
+# Retrieve models
+registered_yolo_model = mlflow.pyfunc.load_model(
+    model_uri=f"models:/{model_name}/11"
+)
+
+registered_en_model = mlflow.pyfunc.load_model(
+    model_uri=f"runs:/{run_id}/base_EN_model")
+
+# COMMAND ----------
+
+y_pred = registered_yolo_model.predict(x_test)
+print(y_pred)
+
+# COMMAND ----------
+
+
