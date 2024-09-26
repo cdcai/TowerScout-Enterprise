@@ -1,4 +1,54 @@
 # Databricks notebook source
+!pip install databricks-sql-connector
+
+# COMMAND ----------
+
+spark.sql("SELECT * FROM edav_dev_csels.towerscout_test_schema.test_image_silver LIMIT 2").collect()[0]["imageBinary"]
+
+# COMMAND ----------
+
+squares = [(i, i * i) for i in range(4)]
+values = ",".join([f"({x}, {y})" for (x, y) in squares])
+print(f"{squares} \n {values}")
+
+# COMMAND ----------
+
+from databricks import sql
+
+with sql.connect(
+    server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+    http_path="/sql/1.0/warehouses/8605a48953a7f210",
+    access_token="dapi4cd602a58259c1b9cc58c2fbd11bf68b-3",
+) as connection:
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM edav_dev_csels.towerscout_test_schema.test_image_silver LIMIT 2"
+        )
+        result = cursor.fetchall()
+
+        for row in result:
+            print(row)
+
+# COMMAND ----------
+
+with sql.connect(
+    server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+    http_path="/sql/1.0/warehouses/8605a48953a7f210",
+    access_token="dapi4cd602a58259c1b9cc58c2fbd11bf68b-3",
+) as connection:
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM edav_dev_csels.towerscout_test_schema.test_image_silver LIMIT 2"
+        )
+        result = cursor.fetchall()
+
+        for row in result:
+            print(row)
+
+# COMMAND ----------
+
 from pyspark.sql.types import (
     StructField,
     StructType,
@@ -7,6 +57,23 @@ from pyspark.sql.types import (
     StringType,
     IntegerType,
 )
+
+from databricks import sql
+
+# COMMAND ----------
+
+connection = sql.connect(
+                        server_hostname = "adb-1881246389460182.2.azuredatabricks.net",
+                        http_path = "/sql/1.0/warehouses/8605a48953a7f210",
+                        access_token = "<access-token>")
+
+cursor = connection.cursor()
+
+cursor.execute("SELECT * from range(10)")
+print(cursor.fetchall())
+
+cursor.close()
+connection.close()
 
 # COMMAND ----------
 
