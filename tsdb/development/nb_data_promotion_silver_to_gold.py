@@ -1,5 +1,5 @@
 # Databricks notebook source
-!pip install databricks-sql-connector
+#!pip install databricks-sql-connector
 
 # COMMAND ----------
 
@@ -11,234 +11,221 @@
 
 # COMMAND ----------
 
+#{"mean": [-1,2,-6], "median": [6,6,6], "stddev": [8,8,8], "extrema": [[5,1], [2,21], [6,55]]}
+
+# COMMAND ----------
+
+# %sql
+# CREATE TABLE edav_dev_csels.towerscout_test_schema.test_image_gold (path STRING, statistics struct<`mean`:array<double>,`median`:array<int>,`stddev`:array<double>,`extrema`:array<array<int>>>);
+
+# COMMAND ----------
+
 catalog = "edav_dev_csels"
 schema = "towerscout_test_schema"
-gold_table = "gold"
+gold_table = "test_image_gold"
 silver_table = "test_image_silver"
 
 
 func_input = (
     (
         "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k121.jpg",
-        3,
+        { "mean": [-1.0,2,0,-2.0], "median": [6,6,6], "stddev": [8.0,8.0,8.0], "extrema": [[5,1], [2,21], [6,55]] }
     ),
     (
         "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k115.jpg",
-        5,
+        {"mean": [-1.0,2.0,-2.0], "median": [6,6,6], "stddev": [8.0,8.0,8.0], "extrema": [[5,1], [2,21], [6,55]] }
     ),
 )
 
 paths = ", ".join([f"'{x}'" for (x, y) in func_input])
 
-query = "DROP VIEW IF EXISTS silver_filtered;"
-spark.sql(query)
-
-
-# create temp view, get rows by path (will be uuid in practice)
-query = f"""
-CREATE TEMPORARY VIEW silver_filtered AS
-SELECT *
-FROM {catalog}.{schema}.{silver_table}
-WHERE path IN ({paths});
-"""
-spark.sql(query)
-
-print("Paths:", paths)
-
-query = "SELECT * FROM silver_filtered;"
-display(spark.sql(query))
-
 # COMMAND ----------
 
-mappings = ", ".join([f"('{x}', '{y}')" for (x, y) in func_input])
+import json
+mappings = ", ".join([f"('{x}', '{json.dumps(y)}')" for (x, y) in func_input])
+
+# mappings = ""
+# for (x, y) in func_input:
+#     mappings += f"('{x}', 'STRUCT("
+#     mappings += f"ARRAY{y['mean']}, ARRAY{y['median']}, ARRAY{y['stddev']}, ARRAY{y['extrema']})'), "
+
+# mappings = mappings[:-2] 
+
 print(mappings)
 
 # COMMAND ----------
 
-query = f"""UPDATE silver_filtered
-SET length = (
-    SELECT new_length
-    FROM (
-        VALUES 
-            {mappings}
-    ) AS mapping(path, new_length)
-    WHERE mapping.path = silver_filtered.path
-);
-"""
+# SELECT CAST(new_length AS BIGINT), temp.path
 
-print(query)
-
-spark.sql(query)
-
-query = "SELECT * FROM silver_filtered;"
-display(spark.sql(query))
+# SELECT CAST(new_statistics AS struct<`mean`:array<double>,`median`:array<int>,`stddev`:array<double>,`extrema`:array<array<int>>>), temp.path
 
 # COMMAND ----------
 
-# convert to mapping for join query when filtering silver table results
+query = "DROP VIEW IF EXISTS gold_updates;"
+spark.sql(query)
 
-# print(mappings)
+query = f"""
+CREATE TEMPORARY VIEW gold_updates AS
+WITH temp_data(path, statistics) AS (
+  VALUES
+    {mappings}
+)
+
+--SELECT temp.statistics, temp.path
+SELECT from_json(temp.statistics, 'mean array<double>, median array<int>, stddev array<double>, extrema array<array<int>>') as statistics, temp.path
+FROM silver_temp AS silver
+JOIN temp_data AS temp
+ON silver.path = temp.path
+WHERE silver.path in ({paths});
+"""
+
+display(spark.sql(query))
+
+# uuid's bounding boxes, image hash, userID, set review time as CURRENT_TIMESTAMP()
+# get request ID from silver table, 
+
+# COMMAND ----------
+
+display(spark.sql("SELECT * from gold_updates"))
+
+# COMMAND ----------
+
+display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
+
+# COMMAND ----------
+
+query = f"""
+MERGE INTO {catalog}.{schema}.{gold_table} AS target
+USING gold_updates AS source
+ON (target.path = source.path)
+WHEN MATCHED THEN
+    UPDATE SET target.statistics = source.statistics,
+               target.path = source.path
+WHEN NOT MATCHED THEN
+    INSERT (statistics, path) VALUES (source.statistics, source.path)
+               ;
+"""
+
+spark.sql(query)
+
+# COMMAND ----------
+
+display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
+
+# COMMAND ----------
+
+# from databricks import sql
 
 
-# display(
+# with sql.connect(
+#     server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+#     http_path="/sql/1.0/warehouses/8605a48953a7f210",
+#     access_token="dapi4cd602a58259c1b9cc58c2fbd11bf68b-3",
+# ) as connection:
+#     with connection.cursor() as cursor:
+#         query = f"""
+#                 MERGE INTO {catalog}.{schema}.{gold_table} AS target
+#                 USING (
+#                     SELECT s.*, m.bbox AS new_bbox
+#                     FROM {catalog}.{schema}.{silver_table} AS s
+#                     JOIN (
+#                         VALUES 
+#                             {mappings}
+#                     ) AS m(uuid, bbox) ON s.uuid = m.uuid -- update bbox with the one made by epi's 
+#                 ) 
+#                 AS source -- the source is the filtered silver table with the new bbox made by the epi's
+#                 ON target.sha1 = source.sha1 -- Join condition: merge on image hashes bc no duples allowed in gold table
+#                 WHEN MATCHED THEN UPDATE SET 
+#                             target.modificationTime = source.modificationTime,
+#                             target.bbox = source.bbox,
+#                             target.confidence = source.confidence
+
+#                 WHEN NOT MATCHED THEN INSERT (id, modificationTime, bbox, confidence)
+#                 VALUES (id, modificationTime, bbox, confidence);
+#                 """
+
+#         cursor.execute(query)
+#         # result = cursor.fetchall()
+
+#         # for row in result:
+#         #    print(row)
+
+# COMMAND ----------
+
+# with sql.connect(
+#     server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+#     http_path="/sql/1.0/warehouses/8605a48953a7f210",
+#     access_token="dapi4cd602a58259c1b9cc58c2fbd11bf68b-3",
+# ) as connection:
+#     with connection.cursor() as cursor:
+#         cursor.execute(
+#             "SELECT * FROM edav_dev_csels.towerscout_test_schema.test_image_silver LIMIT 2"
+#         )
+#         result = cursor.fetchall()
+
+#         for row in result:
+#             print(row)
+
+# COMMAND ----------
+
+# from pyspark.sql.types import (
+#     StructField,
+#     StructType,
+#     FloatType,
+#     TimestampType,
+#     StringType,
+#     IntegerType,
+# )
+
+# from databricks import sql
+
+# COMMAND ----------
+
+# connection = sql.connect(
+#     server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+#     http_path="/sql/1.0/warehouses/8605a48953a7f210",
+#     access_token="<access-token>",
+# )
+
+# cursor = connection.cursor()
+
+# cursor.execute("SELECT * from range(10)")
+# print(cursor.fetchall())
+
+# cursor.close()
+# connection.close()
+
+# COMMAND ----------
+
+# df_silver = spark.read.table("edav_dev_csels.towerscout_test_schema.test_image_silver")
+# display(df_silver)
+
+# COMMAND ----------
+
+# def promote_silver_to_gold(
+#     silver_csv: str, catalog: str, schema: str, gold_table: str
+# ) -> None:
+#     """
+#     Function to promote silver data to gold by updating the gold table
+#     silver_csv: path to the csv of the silver data to be promoted/added to the gold table
+#     catalog: the catalog of the gold table
+#     schema: the schema of the gold table
+#     gold_table: the name of the gold table
+#     """
+
+#     df = spark.read.csv(silver_csv, header=True, inferSchema=True)
+#     df.reateOrReplaceTempView('temp_delta_table')
+#     # dont use spark.slq use the code from bottom of: https://docs.delta.io/latest/delta-update.html#-delta-merge
 #     spark.sql(
-#         f"""SELECT m.path, m.length
-#         FROM {catalog}.{schema}.{silver_table} AS s
-#         JOIN (
-#             VALUES 
-#                 {mappings}
-#         ) AS m(path, length) ON s.path = m.path;
+#         f"""
+#     MERGE INTO {catalog}.{schema}.{gold_table} AS target
+#     USING temp_delta_table AS source
+#     ON target.id = source.id -- Specify the join condition for matching records, merge on image hashes potentially
+#     WHEN MATCHED THEN UPDATE SET target.modificationTime = source.modificationTime,
+#                 target.bbox = source.bbox,
+#                 target.confidence = source.confidence
+
+#     WHEN NOT MATCHED THEN INSERT (id, modificationTime, bbox, confidence)
+#     VALUES (id, modificationTime, bbox, confidence);
 #     """
 #     )
-# )  # .collect()[0]["imageBinary"]
-
-# COMMAND ----------
-
-# input will be a list of tuples of the form (uuid, list[bboxs])
-func_input = (
-    ("21141ff23", [[2.2, 3.1, 4.2, 1.2], [4.2, 7.1, 7.6, 1.1]]),
-    ("fhk5343", [[2.2, 3.1, 4.2, 1.2], [4.2, 7.1, 7.6, 1.1]]),
-)
-
-# convert to mapping for join query when filtering silver table results
-mappings = ", ".join([f"('{x}', '{y}')" for (x, y) in func_input])
-
-print(mappings)
-
-# COMMAND ----------
-
-from databricks import sql
-
-
-with sql.connect(
-    server_hostname="adb-1881246389460182.2.azuredatabricks.net",
-    http_path="/sql/1.0/warehouses/8605a48953a7f210",
-    access_token="dapi4cd602a58259c1b9cc58c2fbd11bf68b-3",
-) as connection:
-    with connection.cursor() as cursor:
-        query = f"""
-                MERGE INTO {catalog}.{schema}.{gold_table} AS target
-                USING (
-                    SELECT s.*, m.bbox AS new_bbox
-                    FROM {catalog}.{schema}.{silver_table} AS s
-                    JOIN (
-                        VALUES 
-                            {mappings}
-                    ) AS m(uuid, bbox) ON s.uuid = m.uuid -- update bbox with the one made by epi's 
-                ) 
-                AS source -- the source is the filtered silver table with the new bbox made by the epi's
-                ON target.sha1 = source.sha1 -- Join condition: merge on image hashes bc no duples allowed in gold table
-                WHEN MATCHED THEN UPDATE SET 
-                            target.modificationTime = source.modificationTime,
-                            target.bbox = source.bbox,
-                            target.confidence = source.confidence
-
-                WHEN NOT MATCHED THEN INSERT (id, modificationTime, bbox, confidence)
-                VALUES (id, modificationTime, bbox, confidence);
-                """
-
-        cursor.execute(query)
-        # result = cursor.fetchall()
-
-        # for row in result:
-        #    print(row)
-
-# COMMAND ----------
-
-with sql.connect(
-    server_hostname="adb-1881246389460182.2.azuredatabricks.net",
-    http_path="/sql/1.0/warehouses/8605a48953a7f210",
-    access_token="dapi4cd602a58259c1b9cc58c2fbd11bf68b-3",
-) as connection:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT * FROM edav_dev_csels.towerscout_test_schema.test_image_silver LIMIT 2"
-        )
-        result = cursor.fetchall()
-
-        for row in result:
-            print(row)
-
-# COMMAND ----------
-
-from pyspark.sql.types import (
-    StructField,
-    StructType,
-    FloatType,
-    TimestampType,
-    StringType,
-    IntegerType,
-)
-
-from databricks import sql
-
-# COMMAND ----------
-
-connection = sql.connect(
-    server_hostname="adb-1881246389460182.2.azuredatabricks.net",
-    http_path="/sql/1.0/warehouses/8605a48953a7f210",
-    access_token="<access-token>",
-)
-
-cursor = connection.cursor()
-
-cursor.execute("SELECT * from range(10)")
-print(cursor.fetchall())
-
-cursor.close()
-connection.close()
-
-# COMMAND ----------
-
-df_silver = spark.read.table("edav_dev_csels.towerscout_test_schema.test_image_silver")
-display(df_silver)
-
-# COMMAND ----------
-
-schema = StructType([
-    StructField("path", StringType()),
-    StructField("modificationTime", TimestampType()),
-    StructField("bbox", StructType([
-        StructField("x1", FloatType()),
-        StructField("x2", FloatType()),
-        StructField("y1", FloatType()),
-        StructField("y2", FloatType()),
-        StructField("conf", FloatType()),
-        StructField("class", IntegerType())
-        StructField("class_name", StringType())
-    ]))
-])
-
-# Create an empty dataframe with the specified schema
-df_gold = spark.createDataFrame([], schema)
-display(df_gold)
-
-# COMMAND ----------
-
-def promote_silver_to_gold(
-    silver_csv: str, catalog: str, schema: str, gold_table: str
-) -> None:
-    """
-    Function to promote silver data to gold by updating the gold table
-    silver_csv: path to the csv of the silver data to be promoted/added to the gold table
-    catalog: the catalog of the gold table
-    schema: the schema of the gold table
-    gold_table: the name of the gold table
-    """
-
-    df = spark.read.csv(silver_csv, header=True, inferSchema=True)
-    df.reateOrReplaceTempView('temp_delta_table')
-    # dont use spark.slq use the code from bottom of: https://docs.delta.io/latest/delta-update.html#-delta-merge
-    spark.sql(
-        f"""
-    MERGE INTO {catalog}.{schema}.{gold_table} AS target
-    USING temp_delta_table AS source
-    ON target.id = source.id -- Specify the join condition for matching records, merge on image hashes potentially
-    WHEN MATCHED THEN UPDATE SET target.modificationTime = source.modificationTime,
-                target.bbox = source.bbox,
-                target.confidence = source.confidence
-
-    WHEN NOT MATCHED THEN INSERT (id, modificationTime, bbox, confidence)
-    VALUES (id, modificationTime, bbox, confidence);
-    """
-    )
