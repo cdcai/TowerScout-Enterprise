@@ -1,13 +1,13 @@
 # Databricks notebook source
-import json
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC 1. Create temp view of rows that have matching uuids from the input
 # MAGIC 2. Go through and update the bbox's in the temp view to be the ones from the function input
 # MAGIC 3. Do a merge (merging on image hash sha1) into the gold table from the temp view
 # MAGIC 4. Delete temp view 
+
+# COMMAND ----------
+
+import json
 
 # COMMAND ----------
 

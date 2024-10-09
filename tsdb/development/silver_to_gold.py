@@ -33,6 +33,9 @@ def promote_silver_to_gold(
     query = "DROP VIEW IF EXISTS gold_updates;"
     cursor.execute(query)
 
+    # create temp view containing validated data 
+    # perform a join with silver table on uuid to get relevant information for image from silver table
+    # using from_json to unpack bounding boxes
     query = f"""
             CREATE TEMPORARY VIEW gold_updates AS
             WITH temp_data(uuid, imgHash, bboxs) AS (
@@ -48,6 +51,7 @@ def promote_silver_to_gold(
             """
     cursor.execute(query)
 
+    # merge temp view into gold table on image hash
     query = f"""
             MERGE INTO {catalog}.{schema}.{gold_table} AS target
             USING gold_updates AS source
