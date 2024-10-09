@@ -71,7 +71,7 @@ exp_name = "yolo5v_exp"
 
 # COMMAND ----------
 
-!python yolo5v_train.py 64 50 yolo5v_exp
+!python yolo5v_train.py 32 50 yolo5v_exp
 
 # COMMAND ----------
 
