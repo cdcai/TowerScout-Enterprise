@@ -11,10 +11,6 @@
 
 # COMMAND ----------
 
-#{"mean": [-1,2,-6], "median": [6,6,6], "stddev": [8,8,8], "extrema": [[5,1], [2,21], [6,55]]}
-
-# COMMAND ----------
-
 # %sql
 # CREATE TABLE edav_dev_csels.towerscout_test_schema.test_image_gold (path STRING, statistics struct<`mean`:array<double>,`median`:array<int>,`stddev`:array<double>,`extrema`:array<array<int>>>);
 
@@ -29,11 +25,21 @@ silver_table = "test_image_silver"
 func_input = (
     (
         "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k121.jpg",
-        { "mean": [-1.0,2,0,-2.0], "median": [6,6,6], "stddev": [8.0,8.0,8.0], "extrema": [[5,1], [2,21], [6,55]] }
+        {
+            "mean": [-1.2, 2.8, -2.3],
+            "median": [6, 6, 6],
+            "stddev": [8.0, 8.0, 8.0],
+            "extrema": [[5, 1], [2, 21], [6, 55]],
+        },
     ),
     (
         "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k115.jpg",
-        {"mean": [-1.0,2.0,-2.0], "median": [6,6,6], "stddev": [8.0,8.0,8.0], "extrema": [[5,1], [2,21], [6,55]] }
+        {
+            "mean": [-1.5, 2.6, -2.7],
+            "median": [6, 6, 6],
+            "stddev": [8.0, 8.0, 8.0],
+            "extrema": [[5, 1], [2, 21], [6, 55]],
+        },
     ),
 )
 
@@ -42,22 +48,10 @@ paths = ", ".join([f"'{x}'" for (x, y) in func_input])
 # COMMAND ----------
 
 import json
+
 mappings = ", ".join([f"('{x}', '{json.dumps(y)}')" for (x, y) in func_input])
 
-# mappings = ""
-# for (x, y) in func_input:
-#     mappings += f"('{x}', 'STRUCT("
-#     mappings += f"ARRAY{y['mean']}, ARRAY{y['median']}, ARRAY{y['stddev']}, ARRAY{y['extrema']})'), "
-
-# mappings = mappings[:-2] 
-
 print(mappings)
-
-# COMMAND ----------
-
-# SELECT CAST(new_length AS BIGINT), temp.path
-
-# SELECT CAST(new_statistics AS struct<`mean`:array<double>,`median`:array<int>,`stddev`:array<double>,`extrema`:array<array<int>>>), temp.path
 
 # COMMAND ----------
 
@@ -71,9 +65,9 @@ WITH temp_data(path, statistics) AS (
     {mappings}
 )
 
---SELECT temp.statistics, temp.path
-SELECT from_json(temp.statistics, 'mean array<double>, median array<int>, stddev array<double>, extrema array<array<int>>') as statistics, temp.path
-FROM silver_temp AS silver
+SELECT from_json(temp.statistics, 'mean array<double>, median array<int>, stddev array<double>, extrema array<array<int>>') as statistics, temp.path, silver.length
+FROM {catalog}.{schema}.{silver_table} AS silver
+
 JOIN temp_data AS temp
 ON silver.path = temp.path
 WHERE silver.path in ({paths});
@@ -82,7 +76,7 @@ WHERE silver.path in ({paths});
 display(spark.sql(query))
 
 # uuid's bounding boxes, image hash, userID, set review time as CURRENT_TIMESTAMP()
-# get request ID from silver table, 
+# get requestID from silver table
 
 # COMMAND ----------
 
@@ -114,6 +108,68 @@ display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
 
 # COMMAND ----------
 
+def promote_silver_to_gold(
+    validated_data: tuple[str, str, dict[int, list[float]]],
+    catalog: str,
+    schema: str,
+    gold_table: str,
+    silver_table: str,
+) -> None:
+    
+    """
+    Function to promote silver data to gold by updating the gold table
+    validated_data: uuids AND image hashes of the images along with the bounding boxes validated by an end user
+    catalog: the catalog of the gold table
+    schema: the schema of the gold table
+    gold_table: the name of the gold table
+    silver_table: the name of the silver table
+    """
+
+    values = ", ".join([f"('{x}', {y} , '{json.dumps(z)}')" for (x, y, z) in func_input])
+    uuids = ", ".join([f"'{x}'" for (x, y, z) in func_input])
+
+    query = "DROP VIEW IF EXISTS gold_updates;"
+    spark.sql(query)
+
+    # Create a temp view with the validated data
+    query = f"""
+            CREATE TEMPORARY VIEW gold_updates AS
+            WITH temp_data(uuid, imgHash, bboxs) AS (
+            VALUES
+                {values}
+            )
+
+            SELECT from_json(temp.bboxs, 'bbox array<array<float>>') as bbox, temp.uuid, temp.imgHash, silver.requestId, silver.userId, silver.imagePath
+            FROM {catalog}.{schema}.{silver_table} AS silver
+            JOIN temp_data AS temp
+            ON silver.uuid = temp.uuid
+            WHERE silver.path in ({uuids});
+            """
+
+    spark.sql(query)
+
+    # merge temp view into gold table, merging on image hash to avoud duplicate images in gold table
+    query = f"""
+            MERGE INTO {catalog}.{schema}.{gold_table} AS target
+            USING gold_updates AS source
+            ON (target.imgHash = source.imgHash)
+            WHEN MATCHED THEN
+                UPDATE SET target.bboxs = source.bboxs,
+                        target.uuid = source.uuid,
+                        target.imgHash = source.imgHash,
+                        target.imgPath = source.imgPath,
+                        target.requestId = source.requestId,
+                        target.userId = source.userId,
+                        target.reviewedTime = CURRENT_TIMESTAMP()
+            WHEN NOT MATCHED THEN
+                INSERT (bboxs, uuid, imgHash, reviewedTime) VALUES (source.bboxs, source.uuid, source.imgHash, CURRENT_TIMESTAMP()
+                        ;
+            """
+
+    spark.sql(query)
+
+# COMMAND ----------
+
 # from databricks import sql
 
 
@@ -129,13 +185,13 @@ display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
 #                     SELECT s.*, m.bbox AS new_bbox
 #                     FROM {catalog}.{schema}.{silver_table} AS s
 #                     JOIN (
-#                         VALUES 
+#                         VALUES
 #                             {mappings}
-#                     ) AS m(uuid, bbox) ON s.uuid = m.uuid -- update bbox with the one made by epi's 
-#                 ) 
+#                     ) AS m(uuid, bbox) ON s.uuid = m.uuid -- update bbox with the one made by epi's
+#                 )
 #                 AS source -- the source is the filtered silver table with the new bbox made by the epi's
 #                 ON target.sha1 = source.sha1 -- Join condition: merge on image hashes bc no duples allowed in gold table
-#                 WHEN MATCHED THEN UPDATE SET 
+#                 WHEN MATCHED THEN UPDATE SET
 #                             target.modificationTime = source.modificationTime,
 #                             target.bbox = source.bbox,
 #                             target.confidence = source.confidence
@@ -168,19 +224,6 @@ display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
 
 # COMMAND ----------
 
-# from pyspark.sql.types import (
-#     StructField,
-#     StructType,
-#     FloatType,
-#     TimestampType,
-#     StringType,
-#     IntegerType,
-# )
-
-# from databricks import sql
-
-# COMMAND ----------
-
 # connection = sql.connect(
 #     server_hostname="adb-1881246389460182.2.azuredatabricks.net",
 #     http_path="/sql/1.0/warehouses/8605a48953a7f210",
@@ -197,35 +240,4 @@ display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
 
 # COMMAND ----------
 
-# df_silver = spark.read.table("edav_dev_csels.towerscout_test_schema.test_image_silver")
-# display(df_silver)
 
-# COMMAND ----------
-
-# def promote_silver_to_gold(
-#     silver_csv: str, catalog: str, schema: str, gold_table: str
-# ) -> None:
-#     """
-#     Function to promote silver data to gold by updating the gold table
-#     silver_csv: path to the csv of the silver data to be promoted/added to the gold table
-#     catalog: the catalog of the gold table
-#     schema: the schema of the gold table
-#     gold_table: the name of the gold table
-#     """
-
-#     df = spark.read.csv(silver_csv, header=True, inferSchema=True)
-#     df.reateOrReplaceTempView('temp_delta_table')
-#     # dont use spark.slq use the code from bottom of: https://docs.delta.io/latest/delta-update.html#-delta-merge
-#     spark.sql(
-#         f"""
-#     MERGE INTO {catalog}.{schema}.{gold_table} AS target
-#     USING temp_delta_table AS source
-#     ON target.id = source.id -- Specify the join condition for matching records, merge on image hashes potentially
-#     WHEN MATCHED THEN UPDATE SET target.modificationTime = source.modificationTime,
-#                 target.bbox = source.bbox,
-#                 target.confidence = source.confidence
-
-#     WHEN NOT MATCHED THEN INSERT (id, modificationTime, bbox, confidence)
-#     VALUES (id, modificationTime, bbox, confidence);
-#     """
-#     )
