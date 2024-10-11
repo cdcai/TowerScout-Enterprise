@@ -43,9 +43,6 @@ def demo_yolo8_ddp():
         "metrics": ["accuracy"]
     }
 
-    #mlflow.log_param("epochs", train_args["epochs"])
-    #mlflow.log_param("batch_size", train_args["batch_size"])
-
     # Path to your data.yaml file
     data_yaml = '/Volumes/edav_dev_csels/towerscout_test_schema/towerscout_data/data.yaml'
 
@@ -80,15 +77,10 @@ def demo_yolo8_ddp():
 
     # Print out the extracted metrics
     print(f"Precision: {precision}")
-    #mlflow.log_metric("precision_val", precision)
     print(f"Recall: {recall}")
-    #mlflow.log_metric("recall_val", recall)
     print(f"mAP@50: {map50}")
-    #mlflow.log_metric("mAP50_val", map50)
     print(f"mAP@50-95: {map50_95}")
-    #mlflow.log_metric("mAP50-95_val", map50_95)
     print(f"Classification Accuracy: {classification_accuracy}")
-    #mlflow.log_metric("classification_accuracy_val", classification_accuracy)
 
     # Test the model using the test data
     test_metrics = yolo_model.val(split='test')  # Use the test split for evaluation
@@ -102,15 +94,10 @@ def demo_yolo8_ddp():
     test_classification_accuracy = calculate_classification_accuracy(test_precision, test_recall)
 
     print(f"Test Precision: {test_precision}")
-    #mlflow.log_metric("precision_test", test_precision)
     print(f"Test Recall: {test_recall}")
-    #mlflow.log_metric("recall_test", test_recall)
     print(f"Test mAP@50: {test_map50}")
-    #mlflow.log_metric("mAP50_test", test_map50)
     print(f"Test mAP@50-95: {test_map50_95}")
-    #mlflow.log_metric("mAP50-95_test", test_map50_95)
     print(f"Test Classification Accuracy: {test_classification_accuracy}")
-    #mlflow.log_metric("classification_accuracy_test", test_classification_accuracy)
 
     # Clean up DDP
     dist.destroy_process_group()
