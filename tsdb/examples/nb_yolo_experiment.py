@@ -26,7 +26,7 @@ for split in splits:
             for line in file:
                 bboxs = line.strip().split(" ")
                 if len(bboxs) > 1:
-                    label, _, _, _, _ = line.strip().split(" ")
+                    label, _, _, _, _ = bboxs
                 else:
                     singeltons += 1
                     continue
