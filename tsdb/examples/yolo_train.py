@@ -47,7 +47,7 @@ def demo_yolo8_ddp():
     data_yaml = '/Volumes/edav_dev_csels/towerscout_test_schema/towerscout_data/data.yaml'
 
     # using nu model version because it is better apparently 
-    yolo_model = YOLO("yolov5nu.pt")
+    yolo_model = YOLO(sys.argv[4])
 
     # Train the model using your dataset
     yolo_model.train(

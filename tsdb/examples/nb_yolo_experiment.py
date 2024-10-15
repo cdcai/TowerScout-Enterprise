@@ -69,24 +69,29 @@ display(Image(filename="yolov5_val/F1_curve.png"))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # YOLOv5 model experiements
+# MAGIC # YOLO model experiements
 
 # COMMAND ----------
 
-exp_name = "yolo5v_exp"
+experiment_folder_name = "yolo_exp"
 
 # COMMAND ----------
 
-!python yolo5v_train.py 32 50 yolo5v_exp
+# MAGIC %md
+# MAGIC CLI arguements format: yolo_train.py batch_size epochs experiment_folder_name yolo_model_tpye 
 
 # COMMAND ----------
 
-display(Image(filename=f"runs/detect/{exp_name}/confusion_matrix.png"))
+!python yolo_train.py 32 50 yolo_exp yolov5nu.pt
 
 # COMMAND ----------
 
-display(Image(filename=f"runs/detect/{exp_name}/F1_curve.png"))
+display(Image(filename=f"runs/detect/{experiment_folder_name}/confusion_matrix.png"))
 
 # COMMAND ----------
 
-display(Image(filename=f"runs/detect/{exp_name}/results.png"))
+display(Image(filename=f"runs/detect/{experiment_folder_name}/F1_curve.png"))
+
+# COMMAND ----------
+
+display(Image(filename=f"runs/detect/{experiment_folder_name}/results.png"))
