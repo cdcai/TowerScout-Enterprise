@@ -69,9 +69,8 @@ class YoloModelTrainer:
         # backward pass
         self.scaler.scale(self.loss).backward()
 
-        if ni - last_opt_step >= self.accumulate:
-            self.optimizer_step()
-            last_opt_step = ni
+        # Note that in ultralytics, losses are accumulated between N batchs before calling optimizer_step
+        self.optimizer_step()
 
         #######
         logits, images, labels = forward_func(self.model, minibatch)
