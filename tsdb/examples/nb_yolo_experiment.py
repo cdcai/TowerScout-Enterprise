@@ -20,16 +20,22 @@ for split in splits:
     img_files = os.listdir(images_path)
     labels_files = os.listdir(labels_path)
     classes = {}
-
+    singeltons = 0
     for labels_file_path in labels_files:
         with open(labels_path + labels_file_path, "r") as file:
             for line in file:
-                label, _, _, _, _ = line.strip().split(" ")
+                bboxs = line.strip().split(" ")
+                if len(bboxs) > 1:
+                    label, _, _, _, _ = line.strip().split(" ")
+                else:
+                    singeltons += 1
+                    continue
                 try:
                     classes[label] += 1
                 except:
                     classes[label] = 1
 
+    print(f"{singeltons} singelton lines encoutered and skipped")
     print(f"Unique classes and counts in the {split} set: {classes}")
     print(
         f"{len(img_files)} image files and {len(labels_files)} label files in {split} set. {len(img_files)-len(labels_files)} images with no cooling towers.\n"
