@@ -43,12 +43,16 @@ for split in splits:
 
 # COMMAND ----------
 
+classes
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # Check performance of current YOLOv5 model
 
 # COMMAND ----------
 
-!python /Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master/val.py --weights /Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/yolo/xl_250_best.pt --data /Volumes/edav_dev_csels/towerscout_test_schema/towerscout_data/data.yaml --img 640 --project . --name yolov5_val
+!python /Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master/val.py --weights /Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/yolo/xl_250_best.pt --data /Volumes/edav_dev_csels/towerscout_test_schema/towerscout_data/data.yaml --img 640 --single-cls --project . --name yolov5_val 
 
 # COMMAND ----------
 
@@ -69,29 +73,24 @@ display(Image(filename="yolov5_val/F1_curve.png"))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # YOLO model experiements
+# MAGIC # YOLOv5 model experiments
 
 # COMMAND ----------
 
-experiment_folder_name = "yolo_exp"
+exp_name = "yolo5v_exp"
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC CLI arguements format: yolo_train.py batch_size epochs experiment_folder_name yolo_model_tpye 
+!python yolo_train.py --model-arch yolov8n.pt --batch-size 32 --epochs 20 --name yolov8n_exp
 
 # COMMAND ----------
 
-!python yolo_train.py 32 50 yolo_exp yolov5nu.pt
+display(Image(filename=f"runs/detect/{exp_name}/confusion_matrix.png"))
 
 # COMMAND ----------
 
-display(Image(filename=f"runs/detect/{experiment_folder_name}/confusion_matrix.png"))
+display(Image(filename=f"runs/detect/{exp_name}/F1_curve.png"))
 
 # COMMAND ----------
 
-display(Image(filename=f"runs/detect/{experiment_folder_name}/F1_curve.png"))
-
-# COMMAND ----------
-
-display(Image(filename=f"runs/detect/{experiment_folder_name}/results.png"))
+display(Image(filename=f"runs/detect/{exp_name}/results.png"))
