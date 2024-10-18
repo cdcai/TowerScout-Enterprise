@@ -5,6 +5,7 @@ import sys
 import torch.nn as nn
 from ultralytics import YOLO, settings  # Assuming you're using YOLO from Ultralytics
 import mlflow
+import argparse
 
 
 def calculate_classification_accuracy(precision, recall):
@@ -14,7 +15,7 @@ def calculate_classification_accuracy(precision, recall):
     accuracy = (precision * recall) / (precision + recall - (precision * recall))
     return accuracy
 
-def demo_yolo8_ddp():
+def demo_yolo8_ddp(opt):
     
     # Manually set distributed environment variables
     os.environ['RANK'] = os.getenv('RANK', '0')  # Default to 0 if not set
@@ -36,9 +37,9 @@ def demo_yolo8_ddp():
 
     # Define training parameters
     train_args = {
-        "batch_size": int(sys.argv[1]),
-        "epochs": int(sys.argv[2]),
-        "exp_name": sys.argv[3],
+        "batch_size": opt.batch_size, # int(sys.argv[1]),
+        "epochs": opt.epochs, # int(sys.argv[2]),
+        "exp_name": opt.name, #sys.argv[3],
         "objective_metric": "accuracy",
         "metrics": ["accuracy"]
     }
@@ -46,8 +47,8 @@ def demo_yolo8_ddp():
     # Path to your data.yaml file
     data_yaml = '/Volumes/edav_dev_csels/towerscout_test_schema/towerscout_data/data.yaml'
 
-    # using nu model version because it is better apparently 
-    yolo_model = YOLO(sys.argv[4])
+    # using nu model version by default because it is better apparently 
+    yolo_model = YOLO(opt.model_arch)
 
     # Train the model using your dataset
     yolo_model.train(
@@ -57,7 +58,7 @@ def demo_yolo8_ddp():
         batch=train_args["batch_size"],  # Batch size
         name=train_args["exp_name"],  # Name of the model
         device=device_id,  # Use GPU device assigned by DDP
-        workers=2,  # Number of workers
+        workers=opt.workers,  # Number of workers
     )
 
     # After training, validate the model on the validation set
@@ -102,11 +103,47 @@ def demo_yolo8_ddp():
     # Clean up DDP
     dist.destroy_process_group()
 
+
+def parse_opt():
+    """
+    Parse command-line arguments for configuring YOLO model training
+
+    Args:
+        data (str, optional): Path to the dataset YAML file. Default is 'data/coco128.yaml'.
+        weights (list[str], optional): List of paths to model weight files. Default is 'yolov5s.pt'.
+        batch-size (int, optional): Batch size for inference. Default is 32.
+        imgsz (int, optional): Inference image size in pixels. Default is 640.
+        epochs (int, optional): Number of epochs to train the model. Default is 10.
+        model (str, optional): name of yolo model to train
+        iou_thres (float, optional): IoU threshold for Non-Max Suppression (NMS). Default is 0.6.
+        project (str, optional): Project directory to save results to. Default is 'runs/val'.
+        name (str, optional): Name of the directory to save results to. Default is 'exp'.
+        half (bool, optional): If set, uses FP16 half-precision inference. Default is False.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data", type=str, default="/Volumes/edav_dev_csels/towerscout_test_schema/towerscout_data/data.yaml", help="dataset.yaml path")
+    parser.add_argument("--model-arch", type=str, default="yolov5s.pt", help="model architecture")
+    parser.add_argument("--weights", nargs="+", type=str, default="yolov5s.pt", help="model path(s)")
+    parser.add_argument("--epochs", type=int, default=10, help="number of epochs"),
+    parser.add_argument("--batch-size", type=int, default=32, help="batch size")
+    parser.add_argument("--imgsz", "--img", "--img-size", type=int, default=640, help="inference size (pixels)")
+    parser.add_argument("--iou-thres", type=float, default=0.6, help="NMS IoU threshold")
+    parser.add_argument("--project", default="runs/val", help="save to project/name")
+    parser.add_argument("--name", default="exp", help="save to project/name")
+    parser.add_argument("--exist-ok", action="store_true", help="existing project/name ok, do not increment")
+    parser.add_argument("--half", action="store_true", help="use FP16 half-precision inference")
+    parser.add_argument("--dnn", action="store_true", help="use OpenCV DNN for ONNX inference")
+    parser.add_argument("--workers", type=int, default=2, help="max dataloader workers (per RANK in DDP mode)")
+
+    opt = parser.parse_args()
+    return opt
+
 if __name__ == "__main__":
     # Update a setting
     # Disable MLflow tracking by setting the environment variable
     settings.update({"mlflow": False})
-    demo_yolo8_ddp()
+    opt = parse_opt()
+    demo_yolo8_ddp(opt)
 
 
 
