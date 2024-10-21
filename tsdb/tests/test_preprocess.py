@@ -7,6 +7,6 @@ import pytest
 from tsdb.preprocessing.preprocess import data_augmentation
 
 
-def test_data_augmentation():
+def test_data_augmentation() -> None:
     transforms = data_augmentation()
-    assert isinstance(transforms, list), f"Expected a PySpark Column object, got {type(result)}"
+    assert isinstance(transforms, list), f"Expected a PySpark Column object, got {type(transforms)}"
