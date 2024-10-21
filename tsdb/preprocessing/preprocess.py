@@ -7,6 +7,10 @@ from petastorm.spark import SparkDatasetConverter, make_spark_converter
 
 from tsdb.preprocessing.functions import sum_column, sum_bytes
 
+import torch
+from torchvision.transforms import v2
+from torchvision.transforms import Compose
+
 
 def create_converter(
     dataframe, bytes_column: "ColumnOrName", sc: SparkContext, parallelism: int = 0
@@ -31,3 +35,19 @@ def create_converter(
     )
 
     return converter
+
+
+def data_augmentation() -> Compose:
+    """
+    Data Augmentation function to add label invariant transforms to training pipeline
+    Applies a series of transformations such as rotation, reflection, blur, and scaling
+    """
+    transform = Compose([
+        v2.ToImage(),
+        v2.RandomRotation(15),
+        v2.RandomHorizontalFlip(20),
+        v2.RandomVerticalFlip(20),
+        v2.GaussianNoise([0, 0.1]),
+    ])
+    return transform
+
