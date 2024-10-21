@@ -40,7 +40,7 @@ def create_converter(
 def data_augmentation(rotation_angle: int = 15, 
                       prob_H_flip: float = 0.2, 
                       prob_V_flip: float = 0.2, 
-                      prob_blur: [float, float] = [0.0, 0.1]) -> list:
+                      blur: [int, float] = [1, 0.1]) -> list:
     """
     Data Augmentation function to add label invariant transforms to training pipeline
     Applies a series of transformations such as rotation, horizontal and vertical flips, and Gaussian blur to each image
@@ -50,7 +50,7 @@ def data_augmentation(rotation_angle: int = 15,
         v2.RandomRotation(rotation_angle),
         v2.RandomHorizontalFlip(prob_H_flip),
         v2.RandomVerticalFlip(prob_V_flip),
-        v2.GaussianNoise(**prob_blur),
+        v2.GaussianBlur(kernel_size=blur[0], sigma=blur[1]),
     ]
     return transforms
 
