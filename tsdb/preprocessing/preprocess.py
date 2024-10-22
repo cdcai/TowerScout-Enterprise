@@ -46,7 +46,6 @@ def data_augmentation(rotation_angle: int = 15,
     Applies a series of transformations such as rotation, horizontal and vertical flips, and Gaussian blur to each image
     """
     transforms = [
-        v2.ToImage(),
         v2.RandomRotation(rotation_angle),
         v2.RandomHorizontalFlip(prob_H_flip),
         v2.RandomVerticalFlip(prob_V_flip),
