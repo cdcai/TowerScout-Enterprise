@@ -1,5 +1,6 @@
 # Databricks notebook source
 # MAGIC %pip install ultralytics
+# MAGIC %pip install efficientnet_pytorch
 
 # COMMAND ----------
 
@@ -52,7 +53,7 @@ yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model)
 batch_size = 32
 
 # seems like confusion matrix methods only work when the dataset is built with
-# mode="val" or else the minibatches wont have the key "ratio_pad" that is needed in some methods
+# mode="val" or else the minibatches wont have the key "ratio_pad" that is needed by some functions
 model.args.fraction = 0.00025 # fraction of dataset to use
 dataset = build_yolo_dataset(
     cfg=model.args, data=data, img_path=data["val"], batch=batch_size, mode="val"

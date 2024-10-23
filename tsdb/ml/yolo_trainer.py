@@ -10,22 +10,12 @@ from typing import Union
 from enum import Enum, auto
 
 from tsdb.ml.utils import OptimizerArgs
-
-class Steps(Enum):
-    TRAIN = auto()
-    VAL = auto()
-    TEST = auto()
-
+from tsdb.ml.model_trainer import Steps
 
 class YOLOLoss(Enum):
     box_loss = auto()
     BCE = auto()
     DLF = auto()
-
-"""
-Note that I have removed torch.nn.parallel.DistributedDataParallel (DDP) usage that was present in 
-Ultralytics since we use Hyperopt for distributed tuning and it's not clear how they will interact with each other
-"""
 
 def _prepare_batch(
     si: int, batch: Tensor, device: str
@@ -166,9 +156,15 @@ def inference_step(
 ) -> dict[str, float]:
     
     model.eval()
-    pred = model(minibatch["img"])  # for inference (non-dict input) ultralytics forward implementation retruns a tensor not the loss
+    pred = model(minibatch["img"])  # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
     return score(minibatch, pred, step, device, model.args)
 
+
+"""
+Model trainer class for the YOLO object detection model (DetectionModel class) from Ultralytics.
+Note that we have removed the torch.nn.parallel.DistributedDataParallel (DDP) usage that was present in 
+Ultralytics since we use Hyperopt for distributed tuning and it's not clear how nicely they will interact with each other.
+"""
 
 class YoloModelTrainer:
     def __init__(self, optimizer_args: OptimizerArgs, model: DetectionModel = None):
@@ -273,16 +269,20 @@ class YoloModelTrainer:
         """
         Preprocesses a batch of images for validation.
         Code adapted from preprocess method in: ultralytics/models/yolo/detect/val.py 
+        Note: We didn't include the self.args.multi_scale if statement from the source code
         """
         batch["img"] = batch["img"].to(self.device, non_blocking=True)
         batch["img"] = (batch["img"].half() if self.args.half else batch["img"].float()) / 255
         for k in ["batch_idx", "cls", "bboxes"]:
             batch[k] = batch[k].to(self.device)
-        # didn't include self.args.multi_scale if statement from source code
+
         return batch
 
     def optimizer_step(self):
-        """Perform a single step of the training optimizer with gradient clipping and EMA update."""
+        """
+        Perform a single step of the training optimizer with gradient clipping and EMA update.
+        Note: We didn't include the self.ema conditional from the source code
+        """
         self.scaler.unscale_(self.optimizer)  # unscale gradients
         torch.nn.utils.clip_grad_norm_(
             self.model.parameters(), max_norm=10.0
@@ -290,7 +290,6 @@ class YoloModelTrainer:
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.optimizer.zero_grad()
-        # removed self.ema conditional
 
     def training_step(
         self, minibatch: Union[Tensor, int, float, str], **kwargs
@@ -300,15 +299,16 @@ class YoloModelTrainer:
         # forward pass
         minibatch = self.preprocess_train(minibatch)
 
-        # Note criterion is implemented as a class in ultralytics
+        # Note: criterion is implemented as a class in ultralytics
         preds = self.model(minibatch["img"], augment=False)  # can also get loss directly by passing whole dict
+        
+        # Note: we are not including tloss variable b/c it seems to only be used for logging purposes
         self.loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
-        # not including tloss variable b/c doesn't seem to be used for backprop
 
         # backward pass
         self.scaler.scale(self.loss).backward()
 
-        # Note that in ultralytics, losses are accumulated between N batchs before calling optimizer_step
+        # Note: in ultralytics, losses are accumulated between N batchs before calling optimizer_step
         self.optimizer_step()
 
         loss_scores = {
