@@ -18,40 +18,10 @@ Licensed under CC-BY-NC-SA-4.0
   <title>TowerScout</title>
   <link rel="stylesheet" media="screen and (min-device-width: 1200px)" href="/css/ts_styles.css">
   <link rel="stylesheet" media="screen and (max-device-width: 1200px)" href="/css/ts_styles_mobile.css">
-</head>
+  </head>
 
 <body style="margin:0 0 0 0;">
-  <div id="about_div"
-    style="display:flex;z-index:2000;position:absolute; justify-content:center; align-items: center;top:0px; left:0px;width:100%;height:100%; background-color: white; opacity: 0.93;">
-    <div style="font-size: large;text-align: center;">
-      <p style="font-size: 6vw;">
-        TowerScout
-      </p>
-      (c) 2021 The TowerScout Team. All rights reserved. <br>
-      <br>
-      <p style="font-size: x-large;">
-        The TowerScout Team:
-      </p>
-      <a class="hover_inline" target="_blank" href="https://www.linkedin.com/in/karenkwong/">Karen Wong</a>,
-      <a class="hover_inline" target="_blank" href="https://www.linkedin.com/in/jia-lu-gracie-a8b5a71a/">Jia Lu</a>,
-      <a class="hover_inline" target="_blank" href="https://www.linkedin.com/in/gunnarmein/">Gunnar Mein</a>,
-      <a class="hover_inline" target="_blank" href="https://www.linkedin.com/in/thaddeussegura/">Thaddeus Segura</a><br>
-      <br>
-      <br>
-      <a class="hover" target="_blank" href='https://groups.ischool.berkeley.edu/TowerScout/'>Click here to learn more about TowerScout!</a>
-    </div>
-    <div id="logocred"
-      style="position:absolute; z-index:2001;bottom:0px;right:0px;margin-bottom: 20px;margin-right: 20px;">
-      <p style="font-size: small;">
-        Logo artwork:
-      </p>
-      <a class="hover_inline" style="font-size:small;" target="_blank"
-        href="https://www.instagram.com/lcrosetto_art/">Luca Crosetto</a>
-    </div>
-    <div id="logo" style="position:absolute; z-index:2000;right:0px; height:100%;overflow:hidden">
-      <img src="img/scout_color.png" style="height:100%;opacity:0.93;">
-    </div>
-  </div>
+
   <div id="fatal_div"
     style="display:none;z-index:2000;position:absolute; justify-content:center; align-items: center;top:0px; left:0px;width:100%;height:100%; background-color: lightgrey; opacity: 0.95; color:black">
     <div style="width:30%;height:12%">
@@ -83,8 +53,9 @@ Licensed under CC-BY-NC-SA-4.0
         <div id="searchBoxContainer" style="display:inline;">
         <input type="text" id="search" placeholder="Search ..."/> </div>
         <span style="float: right;" id="geometry">
-          <input type='text' id='radius' style='width:20%;vertical-align:10%'>&nbsp;m
+          <input type='text' id='radius' style='width:20%;vertical-align:10%'>&nbsp;
           <button onclick="circleBoundary()" id="radiusbutton" style="vertical-align:10%;">Circle</button>
+          <!-- <button onclick="getazmapTransactioncountjs(2)" id="radiusbutton1" style="vertical-align:10%;">GEt Transactions</button> -->
           <span
             style="display: inline-block; width:1px; height:80%; vertical-align:-8%; background:white; margin: 0 2px;">&nbsp;</span>
           <button onclick="drawnBoundary()" id="drawnbutton" style="vertical-align:10%;">Custom shape</button>
@@ -100,7 +71,8 @@ Licensed under CC-BY-NC-SA-4.0
     </div>
 
     <div id="fversion" class="fversion" style="text-align: right;">
-      <a class="hover" onclick="about()">About TowerScout</a>
+      <a class="hover" href="{{ url_for('about') }}" target="_blank">About TowerScout</a>
+      <label id="lblazmaptransactions" style="width: 100%; display: block;"></label>
     </div>
 
     <div class="fmodel" style="font-size:smaller; overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
@@ -206,7 +178,7 @@ Licensed under CC-BY-NC-SA-4.0
     </div>
   </div>
 
-
+  
 
   <script src="/js/jquery-3.5.1.min.js"></script>
   <script type='text/javascript' src='https://www.bing.com/api/maps/mapcontrol?callback=initBingMap&key={{bing_map_key}}'
@@ -214,7 +186,7 @@ Licensed under CC-BY-NC-SA-4.0
     </script>
   <script>
     let bak = "{{bing_map_key}}";
-    let dev = {{ dev }};
+    let dev = "{{dev}}";
   </script>
   <script src="/js/towerscout.js"></script>
 </body>

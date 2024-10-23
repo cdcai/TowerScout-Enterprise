@@ -21,6 +21,7 @@ const nyc = [-74.00820558171071, 40.71083794970947];
 
 // main state
 let bingMap = null;
+let vaAzureMap = null;
 let googleMap = null;
 let currentMap;
 let engines = {};
@@ -69,7 +70,7 @@ function about(aboutTotal) {
 }
 
 function aboutTimerFunc(aboutTotal) {
-  let adiv = document.getElementById("about_div");
+  // let adiv = document.getElementById("about_div");
 
   let op = aboutOpacity(aboutSecs, aboutTotal)
   //console.log(op, aboutSecs, aboutTotal)
@@ -78,8 +79,8 @@ function aboutTimerFunc(aboutTotal) {
     return;
   }
 
-  adiv.style.display = "flex";
-  adiv.style.opacity = op;
+  // adiv.style.display = "flex";
+  // adiv.style.opacity = op;
   aboutSecs += aboutIncrement / 1000;
   setTimeout(aboutTimerFunc, aboutInterval, aboutTotal);
 }
@@ -103,6 +104,7 @@ function initBingMap() {
       setMap(this);
     });
   }
+  getazmapTransactioncountjs(2);
 }
 
 
@@ -1061,7 +1063,7 @@ function getObjects(estimate) {
   if (Detection_detections.length > 0) {
     if (!window.confirm("This will erase current detections. Proceed?")) {
        // erase the previous set of towers and tiles
-  this.clearAll();
+       this.clearAll();
   return;
 }
   }
@@ -1115,6 +1117,8 @@ function getObjects(estimate) {
       }
       console.log("Number of tiles: " + result + ", estimated time: "
         + (Math.round(Number(result) * secsPerTile * 10) / 10) + " s");
+        // Get from Dev  Key Vault by default. Need to create secrets in the Prod Key Vault
+      
       // let nt = estimateNumTiles(currentMap.getZoom());
       // console.log("  Estimated tiles:" + nt);
       if (estimate) {
@@ -1140,6 +1144,30 @@ function getObjects(estimate) {
           console.log(e + ": "); disableProgress(0, 0);
         });
     });
+    
+    getazmapTransactioncountjs(2);
+}
+
+//get Azure map transaction count for the current month
+function getazmapTransactioncountjs(intEnv)
+{
+  param = intEnv
+  // fetch('/getazmaptransactions', { method: "POST", body:  JSON.stringify({ param: param }) })
+  fetch('/getazmaptransactions')
+    .then(response => {
+      
+      return response.text();
+    })
+    .then(data => {
+      // Assign the response value to a variable
+      const message = data; 
+      // console.log(message); // Log the value to the console
+      document.getElementById('lblazmaptransactions').innerText = message; // Display the string in the div
+  })
+    .catch(error => {
+      console.log(error);
+    });
+  
 }
 
 function processObjects(result, startTime) {
@@ -1868,7 +1896,7 @@ fillEngines();
 fillProviders();
 confSlider.value = Math.round(Detection_minConfidence * 100);
 
-about(0);
+// about(0);
 
 
 
