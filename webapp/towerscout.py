@@ -10,6 +10,7 @@
 #
 
 # import basic functionality
+
 import logging
 from ts_yolov5 import YOLOv5_Detector
 from ts_en import EN_Classifier
@@ -20,7 +21,7 @@ from ts_azmaps import AzureMap
 from ts_zipcode import Zipcode_Provider
 from ts_events import ExitEvents
 import ts_maps
-from flask import Flask, render_template, send_from_directory, request, session, Response
+from flask import Flask, render_template, send_from_directory, request, session, Response, jsonify
 from flask_session import Session
 from waitress import serve
 import json
@@ -39,6 +40,11 @@ import gc
 import datetime
 import sys
 from functools import reduce 
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+from ts_azmapmetrics import azTransactions
+
+
 
 dev = 0
 
@@ -158,13 +164,17 @@ Session(app)
 
 @app.route('/site/')
 def send_site_index():
-    return send_site('index.html')
+    return send_site('towerscout.html')
 
 
 @app.route('/site/<path:path>')
 def send_site(path):
     # print("site page requested:",path)
-    return send_from_directory('../TowerScoutSite', path)
+    return send_from_directory('/', path)
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
 
 # route for images
 
@@ -219,7 +229,10 @@ def map_func():
     #    pass
     #else:
     #    return send_from_directory('templates', "unauthorized.html")
-
+    global dev
+    if dev is None:
+        dev = 0
+        
     if dev == 1:
         session['tiles'] = 0
 
@@ -398,6 +411,8 @@ def get_objects():
         os.mkdir(tmpdirname)
         print("created tmp dir", tmpdirname)
 
+        # Images get uploaded to datalake witha unique directory name
+        # databricks feature - autoloader - writes detections with labels to Silver
         # retrieve tiles and metadata if available
         meta = map.get_sat_maps(tiles, loop, tmpdirname, tmpfilename)
         session['metadata'] = meta
@@ -413,7 +428,11 @@ def get_objects():
         for i, tile in enumerate(tiles):
             tile['filename'] = tmpdirname+"/"+tmpfilename+str(i)+".jpg"
 
+       
+        # 
         # detect all towers
+        # Sending a request to databricks with a url to the bronze
+
         results_raw = det.detect(tiles, exit_events, id(session), crop_tiles=crop_tiles, secondary=secondary_en)
         # abort if signaled
         if exit_events.query(id(session)):
@@ -620,6 +639,17 @@ def drawResult(r, im):
 
 #     return "ok"
 
+@ app.route('/getazmaptransactions', methods=['GET'])
+def getazmaptransactions():
+ try:
+  
+    result =  azTransactions.getAZTransactionCount(2)
+   
+    return result
+ except Exception as e:
+     logging.error(e)
+ except RuntimeError as e:
+     logging.error(e)
 
 # download results as dataset for formal training /testing
 @ app.route('/getdataset', methods=['POST'])
