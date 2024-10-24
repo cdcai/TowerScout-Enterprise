@@ -5,9 +5,10 @@ from torchvision import transforms, datasets
 from efficientnet_pytorch import EfficientNet
 from enum import Enum, auto
 from collections import namedtuple
+from typing import Protocol
 
 from tsdb.ml.models import TowerScoutModel
-from tsdb.ml.data_processing import transform_row, get_transform_spec, get_converter 
+from tsdb.ml.data_processing import transform_row, get_transform_spec, get_converter
 
 
 class Metrics(Enum):
@@ -17,6 +18,31 @@ class Steps(Enum):
     TRAIN = auto()
     VAL = auto()
     TEST = auto()
+
+
+class ModelTrainerType(Protocol):
+    """
+    A protocol that defines the interface for a model trainer
+    TODO: determine what other properties should be made required
+    """
+
+    @property
+    def model(self) -> nn.Module: 
+        # TODO: Correct the output type of this property
+        raise NotImplementedError
+
+    @property
+    def optimizer(self) -> torch.optim.Optimizer:
+        raise NotImplementedError
+    
+    def training_step(self, minibatch, **kwargs) -> dict[str, float]:
+        raise NotImplementedError
+
+    def validation_step(self, minibatch, **kwargs) -> dict[str, float]:
+        raise NotImplementedError
+    
+    def save_model(self) -> None:
+        raise NotImplementedError
 
 
 def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):

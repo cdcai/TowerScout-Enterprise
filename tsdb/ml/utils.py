@@ -90,3 +90,18 @@ class PromotionArgs:
     test_conv: SparkDatasetConverter = None
     client: MlflowClient = None
     logger: Logger = None
+
+
+@dataclass
+class OptimizerArgs:
+    """
+    A class to represent YOLO model optimizer arguements
+
+    Attributes:
+        optimizer_name: The name of optimzer to use SGD, Adam, etc
+        lr0: The initial learning rate
+        momentum: Momentum parameter
+    """
+    optimizer_name: str = "auto"
+    lr0: float = 0.001
+    momentum: float = 0.9
