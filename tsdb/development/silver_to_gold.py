@@ -52,7 +52,7 @@ def promote_silver_to_gold(
             FROM {catalog}.{schema}.{silver_table} AS silver
             JOIN temp_data AS temp
             ON silver.uuid = temp.uuid
-            WHERE silver.path in ({uuids});
+            WHERE silver.uuid in ({uuids});
             """
     try:
         cursor.execute(create_updates_view)
