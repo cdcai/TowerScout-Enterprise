@@ -20,9 +20,9 @@ def promote_silver_to_gold(
     """
 
     values = ", ".join(
-        [f"('{x}', '{y}', '{json.dumps(z)}')" for (x, y, z) in validated_data]
+        [f"('{uuid}', '{img_hash}', '{json.dumps(bboxes)}')" for (uuid, img_hash, bboxes) in validated_data]
     )
-    uuids = ", ".join([f"'{x}'" for (x, y, z) in validated_data])
+    uuids = ", ".join([f"'{uuid}'" for (uuid, img_hash, bboxes) in validated_data])
 
     connection = sql.connect(
         server_hostname="<host-name>", http_path="<http-path>", access_token="<token>"
@@ -30,13 +30,18 @@ def promote_silver_to_gold(
 
     cursor = connection.cursor()
 
-    query = "DROP VIEW IF EXISTS gold_updates;"
-    cursor.execute(query)
+    drop_existing_view = "DROP VIEW IF EXISTS gold_updates;"
+    try:
+        cursor.execute(drop_existing_view)
+    except:
+        cursor.close()
+        connection.close()
+        return 
 
     # create temp view containing validated data 
     # perform a join with silver table on uuid to get relevant information for image from silver table
     # using from_json to unpack bounding boxes
-    query = f"""
+    create_updates_view = f"""
             CREATE TEMPORARY VIEW gold_updates AS
             WITH temp_data(uuid, imgHash, bboxs) AS (
             VALUES
@@ -49,10 +54,15 @@ def promote_silver_to_gold(
             ON silver.uuid = temp.uuid
             WHERE silver.path in ({uuids});
             """
-    cursor.execute(query)
+    try:
+        cursor.execute(create_updates_view)
+    except:
+        cursor.close()
+        connection.close()
+        return 
 
     # merge temp view into gold table on image hash
-    query = f"""
+    merge_updates_into_gold = f"""
             MERGE INTO {catalog}.{schema}.{gold_table} AS target
             USING gold_updates AS source
             ON (target.imgHash = source.imgHash)
@@ -67,7 +77,12 @@ def promote_silver_to_gold(
             WHEN NOT MATCHED THEN
                 INSERT (bboxs, uuid, imgHash, imagePath, requestId, reviewedTime) VALUES (source.bboxs, source.uuid, source.imgHash, source.imagePath, source.requestId, source.userId, CURRENT_TIMESTAMP());
             """
-    cursor.execute(query)
+    try:
+        cursor.execute(merge_updates_into_gold)
+    except:
+        cursor.close()
+        connection.close()
+        return
 
     cursor.close()
     connection.close()
