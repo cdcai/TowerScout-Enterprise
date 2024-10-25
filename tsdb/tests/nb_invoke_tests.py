@@ -39,8 +39,4 @@ run_pytest_main([".", "-v", "-p", "no:cacheprovider"])
 
 # COMMAND ----------
 
-retcode = run_pytest_main(["./test_data_processing.py", "-v", "-p", "no:cacheprovider"])
-
-# COMMAND ----------
-
 
