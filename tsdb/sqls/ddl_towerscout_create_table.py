@@ -8,7 +8,7 @@
 # MAGIC USE SCHEMA towerscout;
 # MAGIC
 # MAGIC
-# MAGIC CREATE TABLE  IF NOT EXISTS gold_towerscout_image_reviewed (
+# MAGIC CREATE TABLE  IF NOT EXISTS gold_image_reviewed (
 # MAGIC   image_path STRING,
 # MAGIC   annotations ARRAY<STRUCT<label: INT, xmin: FLOAT, ymin: FLOAT, xmax: FLOAT, ymax: FLOAT>>,
 # MAGIC   dataset_type STRING)
