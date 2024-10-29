@@ -134,26 +134,30 @@ def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
     return images_train, images_test, images_val
 
 
-def split_datanolabel(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
+def train_test_val_split(
+    dataframe: DataFrame,
+    train_ratio: float|int,
+    test_ratio: float|int,
+    val_ratio: float|int,
+    seed: int=42
+) -> tuple[DataFrame, DataFrame, DataFrame]:
     """
-    Splits a Spark dataframe into train, test, and validation sets.
+    Splits a Spark dataframe into train, test, and validation sets using the provided ratios.
+    The ratios can be floats or integers, however; if the values do not sum to 1.0, randomSplit
+    will normalize them. The seed is used to ensure reproducibility.
 
     Args:
-        df (DataFrame): Input dataframe to be split.
+        dataframe (DataFrame): Input dataframe to be split.
+        train_ratio (float or int): The ratio of the train set.
+        test_ratio (float or int): The ratio of the test set.
+        val_ratio (float or int): The ratio of the validation set.
+        seed (int): The seed to use for randomSplit reproducibility
 
     Returns:
         tuple: A tuple containing the train, test, and validation dataframes.
     """
-    # TODO: Combine split_data and split_datanolabel into a single function
-    # and make them more robust
-
-    # split the dataframe into 3 sets
-    images_train = images.sample(fraction=0.8)
-    images_remaining = images.join(
-        images_train, on="path", how="leftanti"
-    )  # remaining from images
-    images_val = images_remaining.sample(fraction=0.5)  # 50% of images_remaining
-    images_test = images_remaining.join(
-        images_val, on="path", how="leftanti"
-    )  # remaining 50% from the images_remaining
-    return images_train, images_test, images_val
+    train_df, test_df, val_df = (
+        dataframe
+        .randomSplit([train_ratio, test_ratio, val_ratio], seed=seed)
+    )
+    return train_df, test_df, val_df
