@@ -50,7 +50,7 @@ class YOLOv5_Detector(PythonModel):
         )
 
     @classmethod
-    def from_uc_registry(cls, model_name: str, alias: str) -> Self:
+    def from_uc_registry(cls, model_name: str, alias: str, catalog: str, schema: str) -> Self:
         # IMPORTANT: when loading the model you must append the path to this directory to the system path so
         # Python looks there for the files/modules needed to load the yolov5 module
         client = MlflowClient()
@@ -68,7 +68,7 @@ class YOLOv5_Detector(PythonModel):
         except KeyError:
             print("YOLO version not found in model tags.")
 
-        yolo_dep_path = f"/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolo{yolo_version}_master"
+        yolo_dep_path = f"/Volumes/{catalog}/{schema}/misc/ultralytics_yolo{yolo_version}"
         sys.path.append(yolo_dep_path)
 
         registered_model = mlflow.pyfunc.load_model(

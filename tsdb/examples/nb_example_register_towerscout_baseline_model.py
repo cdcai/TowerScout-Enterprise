@@ -15,7 +15,15 @@ from webapp.ts_en import EN_Classifier
 
 # COMMAND ----------
 
-en_model_weight_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/en/b5_unweighted_best.pt"
+# set registry to be UC model registry
+mlflow.set_registry_uri("databricks-uc")
+
+catalog = "edav_dev_csels"
+schema = "towerscout"
+
+# COMMAND ----------
+
+en_model_weight_path = f"/Volumes/{catalog}/{schema}/misc/model_params/en/b5_unweighted_best.pt"
 en_model = EN_Classifier(en_model_weight_path)
 
 # COMMAND ----------
@@ -29,19 +37,11 @@ import os, glob, sys
 
 # COMMAND ----------
 
-# set registry to be UC model registry
-mlflow.set_registry_uri("databricks-uc")
-
-catalog = "edav_dev_csels"
-schema = "towerscout_test_schema"
-
-# COMMAND ----------
-
 yolo_dep_path = (
-    f"/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolov5_master"
+    f"/Volumes/{catalog}/{schema}/misc/yolov5"
 )
 
-model_weights_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/model_params/yolo/xl_250_best.pt"
+model_weights_path = f"/Volumes/{catalog}/{schema}/misc/model_params/yolo/xl_250_best.pt"
 
 # load YOLOv5 model
 model = torch.hub.load(
@@ -55,13 +55,13 @@ yolo_model = YOLOv5_Detector(model=model, batch_size=1)
 
 # COMMAND ----------
 
-img_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/test_images/"
+img_path = f"/Volumes/{catalog}/{schema}/misc/test_images/"
 
-jpg_files = glob.glob(os.path.join(img_path, "*.jpg"))
+png_files = glob.glob(os.path.join(img_path, "*.png"))
 
 # get 5 test images as np arrays
 x_test = np.array(
-    [np.asarray(Image.open(jpg_files[i]), dtype=np.float32) for i in range(5)]
+    [np.asarray(Image.open(png_files[i]), dtype=np.float32) for i in range(5)]
 )
 
 # COMMAND ----------
@@ -120,31 +120,32 @@ with mlflow.start_run() as run:
 
 # COMMAND ----------
 
-model_name = f"{catalog}.{schema}.towerscout_baseline_model"  # will be model name in UC
+# DBTITLE 1,Register baseline YOLO model
+model_name = f"{catalog}.{schema}.baseline"  # will be model name in UC
 
 registered_yolo_model_metadata = yolo_model.register_model(
     model_name, run_id, "base_yolov5_model"
 )
 
-
 # COMMAND ----------
 
+# DBTITLE 1,Register base EN model
 registered_en_model_metadata = mlflow.register_model(
     model_uri=f"runs:/{run_id}/base_EN_model",
-    name=f"{catalog}.{schema}.base_EN_model",
+    name=f"{catalog}.{schema}.base_en",
 )
 
 # COMMAND ----------
 
 ### Test retrieval
 # Identify test image
-img_path = "/Volumes/edav_dev_csels/towerscout_test_schema/test_volume/test_images/"
+img_path = f"/Volumes/{catalog}/{schema}/misc/test_images/"
 
-jpg_files = glob.glob(os.path.join(img_path, "*.jpg"))
+png_files = glob.glob(os.path.join(img_path, "*.png"))
 
 # get 5 test images as np arrays
 x_test = np.array(
-    [np.asarray(Image.open(jpg_files[i]), dtype=np.float32) for i in range(5)])
+    [np.asarray(Image.open(png_files[i]), dtype=np.float32) for i in range(5)])
 
 # COMMAND ----------
 
@@ -160,7 +161,3 @@ registered_en_model = mlflow.pyfunc.load_model(
 
 y_pred = registered_yolo_model.predict(x_test)
 print(y_pred)
-
-# COMMAND ----------
-
-
