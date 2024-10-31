@@ -30,12 +30,15 @@ en_model = EN_Classifier(en_model_weight_path)
 
 import mlflow
 from mlflow.models.signature import infer_signature
+from mlflow import MlflowClient
 import numpy as np
 import torch
 from PIL import Image
 import os, glob, sys
 
 # COMMAND ----------
+
+client = MlflowClient()
 
 yolo_dep_path = (
     f"/Volumes/{catalog}/{schema}/misc/yolov5"
@@ -121,19 +124,28 @@ with mlflow.start_run() as run:
 # COMMAND ----------
 
 # DBTITLE 1,Register baseline YOLO model
-model_name = f"{catalog}.{schema}.baseline"  # will be model name in UC
+yolo_model_name = f"{catalog}.{schema}.baseline"  # will be model name in UC
 
 registered_yolo_model_metadata = yolo_model.register_model(
-    model_name, run_id, "base_yolov5_model"
+    yolo_model_name, run_id, "base_yolov5_model"
 )
+
+alias = 'testing'
+yolo_model.set_model_alias(yolo_model_name, alias, registered_yolo_model_metadata.version)
 
 # COMMAND ----------
 
 # DBTITLE 1,Register base EN model
+en_model_name = f"{catalog}.{schema}.base_en"
+
 registered_en_model_metadata = mlflow.register_model(
     model_uri=f"runs:/{run_id}/base_EN_model",
-    name=f"{catalog}.{schema}.base_en",
+    name=en_model_name,
 )
+
+client.set_registered_model_alias(
+            name=en_model_name, alias=alias, version=registered_en_model_metadata.version
+        )
 
 # COMMAND ----------
 
@@ -151,7 +163,7 @@ x_test = np.array(
 
 # Retrieve models
 registered_yolo_model = mlflow.pyfunc.load_model(
-    model_uri=f"models:/{model_name}/11"
+    model_uri=f"models:/{yolo_model_name}/3" # can't load model by latest version in UC registry or else an error occurs
 )
 
 registered_en_model = mlflow.pyfunc.load_model(
