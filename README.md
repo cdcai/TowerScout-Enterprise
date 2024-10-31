@@ -23,3 +23,5 @@ trivial style nitpicks.
 _pip install pre-commit_
 
 Run _pre-commit install_ to setup the git hook scripts. Now _pre-commit_ will run automatically on a _git commit_
+
+Run _pip install pylint_ to install
