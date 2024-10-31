@@ -25,3 +25,5 @@ _pip install pre-commit_
 Run _pre-commit install_ to setup the git hook scripts. Now _pre-commit_ will run automatically on a _git commit_
 
 Run _pip install pylint_ to install
+It's highly recommended to run pylint on any files you have edited before committing. PyLint helps standardize code
+format and will warn of any issues. It will not throw an error.

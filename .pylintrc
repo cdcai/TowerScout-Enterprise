@@ -2,8 +2,8 @@
 max-nested-blocks=4
 
 [FORMAT]
-max-line-length=79
 single-line-if-stmt=no
+indent-string='    '
 
 [VARIABLES]
 init-import=no
