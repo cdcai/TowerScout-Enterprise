@@ -24,4 +24,6 @@ repos:
     -   id: mypy
         args: [--config-file=./mypy.ini]
 
+
+
 fail_fast: true
