@@ -1,4 +1,3 @@
-# Databricks notebook source
 #
 # TowerScout
 # A tool for identifying cooling towers from satellite and aerial imagery

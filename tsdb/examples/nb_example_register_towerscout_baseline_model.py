@@ -7,18 +7,27 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./ts_yolov5
-
-# COMMAND ----------
+import mlflow
+from mlflow.models.signature import infer_signature
+from mlflow import MlflowClient
+from torchvision import transforms
+import numpy as np
+import torch
+from PIL import Image
+import os, glob, sys
 
 from webapp.ts_en import EN_Classifier
+from tsdb.utils.uc import CatalogInfo
+from tsdb.examples.ts_yolov5 import YOLOv5_Detector
 
 # COMMAND ----------
 
 # set registry to be UC model registry
 mlflow.set_registry_uri("databricks-uc")
+client = MlflowClient()
 
-catalog = "edav_dev_csels"
+catalog_info = CatalogInfo.from_spark_config(spark)
+catalog = catalog_info.name
 schema = "towerscout"
 
 # COMMAND ----------
@@ -27,18 +36,6 @@ en_model_weight_path = f"/Volumes/{catalog}/{schema}/misc/model_params/en/b5_unw
 en_model = EN_Classifier(en_model_weight_path)
 
 # COMMAND ----------
-
-import mlflow
-from mlflow.models.signature import infer_signature
-from mlflow import MlflowClient
-import numpy as np
-import torch
-from PIL import Image
-import os, glob, sys
-
-# COMMAND ----------
-
-client = MlflowClient()
 
 yolo_dep_path = (
     f"/Volumes/{catalog}/{schema}/misc/yolov5"
@@ -62,10 +59,17 @@ img_path = f"/Volumes/{catalog}/{schema}/misc/test_images/"
 
 png_files = glob.glob(os.path.join(img_path, "*.png"))
 
+# define torch transform
+transform = transforms.Compose(
+            [
+                transforms.Resize(640),
+                transforms.ToTensor(),
+            ]
+        )
+
 # get 5 test images as np arrays
-x_test = np.array(
-    [np.asarray(Image.open(png_files[i]), dtype=np.float32) for i in range(5)]
-)
+x_test = np.array([np.array(transform(Image.open(png_files[i]).convert("RGB"))) for i in range(35)])
+
 
 # COMMAND ----------
 
@@ -104,7 +108,7 @@ with mlflow.start_run() as run:
     # log model as custom model using pyfunc flavor. Note that the model must inheret from PythonModel Mlflow class
     mlflow.pyfunc.log_model(
         python_model=yolo_model,
-        artifact_path="base_yolov5_model",
+        artifact_path="yolo",
         signature=yolo_sig,
         pip_requirements=[
             "ultralytics==8.2.92",
@@ -116,7 +120,7 @@ with mlflow.start_run() as run:
     )
     mlflow.pytorch.log_model(
         pytorch_model=en_model,
-        artifact_path="base_EN_model",
+        artifact_path="efficientnet",
         signature=en_sig,
     )
     
@@ -124,22 +128,22 @@ with mlflow.start_run() as run:
 # COMMAND ----------
 
 # DBTITLE 1,Register baseline YOLO model
-yolo_model_name = f"{catalog}.{schema}.baseline"  # will be model name in UC
+yolo_model_name = f"{catalog}.{schema}.YOLO"  # will be model name in UC
 
 registered_yolo_model_metadata = yolo_model.register_model(
-    yolo_model_name, run_id, "base_yolov5_model"
+    yolo_model_name, run_id, "yolo"
 )
 
-alias = 'testing'
+alias = 'baseline'
 yolo_model.set_model_alias(yolo_model_name, alias, registered_yolo_model_metadata.version)
 
 # COMMAND ----------
 
 # DBTITLE 1,Register base EN model
-en_model_name = f"{catalog}.{schema}.base_en"
+en_model_name = f"{catalog}.{schema}.efficientnet"
 
 registered_en_model_metadata = mlflow.register_model(
-    model_uri=f"runs:/{run_id}/base_EN_model",
+    model_uri=f"runs:/{run_id}/efficientnet",
     name=en_model_name,
 )
 
@@ -149,25 +153,13 @@ client.set_registered_model_alias(
 
 # COMMAND ----------
 
-### Test retrieval
-# Identify test image
-img_path = f"/Volumes/{catalog}/{schema}/misc/test_images/"
-
-png_files = glob.glob(os.path.join(img_path, "*.png"))
-
-# get 5 test images as np arrays
-x_test = np.array(
-    [np.asarray(Image.open(png_files[i]), dtype=np.float32) for i in range(5)])
-
-# COMMAND ----------
-
 # Retrieve models
 registered_yolo_model = mlflow.pyfunc.load_model(
-    model_uri=f"models:/{yolo_model_name}/3" # can't load model by latest version in UC registry or else an error occurs
+    model_uri=f"runs:/{run_id}/yolo" # can't load model by latest version in UC registry or else an error occurs
 )
 
 registered_en_model = mlflow.pyfunc.load_model(
-    model_uri=f"runs:/{run_id}/base_EN_model")
+    model_uri=f"runs:/{run_id}/efficientnet")
 
 # COMMAND ----------
 
