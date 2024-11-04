@@ -14,11 +14,10 @@
 import sys
 import numpy as np
 import mlflow
-from mlflow import MlflowClient
-from mlflow.entities.model_registry import ModelVersion
 from torch import nn
 from PIL import Image
-from webapp.ts_en import EN_Classifier
+from tsdb.ml.efficientnet import EN_Classifier
+from tsdb.ml.utils import get_model_tags, YOLOv5Detection
 from pyspark.sql.types import (
     StructType,
     StructField,
@@ -32,7 +31,6 @@ class YOLOv5_Detector:
     def __init__(self, model: nn.Module, batch_size: int):
         self.model = model
         self.batch_size = batch_size
-        self.client = MlflowClient()
 
         # follows the InferenceModelType protocol
         self.return_type = StructType(
@@ -50,18 +48,13 @@ class YOLOv5_Detector:
 
     @classmethod
     def from_uc_registry(cls, model_name: str, alias: str, batch_size: int):
+        """
+        Create YOLOv5_Detector object using a registered model from UC Model Registry
+        """
         # IMPORTANT: when loading the model you must append the path to this directory to the system path so
         # Python looks there for the files/modules needed to load the yolov5 module
-        client = MlflowClient()
+        model_tags = get_model_tags(model_name, alias)
         catalog, schema, _ = model_name.split(".")
-        model_version_info = client.get_model_version_by_alias(
-            name=model_name, alias=alias
-        )
-        model_version = model_version_info.version
-        model_version_details = client.get_model_version(
-            name=model_name, version=model_version
-        )
-        model_tags = model_version_details.tags
 
         try:
             yolo_version = model_tags["yolo_version"]
@@ -79,9 +72,9 @@ class YOLOv5_Detector:
 
     def predict(
         self,
-        model_input,
+        model_input: list[Image],
         secondary: EN_Classifier = None,
-    ) -> list[dict[str, float]]:
+    ) -> list[list[YOLOv5Detection]]:
         results = []
         count = 0
 
