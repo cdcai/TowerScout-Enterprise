@@ -8,25 +8,29 @@
 from azure.identity import ClientSecretCredential
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
+import json
+import os
 
 
 class devSecrets:
     def getSecret(secret_name):
      
     #  SP info to access Key Vault
-     tenant_id = '9ce70869-60db-44fd-abe8-d2767077fc8f'
-     client_id = '53807466-0da1-4622-8e24-096d55bd3f3e'
-     client_secret = 'wxK8Q~rwCLgCZmkVb7qgvV3wLBYmMSDOCzCFPbLO'
-     key_vault_url = "https://cselstowerscrtdevkv01.vault.azure.net/"
+     
+     # Read the json config file
+     with open('config.development.json', 'r') as file:
+       data = json.load(file)  # Load the JSON data into a Python dictionary
 
-     # Initialize the credential
-     credential = DefaultAzureCredential()
+       tenant_id = data['tenant_id']
+       client_id = data['client_id']
+       client_secret = data['client_secret']
+       key_vault_url = data['key_vault_url'] 
      # Get the access token for the Key Vault
      credential = ClientSecretCredential(tenant_id, client_id, client_secret)
      # token = credential.get_token("https://management.azure.com/.default")
      # Create a SecretClient
      client = SecretClient(vault_url=key_vault_url, credential=credential)
-    #  print(client.get_secret(secret_name).value)
+     # print(client.get_secret(secret_name).value)
      return client.get_secret(secret_name).value
 
 class prodSecrets:
