@@ -26,6 +26,10 @@
 
 # COMMAND ----------
 
+!pip install efficientnet-pytorch ultralytics
+
+# COMMAND ----------
+
 # MLflow for model management
 import mlflow
 
@@ -44,7 +48,7 @@ import pandas as pd
 
 # Spark SQL functions and types
 from pyspark.sql.functions import col, pandas_udf, PandasUDFType
-from pyspark.sql.types import StructType
+from pyspark.sql.types import StructType, StructField, ArrayType, FloatType, IntegerType, StringType, BooleanType
 from pyspark.sql import DataFrame
 
 # Data classes for structured data
@@ -61,14 +65,6 @@ from PIL import Image
 import os
 import sys
 import io
-
-# COMMAND ----------
-
-# MAGIC %run ./utils
-
-# COMMAND ----------
-
-# MAGIC %run ./nb_models
 
 # COMMAND ----------
 
@@ -93,15 +89,10 @@ else:
 # COMMAND ----------
 
 # set schema and table to read from, set batch size for number of examples to perform inference on per batch
-dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
+dbutils.widgets.text("source_schema", defaultValue="towerscout")
 dbutils.widgets.text("source_table", defaultValue="image_metadata")
-dbutils.widgets.text("batch_size", defaultValue="5")
+dbutils.widgets.text("batch_size", defaultValue="5") # Randomly picked a number
 dbutils.widgets.dropdown("mlflow-alias", "production", ["production", "staging"])
-
-# COMMAND ----------
-
-# set registry to be UC model registry
-mlflow.set_registry_uri("databricks-uc")
 
 # COMMAND ----------
 
@@ -128,6 +119,7 @@ def get_bronze_images(
 
 from tsdb.utils.uc import CatalogInfo
 from tsdb.utils.mlflow import MLFlowHelper
+from tsdb.ml.models import YOLOv5_Detector
 
 # COMMAND ----------
 
@@ -144,12 +136,12 @@ alias = dbutils.widgets.get("mlflow-alias")
 
 model_registry = MLFlowHelper(
    catalog=catalog_info.name,
-   schema=schema
+   schema="towerscout"
 )
 
 # Create a dropdown widget for model selection
 model_options = list(model_registry.registered_models.keys())
-dbutils.widgets.dropdown("model", "towerscout_model", model_options)
+dbutils.widgets.dropdown("model", "baseline", model_options)
 
 # table stuff
 table_name = f"{catalog_info.name}.{schema}.{source_table}"
@@ -162,20 +154,11 @@ if debug_mode:
 # COMMAND ----------
 
 # DBTITLE 1,Get mode from registry
-# Purpose: Load a model from the model registry based on user selection and prepare it for distributed inference.
-
-# Construct model name and path based on user selection
-model_name = f"{catalog}.{schema}.{dbutils.widgets.get('model')}"
-
-# Get alias to look up model by
-alias = dbutils.widgets.get('mlflow-alias')
-
 # Load model from model registry
 # The model is expected to adhere to the InferenceModelType protocol
-ts_model = mlflow.pytorch.load_model(model_uri=f"models:/{model_name}@{alias}")
-
-# Define the return type for the inference UDF
-return_type = StructType([StructField("logits", ArrayType(ArrayType(FloatType())), True)])
+model_name = model_registry.registered_models["baseline"].name
+alias = "testing"
+ts_model = YOLOv5_Detector.from_uc_registry(model_name=model_name, alias="testing")
 
 # COMMAND ----------
 
@@ -217,6 +200,46 @@ class TowerScoutDataset(Dataset):
 
 # COMMAND ----------
 
+import torch
+from typing import Protocol
+from pyspark.sql.types import StructType
+from torch import Tensor
+from torch import nn
+
+
+def instantiate_inference_model(model: nn.Module) -> nn.Module:
+    # Happens in memory but double check
+    model.eval()
+    if torch.cuda.is_available():
+        model.cuda()
+
+    return model
+
+
+class InferenceModelType(Protocol):
+    """
+    A model class to wrap the model and provide the required methods to run
+    distributed inference
+    TODO: model instantiation logic should be moved to the model class
+    """
+
+    @property
+    def model(self) -> nn.Module:
+        raise NotImplementedError
+
+    @property
+    def return_type(self) -> StructType:
+        raise NotImplementedError
+
+    def __call__(self, input) -> Tensor:  # dunder methods
+        raise NotImplementedError
+
+    def preprocess_input(self, input) -> Tensor:
+        # torchvision.transforms
+        raise NotImplementedError
+
+# COMMAND ----------
+
 # DBTITLE 1,UDF for distributed inference
 # Purpose: Define a pandas UDF for distributed inference with a PyTorch model.
 # This function creates a UDF that can be used to perform batch inference on a Spark DataFrame column.
@@ -254,9 +277,27 @@ def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: Str
                 # Perform inference on batch
                 output = model(image_batch)
                 predicted_labels = output.tolist()
-                yield pd.DataFrame(predicted_labels)
+                print(predicted_labels)
+                yield pd.Series(predicted_labels)
 
     return pandas_udf(return_type, PandasUDFType.SCALAR_ITER)(predict)
+
+# COMMAND ----------
+
+df = images.toPandas()
+
+# COMMAND ----------
+
+# Create dataset object to apply transformations
+dataset: Dataset = TowerScoutDataset(list(df["content"]))
+# Create PyTorch DataLoader
+loader = DataLoader(dataset, batch_size=4)
+for image_batch in loader:
+    print(image_batch.size())
+    # Perform inference on batch
+    output = ts_model.predict(image_batch)
+    print(output)
+    break
 
 # COMMAND ----------
 
@@ -266,8 +307,21 @@ def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: Str
 # retrieve batch size
 batch_size = int(dbutils.widgets.get("batch_size"))
 
+yolo_return_type = ArrayType(
+    StructType([
+        StructField("x1", FloatType(), True),
+        StructField("y1", FloatType(), True),
+        StructField("x2", FloatType(), True),
+        StructField("y2", FloatType(), True),
+        StructField("conf", FloatType(), True),
+        StructField("class", IntegerType(), True),
+        StructField("class_name", StringType(), True),
+        StructField("secondary", BooleanType(), True)
+    ])
+)
+
 # instantiate inference udf
-inference_udf = ts_model_udf(model_fn=lambda: ts_model, batch_size=batch_size, return_type=return_type)
+inference_udf = ts_model_udf(model_fn=lambda: ts_model, batch_size=batch_size, return_type=yolo_return_type)
 
 # COMMAND ----------
 
@@ -283,3 +337,7 @@ predictions = images.withColumn("prediction", inference_udf(col("content")))
 # The display function is used to render the DataFrame in a rich format.
 
 display(predictions)
+
+# COMMAND ----------
+
+
