@@ -42,9 +42,8 @@ schema = "towerscout"
 # DBTITLE 1,Set up AWS EN model
 en_model_weight_path = f"/Volumes/{catalog}/{schema}/misc/model_params/en/b5_unweighted_best.pt"
 
-# must download pretrained weights because the architecture of the pretrained model does not match
-# the weights in the volume since the architecture (in particualr the head) is different
-en_model = EfficientNet.from_pretrained(model_name='efficientnet-b5')
+# Use from_name instead of from_pretrained to avoid downloading pretrained weights
+en_model = EfficientNet.from_name(model_name='efficientnet-b5')
 
 en_model._fc = nn.Sequential(
             nn.Linear(2048, 512), #b5
