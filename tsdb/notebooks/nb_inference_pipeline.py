@@ -36,35 +36,30 @@ import mlflow
 # IO operations
 import io
 
-# Type hinting
-from typing import Protocol, Any, Iterable, Generator
-
 # PyTorch for deep learning
 import torch
-from torch import nn, Tensor
 
 # Data manipulation
 import pandas as pd
 
 # Spark SQL functions and types
-from pyspark.sql.functions import col, pandas_udf, PandasUDFType
+from pyspark.sql.functions import col
 from pyspark.sql.types import StructType, StructField, ArrayType, FloatType, IntegerType, StringType, BooleanType
-from pyspark.sql import DataFrame
-
-# Data classes for structured data
-from dataclasses import dataclass
 
 # PyTorch utilities for data handling
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-
-# Image processing
-from PIL import Image
 
 # OS and system operations
 import os
 import sys
-import io
+
+from tsdb.ml.data_processing import get_bronze_images
+from tsdb.utils.uc import CatalogInfo
+from tsdb.utils.mlflow import MLFlowHelper
+from tsdb.ml.infer import ts_model_udf
+from tsdb.ml.data_processing import TowerScoutDataset
+from tsdb.ml.efficientnet import EN_classifier
+from tsdb.ml.detections import YOLOv5_Detector
 
 # COMMAND ----------
 
@@ -93,33 +88,6 @@ dbutils.widgets.text("source_schema", defaultValue="towerscout")
 dbutils.widgets.text("source_table", defaultValue="image_metadata")
 dbutils.widgets.text("batch_size", defaultValue="5") # Randomly picked a number
 dbutils.widgets.dropdown("mlflow-alias", "production", ["production", "staging"])
-
-# COMMAND ----------
-
-# Purpose: Define a function to retrieve images from a specified Delta table and return them as a Spark DataFrame.
-
-def get_bronze_images(
-    table_name: str, columns: list[str]
-) -> DataFrame:
-    """
-    Retrieve images from a Delta table.
-
-    Parameters:
-    table_name (str): The name of the table to read from.
-    columns (list[str]): The list of columns to select.
-
-    Returns:
-    DataFrame: A Spark DataFrame containing the selected columns from the table.
-    """
-    # Read the Delta table and select the specified columns
-    images = spark.read.format("delta").table(table_name).select(columns)
-    return images
-
-# COMMAND ----------
-
-from tsdb.utils.uc import CatalogInfo
-from tsdb.utils.mlflow import MLFlowHelper
-from tsdb.ml.models import YOLOv5_Detector
 
 # COMMAND ----------
 
@@ -157,130 +125,14 @@ if debug_mode:
 # Load model from model registry
 # The model is expected to adhere to the InferenceModelType protocol
 model_name = model_registry.registered_models["baseline"].name
-alias = "testing"
-ts_model = YOLOv5_Detector.from_uc_registry(model_name=model_name, alias="testing")
+alias = "aws"
+ts_model = YOLOv5_Detector.from_uc_registry(model_name=model_name, alias=alias)
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC # UDF for inference
 # MAGIC
-
-# COMMAND ----------
-
-# DBTITLE 1,Dataset class
-@dataclass
-class TowerScoutDataset(Dataset):
-    """
-    Converts image contents into a PyTorch Dataset with preprocessing from nb_model_trainer_development transform_row method.
-    """
-    contents: Iterable[Any] = None
-
-    def __len__(self) -> int:
-        return len(self.contents)
-
-    def __getitem__(self, index) -> Tensor:
-        return self._preprocess(self.contents[index])
-
-    def _preprocess(self, content) -> Tensor:
-        """
-        Preprocesses the input image content
-
-        See transform_row method in nb_model_trainer_development nb
-        """
-        image = Image.open(io.BytesIO(content))
-        # maybe make transform a callable argument to func/class
-        transform = transforms.Compose(
-            [
-                transforms.Resize(128),
-                transforms.ToTensor(),
-            ]
-        )
-        return transform(image)
-
-# COMMAND ----------
-
-import torch
-from typing import Protocol
-from pyspark.sql.types import StructType
-from torch import Tensor
-from torch import nn
-
-
-def instantiate_inference_model(model: nn.Module) -> nn.Module:
-    # Happens in memory but double check
-    model.eval()
-    if torch.cuda.is_available():
-        model.cuda()
-
-    return model
-
-
-class InferenceModelType(Protocol):
-    """
-    A model class to wrap the model and provide the required methods to run
-    distributed inference
-    TODO: model instantiation logic should be moved to the model class
-    """
-
-    @property
-    def model(self) -> nn.Module:
-        raise NotImplementedError
-
-    @property
-    def return_type(self) -> StructType:
-        raise NotImplementedError
-
-    def __call__(self, input) -> Tensor:  # dunder methods
-        raise NotImplementedError
-
-    def preprocess_input(self, input) -> Tensor:
-        # torchvision.transforms
-        raise NotImplementedError
-
-# COMMAND ----------
-
-# DBTITLE 1,UDF for distributed inference
-# Purpose: Define a pandas UDF for distributed inference with a PyTorch model.
-# This function creates a UDF that can be used to perform batch inference on a Spark DataFrame column.
-
-def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: StructType) -> DataFrame:
-    """
-    A pandas UDF for distributed inference with a PyTorch model.
-
-    Args:
-        model_fn (InferenceModelType): The PyTorch model.
-        batch_size (int): Batch size for the DataLoader.
-        return_type (StructType): Return type for the UDF.
-
-    Returns:
-        DataFrame: DataFrame with predictions.
-    """
-    @torch.no_grad()
-    def predict(content_series_iter: Iterable[Any]):
-        """
-        Predict function to be used within the pandas UDF.
-
-        Args:
-            content_series_iter: Iterator over content series.
-
-        Yields:
-            DataFrame: DataFrame with predicted labels.
-        """
-        model = model_fn()  # Load the model
-        for content_series in content_series_iter:
-            # Create dataset object to apply transformations
-            dataset: Dataset = TowerScoutDataset(list(content_series))
-            # Create PyTorch DataLoader
-            loader = DataLoader(dataset, batch_size=batch_size)
-            for image_batch in loader:
-                # Perform inference on batch
-                output = model(image_batch)
-                predicted_labels = output.tolist()
-                print(predicted_labels)
-                yield pd.Series(predicted_labels)
-
-    return pandas_udf(return_type, PandasUDFType.SCALAR_ITER)(predict)
 
 # COMMAND ----------
 
@@ -337,7 +189,3 @@ predictions = images.withColumn("prediction", inference_udf(col("content")))
 # The display function is used to render the DataFrame in a rich format.
 
 display(predictions)
-
-# COMMAND ----------
-
-

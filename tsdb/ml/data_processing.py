@@ -1,5 +1,7 @@
 import io
 from functools import partial
+from typing import Any, Iterable
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -14,9 +16,35 @@ from pyspark.sql import DataFrame
 from pyspark.context import SparkContext
 import pyspark.sql.functions as F
 
+from torch.utils.data import Dataset
+
 from tsdb.preprocessing.utils import cast_to_column
 from tsdb.preprocessing.transformations import compute_bytes
 from tsdb.preprocessing.preprocess import create_converter
+
+
+@dataclass
+class TowerScoutDataset(Dataset):
+    """
+    Converts image contents into a PyTorch Dataset with preprocessing from nb_model_trainer_development transform_row method.
+    """
+    contents: Iterable[Any] = None
+
+    def __len__(self) -> int:
+        return len(self.contents)
+
+    def __getitem__(self, index) -> Image:
+        return self._preprocess(self.contents[index])
+
+    def _preprocess(self, content) -> Image:
+        """
+        Preprocesses the input image content
+
+        See transform_row method in nb_model_trainer_development nb
+        """
+        image = Image.open(io.BytesIO(content)).convert("RGB")
+
+        return image
 
 
 def transform_row(batch_pd):
@@ -161,3 +189,21 @@ def train_test_val_split(
         .randomSplit([train_ratio, test_ratio, val_ratio], seed=seed)
     )
     return train_df, test_df, val_df
+
+
+def get_bronze_images(
+    table_name: str, columns: list[str]
+) -> DataFrame:
+    """
+    Retrieve images from a Delta table.
+
+    Parameters:
+    table_name (str): The name of the table to read from.
+    columns (list[str]): The list of columns to select.
+
+    Returns:
+    DataFrame: A Spark DataFrame containing the selected columns from the table.
+    """
+    # Read the Delta table and select the specified columns
+    images = spark.read.format("delta").table(table_name).select(columns)
+    return images
