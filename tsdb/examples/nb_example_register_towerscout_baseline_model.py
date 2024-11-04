@@ -12,20 +12,17 @@ dbutils.library.restartPython() # need this if on GPU
 import mlflow
 from mlflow import MlflowClient
 from mlflow.models.signature import ModelSignature 
-from mlflow.types import Schema, ColSpec, DataType, ParamSchema, ParamSpec
-from torchvision import transforms
+from mlflow.types import Schema, ColSpec, DataType
 import torch.nn as nn
 from efficientnet_pytorch import EfficientNet
-import numpy as np
 import torch
 from PIL import Image
 import cv2 
-import pandas as pd
-import os, glob, sys
+import os, glob
 
-from webapp.ts_en import EN_Classifier
 from tsdb.utils.uc import CatalogInfo
-from tsdb.examples.ts_yolov5 import YOLOv5_Detector
+from tsdb.ml.detections import YOLOv5_Detector
+from tsdb.ml.efficientnet import EN_Classifier
 
 # COMMAND ----------
 
@@ -39,18 +36,29 @@ schema = "towerscout"
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC #### Initializing model objects to perform initial model logging and registration 
+# MAGIC If you intend to fine tune the EN model you may need a 
+# MAGIC proxy connection which may not be available in production.
+
+# COMMAND ----------
+
 # DBTITLE 1,Set up AWS EN model
 en_model_weight_path = f"/Volumes/{catalog}/{schema}/misc/model_params/en/b5_unweighted_best.pt"
 
 # Use from_name instead of from_pretrained to avoid downloading pretrained weights
-en_model = EfficientNet.from_name(model_name='efficientnet-b5')
+en_model = EfficientNet.from_name(model_name='efficientnet-b5', include_top=True)
 
 en_model._fc = nn.Sequential(
             nn.Linear(2048, 512), #b5
             nn.Linear(512, 1)
         )
 
-checkpoint = torch.load(en_model_weight_path)
+if torch.cuda.is_available():
+    checkpoint = torch.load(en_model_weight_path)
+else:
+    checkpoint = torch.load(en_model_weight_path, map_location=torch.device('cpu'))
+
 en_model.load_state_dict(checkpoint)
 en_model.eval()
 
@@ -81,13 +89,13 @@ with mlflow.start_run() as run:
     # using DataType.binary as the input schema type allows us to use any python object
     # but it seems the only way to get this to work is to make the input data a 
     # pd dataframe with a column named "images" and the value is the image data...
-    input_schema = Schema([ ColSpec(DataType.binary, name="images") ]) # Create the signature
-    output_schema = Schema([ ColSpec(DataType.binary, name="outputs") ]) # Create the signature
+    input_schema = Schema([ColSpec(DataType.binary, name="images")]) # Create the signature
+    output_schema = Schema([ColSpec(DataType.binary, name="outputs")]) # Create the signature
 
     yolo_sig = ModelSignature(inputs=input_schema, outputs=output_schema)
     en_sig = ModelSignature(inputs=input_schema, outputs=output_schema)
 
-    # log model as custom model using pyfunc flavor. Note that the model must inheret from PythonModel Mlflow class
+    # log model as custom model using pytorch flavor. Note that the model must inheret from PythonModel Mlflow class
     mlflow.pytorch.log_model(
         pytorch_model=yolo_model,
         artifact_path="yolo_autoshape",
@@ -109,28 +117,36 @@ with mlflow.start_run() as run:
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC #### Registering models
+# MAGIC
+# MAGIC Note that we give the models the alias's baseline and aws. The alias aws indicates that these models use the weights used by the models currently in use by towerscout in AWS. The alias baseline will indicate that these models are currently the models being used in production by towerscout. Lastly the tag yolo_version for the YOLO model is meant to indicate which yolo version we are using. In this case the model in AWS is using version 5 so we set the tag value to "v5".
+
+# COMMAND ----------
+
 # DBTITLE 1,Register AWS YOLO model
 yolo_model_name = f"{catalog}.{schema}.yolo_autoshape"  # will be model name in UC
 
 registered_yolo_model_metadata = mlflow.register_model(
-     model_uri=f"runs:/{run_id}/yolo_autoshape",
+    model_uri=f"runs:/{run_id}/yolo_autoshape",
     name=yolo_model_name,
 )
+
 
 aliases = ["baseline", "aws"]
 
 for alias in aliases:
     client.set_registered_model_alias(
-                name=yolo_model_name, alias=alias, version=registered_yolo_model_metadata.version
-            )
+        name=yolo_model_name, alias=alias, version=registered_yolo_model_metadata.version
+    )
 
 # set yolo version as a tag
 client.set_model_version_tag(
-            name=yolo_model_name,
-            version=registered_yolo_model_metadata.version,
-            key="yolo_version",
-            value="v5",
-        )
+    name=yolo_model_name,
+    version=registered_yolo_model_metadata.version,
+    key="yolo_version",
+    value="v5",
+)
 
 # COMMAND ----------
 
@@ -144,25 +160,28 @@ registered_en_model_metadata = mlflow.register_model(
 
 for alias in aliases:
     client.set_registered_model_alias(
-                name=en_model_name, alias=alias, version=registered_en_model_metadata.version
-            )
-
-# COMMAND ----------
-
-# Retrieve models
-alias = 'aws'
-
-registered_en_model = mlflow.pytorch.load_model(
-    model_uri=f"models:/{en_model_name}@{alias}"
+        name=en_model_name, alias=alias, version=registered_en_model_metadata.version
     )
 
 # COMMAND ----------
 
-yolo_detector = YOLOv5_Detector.from_uc_registry(model_name=yolo_model_name, alias='aws', batch_size=16)
+# MAGIC %md
+# MAGIC #### Load models for inference use
 
-# need to modify this class to take the model as input instead of weigths path, among other things that need to change...
-en_classifier = EN_Classifier(en_model_weight_path) 
-en_classifier.model = registered_en_model
+# COMMAND ----------
+
+alias = "aws"
+yolo_model_name = f"{catalog}.{schema}.yolo_autoshape" 
+en_model_name = f"{catalog}.{schema}.efficientnet"  
+
+# Retrieves models by alias and create inference objects
+yolo_detector = YOLOv5_Detector.from_uc_registry(model_name=yolo_model_name, alias=alias, batch_size=16)
+en_classifier = EN_Classifier.from_uc_registry(model_name=en_model_name, alias=alias)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #### Perform inference on a sample of bronze images
 
 # COMMAND ----------
 
