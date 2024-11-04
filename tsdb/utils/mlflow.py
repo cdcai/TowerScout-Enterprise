@@ -10,7 +10,7 @@ class MLFlowHelper:
     catalog: str
     schema: str
     registry_uri: str = "databricks-uc"
-    registered_models: dict[str, str] = field(init=False)
+    registered_models: dict[str, str] = field(init=False) #[str, RegisteredModelSearch]
 
     def __post_init__(self) -> None:
         mlflow.set_registry_uri("databricks-uc")
@@ -23,20 +23,12 @@ class MLFlowHelper:
         all_registered_models = mlflow.search_registered_models()
 
         project_registered_models = (
-            model for model in self.registered_models
+            model for model in all_registered_models
             if model.name.startswith(f"{self.catalog}.{self.schema}")
         )
         self.registered_models = {
             model.name.split(".")[-1]: model for model in project_registered_models
         }
     
-    def __getitem__(self, model_name: str, alias: str=None, **kwargs) -> mlflow.pyfunc.PythonModel:
-        """
-        Get a model from the registry by name and an optional alias.
-        """
-        model_reference = f"models:/{self.registered_models[model_name].name}"
-        
-        if alias is not None:
-            model_reference += f"@{alias}"
-        
-        return mlflow.pytorch.load_model(model_reference, **kwargs)
+    def __getitem__(self, model_name: str):
+        return self.registered_models[model_name]
