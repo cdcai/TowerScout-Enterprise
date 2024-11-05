@@ -1,4 +1,3 @@
-# Databricks notebook source
 #
 # TowerScout
 # A tool for identifying cooling towers from satellite and aerial imagery
@@ -15,11 +14,10 @@
 import sys
 import numpy as np
 import mlflow
-from mlflow import MlflowClient
-from mlflow.pyfunc import PythonModel, PythonModelContext
-from mlflow.entities.model_registry import ModelVersion
 from torch import nn
-from typing import Self
+from PIL import Image
+from tsdb.ml.efficientnet import EN_Classifier
+from tsdb.ml.utils import get_model_tags, YOLOv5Detection
 from pyspark.sql.types import (
     StructType,
     StructField,
@@ -29,11 +27,10 @@ from pyspark.sql.types import (
 )
 
 
-class YOLOv5_Detector(PythonModel):
+class YOLOv5_Detector:
     def __init__(self, model: nn.Module, batch_size: int):
         self.model = model
         self.batch_size = batch_size
-        self.client = MlflowClient()
 
         # follows the InferenceModelType protocol
         self.return_type = StructType(
@@ -50,75 +47,41 @@ class YOLOv5_Detector(PythonModel):
         )
 
     @classmethod
-    def from_uc_registry(cls, model_name: str, alias: str) -> Self:
+    def from_uc_registry(cls, model_name: str, alias: str, batch_size: int):
+        """
+        Create YOLOv5_Detector object using a registered model from UC Model Registry
+        """
         # IMPORTANT: when loading the model you must append the path to this directory to the system path so
         # Python looks there for the files/modules needed to load the yolov5 module
-        client = MlflowClient()
-        model_version_info = client.get_model_version_by_alias(
-            name=model_name, alias=alias
-        )
-        model_version = model_version_info.version
-        model_version_details = client.get_model_version(
-            name=model_name, version=model_version
-        )
-        model_tags = model_version_details.tags
+        model_tags = get_model_tags(model_name, alias)
+        catalog, schema, _ = model_name.split(".")
 
         try:
             yolo_version = model_tags["yolo_version"]
         except KeyError:
             print("YOLO version not found in model tags.")
 
-        yolo_dep_path = f"/Volumes/edav_dev_csels/towerscout_test_schema/ultralytics_yolo{yolo_version}_master"
+        yolo_dep_path = f"/Volumes/{catalog}/{schema}/misc/yolo{yolo_version}"
         sys.path.append(yolo_dep_path)
 
-        registered_model = mlflow.pyfunc.load_model(
+        registered_model = mlflow.pytorch.load_model(
             model_uri=f"models:/{model_name}@{alias}"
         )
 
-        return registered_model
-
-    def register_model(
-        self, model_name: str, run_id: str, artifact_path: str
-    ) -> ModelVersion:
-        registered_model_metadata = mlflow.register_model(
-            model_uri=f"runs:/{run_id}/{artifact_path}",  # path to logged artifact folder called models
-            name=model_name,
-        )
-
-        # set YOLO model version tag
-        self.client.set_model_version_tag(
-            name=model_name,
-            version=registered_model_metadata.version,
-            key="yolo_version",
-            value="v5",
-        )
-
-        return registered_model_metadata
-
-    def set_model_alias(self, model_name: str, alias: str, model_version: str) -> None:
-        self.client.set_registered_model_alias(
-            name=model_name, alias=alias, version=model_version
-        )
-
-    def preprocess_input(self, model_input: np.ndarray[np.ndarray]) -> list[np.ndarray]:
-        # the model expects a list of images: list of np arrays or Image objects.
-        # see: ultralytics_yolov5_master/models/common.py
-        return [model_input[j] for j in range(len(model_input))]
+        return cls(registered_model, batch_size)
 
     def predict(
         self,
-        context: PythonModelContext,
-        model_input: np.ndarray[np.ndarray],
-        secondary: nn.Module = None,
-    ) -> list[dict[str, float]]:
+        model_input: list[Image],
+        secondary: EN_Classifier = None,
+    ) -> list[list[YOLOv5Detection]]:
         results = []
         count = 0
-        model_input = self.preprocess_input(model_input)
 
         for i in range(0, len(model_input), self.batch_size):
             img_batch = model_input[i : i + self.batch_size]
 
-            # retain a copy of the images
+            # retrain a copy of the images
             if secondary is not None:
                 img_batch2 = [img.copy() for img in img_batch]
             else:
@@ -151,16 +114,5 @@ class YOLOv5_Detector(PythonModel):
                     for item in results_cpu
                 ]
                 results.append(tile_results)
-
-                # record the detections in the tile
-                # boxes = []
-                # for tr in tile_results:
-                #     box = "0 " + \
-                #         str((tr['x1']+tr['x2'])/2) + \
-                #         " "+str((tr['y1']+tr['y2'])/2) + \
-                #         " "+str(tr['x2']-tr['x1']) +\
-                #         " "+str(tr['y2']-tr['y1'])+"\n"
-                #     boxes.append(box)
-                # tile['detections'] = boxes
 
         return results
