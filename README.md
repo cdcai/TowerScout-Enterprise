@@ -20,10 +20,10 @@ and standardizing line lengths. The goal is to allow the developer to focus on t
 trivial style nitpicks.
 
 ## Installation
-_pip install pre-commit_
+`pip install pre-commit`
 
-Run _pre-commit install_ to setup the git hook scripts. Now _pre-commit_ will run automatically on a _git commit_
+Run `pre-commit install` to setup the git hook scripts. Now `pre-commit` will run automatically on a `git commit`
 
-Run _pip install pylint_ to install
+Run `pip install pylint` to install
 It's highly recommended to run pylint on any files you have edited before committing. PyLint helps standardize code
 format and will warn of any issues. It will not throw an error.
