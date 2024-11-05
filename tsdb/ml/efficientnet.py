@@ -16,44 +16,30 @@
 
 import torch
 import torch.nn as nn
+import mlflow 
 
 from efficientnet_pytorch import EfficientNet
 from torchvision import transforms
 
 import PIL
-from webapp.ts_imgutil import cut_square_detection
-
+from PIL import Image
+from tsdb.ml.utils import cut_square_detection, YOLOv5Detection
 
 
 class EN_Classifier(nn.Module):
 
-    def __init__(self, pretrained_path):
+    def __init__(self, model: nn.Module):
         super(EN_Classifier, self).__init__()
-        # load pre-trained EfficientNet model
-        self.model = EfficientNet.from_pretrained('efficientnet-b5', include_top=True)
-
-        # replace classification head
-        self.model._fc = nn.Sequential(
-            nn.Linear(2048, 512), #b5
-            nn.Linear(512, 1)
-        )
+        """
+        If you intend to fine tune this model you may need a 
+        proxy connection which may not be available in production.
+        """
+        self.model = model
         
-        self.PATH_best = None
-        # load our weights
-        if pretrained_path:
-            self.PATH_best = pretrained_path
-            print("Weights loaded from: ", pretrained_path)
-        else:
-            self.PATH_best = 'model_params/EN/b5_unweighted_best.pt'
-
         # switch to GPU memory if available
         if torch.cuda.is_available():
             self.model.cuda()
-            checkpoint = torch.load(self.PATH_best)
-        else:
-            checkpoint = torch.load(self.PATH_best, map_location=torch.device('cpu'))
 
-        self.model.load_state_dict(checkpoint)
         self.model.eval()
 
         # prepare the image transform
@@ -63,6 +49,18 @@ class EN_Classifier(nn.Module):
             transforms.Normalize(mean=(0.5553, 0.5080, 0.4960), std=(0.1844, 0.1982, 0.2017))
             ])
     
+    @classmethod
+    def from_uc_registry(cls, model_name: str, alias: str):
+        """
+        Create EN_calssifer object using a registered model from UC Model Registry
+        """
+        registered_model = mlflow.pytorch.load_model(
+            model_uri=f"models:/{model_name}@{alias}"
+        )
+
+        return cls(registered_model)
+
+
     def forward(self, x):
         return x
 
@@ -72,7 +70,14 @@ class EN_Classifier(nn.Module):
     # take batch of one img and multiple detections
     # returns filtered detections (class 0 only)
     #
-    def classify(self, img, detections, min_conf=0.25, max_conf=0.65, batch_id=0):
+    def classify(self, 
+                img: Image, 
+                detections: list[YOLOv5Detection],
+                min_conf: float = 0.25, 
+                max_conf: float = 0.65, 
+                batch_id: int = 0
+    ) -> None:
+        
         count=0
         for det in detections:
             x1,y1,x2,y2,conf = det[0:5]
