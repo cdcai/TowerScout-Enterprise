@@ -23,6 +23,8 @@ from torchvision import transforms
 import PIL
 from webapp.ts_imgutil import cut_square_detection
 
+
+
 class EN_Classifier(nn.Module):
 
     def __init__(self, pretrained_path):
@@ -33,7 +35,8 @@ class EN_Classifier(nn.Module):
         # replace classification head
         self.model._fc = nn.Sequential(
             nn.Linear(2048, 512), #b5
-            nn.Linear(512, 1))
+            nn.Linear(512, 1)
+        )
         
         self.PATH_best = None
         # load our weights
