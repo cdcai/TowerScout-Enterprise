@@ -24,7 +24,7 @@ class MLFlowHelper:
 
         project_registered_models = (
             model for model in all_registered_models
-            if model.name.startswith(f"{self.catalog}.{self.schema}")
+            if model.name.startswith(f"{self.catalog}.{self.schema}.")
         )
         self.registered_models = {
             model.name.split(".")[-1]: model for model in project_registered_models

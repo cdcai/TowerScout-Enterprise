@@ -26,10 +26,10 @@ from PIL import Image
 from tsdb.ml.utils import cut_square_detection, YOLOv5Detection
 
 
-class EN_Classifier(nn.Module):
+class ENClassifier(nn.Module):
 
     def __init__(self, model: nn.Module):
-        super(EN_Classifier, self).__init__()
+        super(ENClassifier, self).__init__()
         """
         If you intend to fine tune this model you may need a 
         proxy connection which may not be available in production.
