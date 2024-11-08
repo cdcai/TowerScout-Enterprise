@@ -20,9 +20,7 @@ def spark() -> SparkSession:
 
 def test_merge_into_gold_query(spark: SparkSession) -> None:
     """
-    Tests the cast_to_column function with a string input and verifies it returns
-    a column object. Column objects are oftenmore useful than strings but we still
-    want the flexibility of being able to pass a column name as an input.
+    Tests the <gold silver promotion func name> function
     """
     validated_data = (
         (
