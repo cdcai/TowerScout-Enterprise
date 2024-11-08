@@ -189,21 +189,3 @@ def train_test_val_split(
         .randomSplit([train_ratio, test_ratio, val_ratio], seed=seed)
     )
     return train_df, test_df, val_df
-
-
-def get_bronze_images(
-    table_name: str, columns: list[str]
-) -> DataFrame:
-    """
-    Retrieve images from a Delta table.
-
-    Parameters:
-    table_name (str): The name of the table to read from.
-    columns (list[str]): The list of columns to select.
-
-    Returns:
-    DataFrame: A Spark DataFrame containing the selected columns from the table.
-    """
-    # Read the Delta table and select the specified columns
-    images = spark.read.format("delta").table(table_name).select(columns)
-    return images

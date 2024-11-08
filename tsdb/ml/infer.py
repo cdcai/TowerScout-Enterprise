@@ -11,6 +11,7 @@ import pandas as pd
 from tsdb.ml.models import InferenceModelType
 from tsdb.ml.data_processing import TowerScoutDataset
 
+
 def ts_model_udf(model_fn: InferenceModelType, batch_size: int, return_type: StructType) -> DataFrame:
     """
     A pandas UDF for distributed inference with a PyTorch model.
