@@ -8,9 +8,11 @@ if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_confi
     result = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
     
     # Extract values from the result row
-
+    env = result['env']
+    catalog = result['catalog_name']
+    schema = result['schema_name']
     debug_mode = result['debug_mode'] == "true"
-
+    unit_test_mode = result['unit_test_mode'] == "true"
 else:
     # Exit the notebook with an error message if the global view does not exist
     dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
@@ -39,7 +41,7 @@ if debug_mode:
 try:
     dbutils.fs.cp(
         f"file:/tmp/{wheel_file}",
-        f"dbfs:/Volumes/edav_dev_csels/towerscout_test_schema/towerscout_wheel/{wheel_file}"
+        f"dbfs:/Volumes/edav_dev_csels/{schema}/towerscout_wheel/{wheel_file}"
     )
     print(f"Copied {wheel_file} to DBFS.")
 except Exception as e:
@@ -49,7 +51,7 @@ except Exception as e:
 # COMMAND ----------
 
 # Step 4: Verify the file exists in DBFS
-dbutils.fs.ls("/Volumes/edav_dev_csels/towerscout_test_schema/towerscout_wheel")
+dbutils.fs.ls(f"/Volumes/edav_dev_csels/{schema}/towerscout_wheel")
 
 # Step 5: Delete the local wheel file from /tmp
 !rm /tmp/{wheel_file}
