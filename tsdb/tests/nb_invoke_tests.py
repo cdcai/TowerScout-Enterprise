@@ -6,6 +6,20 @@
 import pytest
 import sys
 
+# May not have write permissions on databricks, so prevent __pycache__ creation
+sys.dont_write_bytecode = True
+
+
+def run_pytest_main(flags: list[str]):
+    """
+    Run pytest with the given flags.
+
+    Example: run_pytest_main([".", "-v", "-p", "no:cacheprovider"])
+    """
+    retcode = pytest.main(flags)
+    assert retcode == 0, "The pytest invocation failed. See the log for details"
+
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -21,11 +35,7 @@ import sys
 
 # COMMAND ----------
 
-# May not have write permissions on databricks, so prevent __pycache__ creation
-sys.dont_write_bytecode = True
-retcode = pytest.main([".", "-v", "-p", "no:cacheprovider"])
-
-assert retcode == 0, "The pytest invocation failed. See the log for details"
+run_pytest_main([".", "-v", "-p", "no:cacheprovider"])
 
 # COMMAND ----------
 

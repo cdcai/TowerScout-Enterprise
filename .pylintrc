@@ -1,0 +1,12 @@
+[ELIF]
+max-nested-blocks=4
+
+[FORMAT]
+single-line-if-stmt=no
+indent-string='    '
+
+[VARIABLES]
+init-import=no
+
+[DESIGN]
+max-returns=6
