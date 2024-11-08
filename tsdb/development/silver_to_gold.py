@@ -43,12 +43,12 @@ def promote_silver_to_gold(
     # using from_json to unpack bounding boxes
     create_updates_view = f"""
             CREATE TEMPORARY VIEW gold_updates AS
-            WITH temp_data(uuid, imgHash, bboxs) AS (
+            WITH temp_data(uuid, img_hash, bboxes) AS (
             VALUES
                 {values}
             )
 
-            SELECT from_json(temp.bboxs, 'bboxs array<array<float>>') as bbox, temp.uuid, temp.imgHash, silver.requestId, silver.userId, silver.imagePath
+            SELECT from_json(temp.bboxes, 'bboxes array<array<float>>') as bbox, temp.uuid, temp.img_hash, silver.request_id, silver.user_id, silver.image_path
             FROM {catalog}.{schema}.{silver_table} AS silver
             JOIN temp_data AS temp
             ON silver.uuid = temp.uuid
@@ -67,7 +67,7 @@ def promote_silver_to_gold(
             USING gold_updates AS source
             ON (target.imgHash = source.imgHash)
             WHEN MATCHED THEN
-                UPDATE SET target.bboxs = source.bboxs,
+                UPDATE SET target.bboxes = source.bboxes,
                         target.uuid = source.uuid,
                         target.imgHash = source.imgHash,
                         target.imagePath = source.imagePath,
@@ -75,7 +75,7 @@ def promote_silver_to_gold(
                         target.userId = source.userId,
                         target.reviewedTime = CURRENT_TIMESTAMP()
             WHEN NOT MATCHED THEN
-                INSERT (bboxs, uuid, imgHash, imagePath, requestId, reviewedTime) VALUES (source.bboxs, source.uuid, source.imgHash, source.imagePath, source.requestId, source.userId, CURRENT_TIMESTAMP());
+                INSERT (bboxes, uuid, imgHash, imagePath, requestId, reviewedTime) VALUES (source.bboxes, source.uuid, source.imgHash, source.imagePath, source.requestId, source.userId, CURRENT_TIMESTAMP());
             """
     try:
         cursor.execute(merge_updates_into_gold)
