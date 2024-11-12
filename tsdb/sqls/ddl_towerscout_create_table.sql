@@ -14,6 +14,7 @@ CREATE TABLE  IF NOT EXISTS image_inference_silver (
   bboxes ARRAY<STRUCT<label: INT, x1: FLOAT, y1: FLOAT, x2: FLOAT, y2: FLOAT, conf: FLOAT>>,
   image_hash INT,
   image_path STRING,
+  image_id INT,
   model_version STRUCT<yolo_model: STRING, yolo_model_version: STRING, efficientnet_model: STRING, efficientnet_model_version: STRING>,
   image_metadata STRUCT<lat: FLOAT, long: FLOAT, width: INT, height: INT>,
   map_provider STRING
