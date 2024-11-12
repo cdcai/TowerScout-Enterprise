@@ -21,7 +21,7 @@ CREATE TABLE  IF NOT EXISTS image_inference_silver (
   )
   USING delta
   PARTITIONED BY(user_id, request_id)
-  LOCATION 'abfss://ddphss-csels@edavsynapsedatalake.dfs.core.windows.net/towerscout/silver/image_inference_silver';
+  LOCATION 'abfss://ddphss-csels@edavsynapsedatalake.dfs.core.windows.net/PD/TowerScout/Database/towerscout/silver/image_inference_silver';
 
 
 
@@ -36,4 +36,4 @@ CREATE TABLE  IF NOT EXISTS image_reviewed_gold (
   split_label STRING
   )
   USING delta
-  LOCATION 'abfss://ddphss-csels@edavsynapsedatalake.dfs.core.windows.net/towerscout/gold/image_reviewed_gold';
+  LOCATION 'abfss://ddphss-csels@edavsynapsedatalake.dfs.core.windows.net/PD/TowerScout/Database/towerscout/gold/image_reviewed_gold';
