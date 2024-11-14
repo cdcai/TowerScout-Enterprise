@@ -26,12 +26,12 @@
 
 # COMMAND ----------
 
-!pip install efficientnet_pytorch
+# !pip install efficientnet_pytorch
 !pip install opencv-python # need for yolo model
-!pip install ultralytics==8.2.92 # need for yolo model
-!pip install gitpython==3.1.30 pillow==10.3.0 requests==2.32.0 setuptools==70.0.0 # need for loading yolo with torch.hub.load from ultralytics
-!pip install shapely==2.0.3
-!pip install mlflow-skinny==2.15.1 # need this if on GPU 
+# !pip install ultralytics==8.2.92 # need for yolo model
+# !pip install gitpython==3.1.30 pillow==10.3.0 requests==2.32.0 setuptools==70.0.0 # need for loading yolo with torch.hub.load from ultralytics
+# !pip install shapely==2.0.3
+# !pip install mlflow-skinny==2.15.1 # need this if on GPU 
 dbutils.library.restartPython() # need this if on GPU
 
 # COMMAND ----------
@@ -162,29 +162,13 @@ from tsdb.ml.data_processing import TowerScoutDataset
 
 # COMMAND ----------
 
-from pyspark.sql.functions import col, pandas_udf, PandasUDFType
-from pyspark.sql import DataFrame
-from pyspark.sql.types import StructType
-
-from typing import Any, Iterable
-
-from torch.utils.data import DataLoader
-
-import pandas as pd
-
-from tsdb.ml.models import InferenceModelType
-from tsdb.ml.data_processing import TowerScoutDataset
-
-# COMMAND ----------
-
-import sys
-
 yolo_version = "v5"
-path = f"/Volumes/{catalog}/{schema}/misc/yolo{yolo_version}"
-sc.addPyFile(path)
-
-if path not in sys.path:
-    sys.path.append(path)
+path = f"{catalog}/{schema}/misc/yolo{yolo_version}"
+dbutils.fs.cp(
+    source=f"/Volumes/{path}",
+    dest=f"/Workspace/{path}",
+    recurse=True
+)
 
 # COMMAND ----------
 
