@@ -20,9 +20,9 @@ def promote_silver_to_gold(
     """
 
     values = ", ".join(
-        [f"('{uuid}', '{img_hash}', '{json.dumps(bboxes)}')" for (uuid, img_hash, bboxes) in validated_data]
+        [f"('{uuid}', '{image_hash}', '{json.dumps(bboxes)}')" for (uuid, image_hash, bboxes) in validated_data]
     )
-    uuids = ", ".join([f"'{uuid}'" for (uuid, img_hash, bboxes) in validated_data])
+    uuids = ", ".join([f"'{uuid}'" for (uuid, image_hash, bboxes) in validated_data])
 
     connection = sql.connect(
         server_hostname="<host-name>", http_path="<http-path>", access_token="<token>"
@@ -43,12 +43,12 @@ def promote_silver_to_gold(
     # using from_json to unpack bounding boxes
     create_updates_view = f"""
             CREATE TEMPORARY VIEW gold_updates AS
-            WITH temp_data(uuid, img_hash, bboxes) AS (
+            WITH temp_data(uuid, image_hash, bboxes) AS (
             VALUES
                 {values}
             )
 
-            SELECT from_json(temp.bboxes, 'bboxes array<array<float>>') as bbox, temp.uuid, temp.img_hash, silver.request_id, silver.user_id, silver.image_path
+            SELECT from_json(temp.bboxes, 'bboxes array<struct<label:int,x1:float,y1:float,x2:float,y2:float,conf:float>>') as bboxes, temp.uuid, temp.image_hash, silver.request_id, silver.user_id, silver.image_path
             FROM {catalog}.{schema}.{silver_table} AS silver
             JOIN temp_data AS temp
             ON silver.uuid = temp.uuid
@@ -65,17 +65,18 @@ def promote_silver_to_gold(
     merge_updates_into_gold = f"""
             MERGE INTO {catalog}.{schema}.{gold_table} AS target
             USING gold_updates AS source
-            ON (target.imgHash = source.imgHash)
+            ON (target.image_hash = source.image_hash)
             WHEN MATCHED THEN
                 UPDATE SET target.bboxes = source.bboxes,
                         target.uuid = source.uuid,
-                        target.imgHash = source.imgHash,
-                        target.imagePath = source.imagePath,
-                        target.requestId = source.requestId,
-                        target.userId = source.userId,
-                        target.reviewedTime = CURRENT_TIMESTAMP()
+                        target.image_hash = source.image_hash,
+                        target.image_path = source.image_path,
+                        target.request_id = source.request_id,
+                        target.user_id = source.user_id,
+                        target.reviewed_time = CURRENT_TIMESTAMP()
             WHEN NOT MATCHED THEN
-                INSERT (bboxes, uuid, imgHash, imagePath, requestId, reviewedTime) VALUES (source.bboxes, source.uuid, source.imgHash, source.imagePath, source.requestId, source.userId, CURRENT_TIMESTAMP());
+                INSERT (bboxes, uuid, image_hash, image_path, request_id, reviewed_time, user_id) 
+                VALUES (source.bboxes, source.uuid, source.image_hash, source.image_path, source.request_id, CURRENT_TIMESTAMP() source.user_id);
             """
     try:
         cursor.execute(merge_updates_into_gold)
