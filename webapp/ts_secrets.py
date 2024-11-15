@@ -16,8 +16,7 @@ class devSecrets:
     def getSecret(secret_name):
      
     #  SP info to access Key Vault
-     
-     # Read the json config file
+        # Read the json config file
      with open('config.development.json', 'r') as file:
        data = json.load(file)  # Load the JSON data into a Python dictionary
 
