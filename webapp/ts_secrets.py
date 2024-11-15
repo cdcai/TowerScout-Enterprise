@@ -35,6 +35,7 @@ class devSecrets:
 
 class prodSecrets:
    def getSecret(secret_name):
+     
      # Initialize the credential
      credential = DefaultAzureCredential()
      key_vault_url = "https://cselstowerscrtprdkv01.vault.azure.net/"
