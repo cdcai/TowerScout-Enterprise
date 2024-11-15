@@ -20,8 +20,6 @@ import json
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
-# from azure.identity import InteractiveBrowserCredential
-# from azure.mgmt.resource import ResourceManagementClient
 
 
 class AzureMap(Map):
@@ -31,16 +29,17 @@ class AzureMap(Map):
 
    def __init__(self, api_key):
       self.key = api_key
-      self.has_metadata = False
+      self.has_metadata = True
+      self.mapType = "Azure"
 
    def get_mapkey():
       credential = DefaultAzureCredential()
 
-      secret_client = SecretClient(vault_url="https://towerscout-mapkeyvault.vault.azure.net/", credential=credential)
-      secretazuremapkey = secret_client.get_secret("TowerScout-Azuremapkey")
+      # secret_client = SecretClient(vault_url="https://towerscout-mapkeyvault.vault.azure.net/", credential=credential)
+      # secretazuremapkey = secret_client.get_secret("TowerScout-Azuremapkey")
 
       # print(secretazuremapkey.name)
-      print(secretazuremapkey)
+      # print(secretazuremapkey)
    
    def get_url(self, tile, zoom=19, size="640,640", sc=2, fmt="jpeg", maptype="satellite"):
       # get satellite image url for static map API
@@ -142,19 +141,25 @@ class AzureMap(Map):
    #  url+="&zoom=18" #+ str(zoom) - Need to subtract zoom level by 1 to get the same scale 
    #  url+="&x=" + str(x) + "&y=" + str(y)
    #  url+="&format=png"
-   #  credential = DefaultAzureCredential()
     credential = DefaultAzureCredential()
-    secret_client = SecretClient(vault_url=f"https://TowerScout-mapkeyvault.vault.azure.net/", credential=credential)
-    secretazuremapkey = secret_client.get_secret("TowerScout-Azuremapkey").value
 
-   #  print(secretazuremapkey.name)
-    print(secretazuremapkey)
+   #  secret_client = SecretClient(vault_url="https://towerscout-mapkeyvault.vault.azure.net/", credential=credential)
+   #  secretazuremapkey = secret_client.get_secret("TowerScout-Azuremapkey")
+
+   # #  print(secretazuremapkey.name)
+   #  print(secretazuremapkey)
 # More results working
     url="https://atlas.microsoft.com/map/static?subscription-key=" + self.key
     url+="&zoom=18&trafficLayer=microsoft.traffic.relative.main" #+ str(zoom) - Need to subtract zoom level by 1 to get the same scale 
     url+="&tilesetId=microsoft.imagery&api-version=2024-04-01&language=en-us&center=" + str(tile['lng']) + "," + str(tile['lat_for_url'])
-    url+="&height=640&Width=640"
-   # Road png
+    url+="&height=640&Width=640&view=auto&layer=hybrid&format=jpeg&maptype=satellite&scale=2"
+   #  url = f"https://atlas.microsoft.com/map/static?subscription-key={self.key}"
+   #  url += f"&zoom=18"  # Adjust zoom level for better detail
+   #  url += "&tilesetId=microsoft.imagery"  # Use the bird's-eye tileset
+   #  url += "&api-version=2024-04-01&language=en-us"
+   #  url += f"&center={str(tile['lng'])},{str(tile['lat_for_url'])}"  # Center coordinates (lng, lat)
+   #  url += "&height=640&width=640&format=png-RGB&view=auto&layer=hybrid"  # Image size and format
+   # # Road png
    #  url="https://atlas.microsoft.com/map/static/png?subscription-key=" + self.key
    #  url+="&api-version=1.0&layer=hybrid&zoom=" + str(zoom)
    #  url+="&center="+ str(tile['lng']) + "," + str(tile['lat_for_url'])
@@ -218,3 +223,4 @@ class AzureMap(Map):
          date = "" 
 
       return date
+   

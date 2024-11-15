@@ -42,53 +42,7 @@ reviewCheckBox.onchange = changeReviewMode;
 const DEFAULT_CONFIDENCE = 0.35
 
 
-let aboutOp = 0;
-let aboutInterval = 20;
-let aboutIncrement = 20;
-let aboutTimer = null;
-let aboutCurrentTotal = 0;
 
-function about(aboutTotal) {
-  if (typeof aboutTotal === "undefined") {
-    aboutTotal = 6;
-  }
-
-  // if cancelled, hurry up a bit
-  if (aboutTotal === 0 && aboutTimer !== null) {
-    aboutInterval /= Math.abs(aboutCurrentTotal - aboutSecs) / 3;
-    //console.log("new increment is "+aboutIncrement);
-    return;
-  }
-
-  aboutOp = 1;
-  aboutSecs = 0;
-  aboutIncrement = 20;
-  aboutInterval = 20;
-  aboutCurrentTotal = aboutTotal;
-
-  aboutTimer = setTimeout(aboutTimerFunc, aboutInterval, aboutTotal);
-}
-
-function aboutTimerFunc(aboutTotal) {
-  // let adiv = document.getElementById("about_div");
-
-  let op = aboutOpacity(aboutSecs, aboutTotal)
-  //console.log(op, aboutSecs, aboutTotal)
-  if (op <= 0 || aboutSecs >= aboutTotal) {
-    adiv.style.display = "none";
-    return;
-  }
-
-  // adiv.style.display = "flex";
-  // adiv.style.opacity = op;
-  aboutSecs += aboutIncrement / 1000;
-  setTimeout(aboutTimerFunc, aboutInterval, aboutTotal);
-}
-
-function aboutOpacity(secs, total) {
-  //return Math.max(0, (total + 1) / total * (1 + 1 / (secs - total)))
-  return -1 / Math.pow(secs - (total + 1), 4) + 1;
-}
 
 // Initialize and add the map
 function initBingMap() {
@@ -590,7 +544,418 @@ class BingMap extends TSMap {
 
 }
 
+class clsAzureMap extends TSMap {
+  constructor() {
+    super();
+    this.map = new new atlas.Map('#azureMap', {
+      center: new Microsoft.Maps.Location(nyc[1], nyc[0]),
+      mapTypeId: Microsoft.Maps.MapTypeId.road,
+      zoom: 19,
+      maxZoom: 21,
+      disableStreetside: true,
+      View: 'Auto'
+      // showSearchBar: true
+    });
+    let azureMap = this.map;
+    Microsoft.Maps.loadModule('Microsoft.Maps.AutoSuggest', function () {
+      var options = {
+          maxResults: 4,
+          map: bingMap
+      };
+      var manager = new Microsoft.Maps.AutosuggestManager(options);
+      manager.attachAutosuggest('#search', '#searchBoxContainer', selectedSuggestion);
+    });
 
+    document.getElementById('search').addEventListener('change', Search);
+
+    let searchManager;
+    Microsoft.Maps.loadModule(['Microsoft.Maps.SpatialDataService',
+    'Microsoft.Maps.Search'], function () {
+        searchManager = new Microsoft.Maps.Search.SearchManager(bingMap);
+    });
+
+    function Search() {
+      //Remove all data from the map.
+      bingMap.entities.clear();
+
+      //Create the geocode request.
+      var geocodeRequest = {
+          where: document.getElementById('search').value,
+          callback: getBoundary,
+          errorCallback: function (e) {
+              //If there is an error, alert the user about it.
+              //alert("No results found.");
+          }
+      };
+      searchManager.geocode(geocodeRequest);
+    }
+
+//     function Search() {
+//       //Remove all data from the map.
+//       bingMap.entities.clear;
+     
+//         var geocodeRequest = {
+//           where: document.getElementById('search').value,
+//           callback: function (r) {
+           
+//               //Add the first result to the map and zoom into it.
+//               if (r && r.results && r.results.length > 0) {
+//                 if ((r.results[0].entitySubType == "Address") || (r.results[0].entityType == "PostalAddress")){
+// var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
+//                   bingMap.entities.push(pin);
+
+//                   bingMap.setView({ bounds: r.results[0].bestView });
+//                 }
+                  
+//               }
+//               else{
+//                 getBoundary;
+//               }
+             
+//           },
+//           errorCallback: function (e) {
+//               //If there is an error, alert the user about it.
+//               alert("No results found.");
+//           }
+      
+//     }
+      
+//       searchManager.geocode(geocodeRequest);
+//     }
+
+      function getBoundary(geocodeResult){
+        //Add the first result to the map and zoom into it.
+        if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
+            //Zoom into the location.
+           
+            bingMap.setView({ bounds: geocodeResult.results[0].bestView });
+
+            //Create the request options for the GeoData API.
+            var geoDataRequestOptions = {
+                lod: 1,
+                getAllPolygons: true
+            };
+
+            //Verify that the geocoded location has a supported entity type.
+            switch (geocodeResult.results[0].entityType) {
+                case "CountryRegion":
+                case "AdminDivision1":
+                case "AdminDivision2":
+                case "Postcode1":
+                case "Postcode2":
+                case "Postcode3":
+                case "Postcode4":
+                case "Neighborhood":
+                case "PopulatedPlace":
+                    geoDataRequestOptions.entityType = geocodeResult.results[0].entityType;
+                    break;
+                default:
+                    //Display a pushpin if GeoData API does not support EntityType.
+                    console.log(`GeoData API does not support EntityType ${geocodeResult.results[0].entityType}.`);
+                    return;
+            }
+
+            //Use the GeoData API manager to get the boundaries of the zip codes.
+            Microsoft.Maps.SpatialDataService.GeoDataAPIManager.getBoundary(
+              geocodeResult.results[0].location,
+              geoDataRequestOptions,
+              bingMap,
+              function (data) {
+                  //Add the polygons to the map.
+                  if (data.results && data.results.length > 0) {
+                    bingMap.entities.push(data.results[0].Polygons);
+                  } else {
+                      console.log(`Could not find boundary for ${document.getElementById('search').value}`)
+                  }
+              }
+            );
+        }
+      }
+
+    function selectedSuggestion(result) {
+      bingMap.entities.clear;
+      var geocodeRequest;
+      if ((result.entitySubType == "Address") || (result.entityType == "PostalAddress")){
+        geocodeRequest = {
+          where: result.formattedSuggestion,
+          callback: function (r) {
+              //Add the first result to the map and zoom into it.
+              if (r && r.results && r.results.length > 0) {
+                  var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
+                  bingMap.entities.push(pin);
+
+                  bingMap.setView({ bounds: r.results[0].bestView });
+              }
+          },
+          errorCallback: function (e) {
+              //If there is an error, alert the user about it.
+              alert("No results found.");
+          }
+      }
+    }
+      else{
+        geocodeRequest = {
+        where: result.title,
+        callback: getBoundary,
+        errorCallback: function (e) {
+            //If there is an error, alert the user about it.
+            alert("No results found.");
+        }
+    };
+      
+      }
+      searchManager.geocode(geocodeRequest);
+    }
+
+
+
+    // get view change event to bias place search results
+    // Microsoft.Maps.Events.addHandler(this.map, 'viewchangeend', () => googleMap.biasSearchBox());
+
+    // load the spatial math module
+    Microsoft.Maps.loadModule('Microsoft.Maps.SpatialMath', () => { });
+
+    // load the DrawingTools module
+    this.tools = null;
+    this.drawingManager = null;
+    let bMap = this;
+    Microsoft.Maps.loadModule('Microsoft.Maps.DrawingTools', function () {
+      let tools = new Microsoft.Maps.DrawingTools(bMap.map);
+      tools.showDrawingManager(function (manager) {
+        bMap.drawingManager = manager;
+        manager.setOptions({ drawingBarActions: Microsoft.Maps.DrawingTools.DrawingBarAction.polygon });
+        Microsoft.Maps.Events.addHandler(manager, 'drawingEnded', function () { console.log('drawingEnded'); });
+        Microsoft.Maps.Events.addHandler(manager, 'drawingModeChanged', function () { console.log('drawingModeChanged'); });
+        Microsoft.Maps.Events.addHandler(manager, 'drawingStarted', function () { console.log('drawingStarted'); });
+      });
+    });
+
+    this.boundaries = [];
+  }
+
+  getBounds() {
+    let locations = [];
+
+    for(var i = 0; i < this.map.entities.getLength(); i++) {
+      var entity = this.map.entities.get(i);
+      if(entity instanceof Microsoft.Maps.Polygon) {
+        var vertices = entity.getLocations();
+        locations = locations.concat(vertices);
+      }
+    }
+
+    if(locations.length > 0) {
+      var bounds = Microsoft.Maps.LocationRect.fromLocations(locations);
+      this.map.setView({ bounds: bounds });
+    } 
+
+    let rect = this.map.getBounds();
+    return [
+      rect.center.longitude - rect.width / 2,
+      rect.center.latitude + rect.height / 2,
+      rect.center.longitude + rect.width / 2,
+      rect.center.latitude - rect.height / 2
+    ];
+  }
+
+  fitBounds(b) {
+    let locs = [
+      new Microsoft.Maps.Location(b[1], b[0]),
+      new Microsoft.Maps.Location(b[3], b[2]),
+    ];
+    let rect = Microsoft.Maps.LocationRect.fromLocations(locs);
+    this.map.setView({ bounds: rect, padding: 0, zoom: 19 });
+  }
+
+  setCenter(c) {
+    this.map.setView({
+      center: new Microsoft.Maps.Location(c[1], c[0]),
+    });
+  }
+
+  setZoom(z) {
+    this.map.setView({
+      zoom: z
+    });
+  }
+
+
+  makeMapRect(o, listener) {
+    let locs = [
+      new Microsoft.Maps.Location(o.y1, o.x1),
+      new Microsoft.Maps.Location(o.y1, o.x2),
+      new Microsoft.Maps.Location(o.y2, o.x2),
+      new Microsoft.Maps.Location(o.y2, o.x1),
+      new Microsoft.Maps.Location(o.y1, o.x1)
+    ];
+    let color = Microsoft.Maps.Color.fromHex(o.color);
+    color.a = o.opacity;
+    let polygon = new Microsoft.Maps.Polygon(
+      locs,
+      {
+        fillColor: color,
+        strokeColor: o.color,
+        strokeThickness: 1
+      });
+
+    if (typeof listener !== 'undefined') {
+      Microsoft.Maps.Events.addHandler(polygon, 'click', listener);
+    }
+    this.map.entities.push(polygon);
+    return polygon;
+  }
+
+  colorMapRect(o, color) {
+    let fcolor = Microsoft.Maps.Color.fromHex(color);
+    fcolor.a = o.opacity;
+    o.mapRect.setOptions({ strokeColor: color, fillColor: fcolor });
+  }
+
+  updateMapRect(o, onoff) {
+    let r = o.mapRect;
+    r.setOptions({ visible: onoff });
+  }
+
+  getZoom() {
+    return this.map.getZoom();
+  }
+
+  resetBoundaries() {
+    for (let b of this.boundaries) {
+      for (let i = this.map.entities.getLength() - 1; i >= 0; i--) {
+        let obj = this.map.entities.get(i);
+        // if (obj === b.bingObject) {
+          this.map.entities.removeAt(i);
+        // }
+      }
+      b.bingObject = null;
+    }
+    this.boundaries = [];
+    this.map.entities.clear();
+  }
+
+  addBoundary(b) {
+    // make BingMap objects and link to them
+    // all boundaries are polygons
+    let points = [];
+    for (let p of b.points) {
+      points.push(new Microsoft.Maps.Location(p[1], p[0]));
+    }
+    const poly = new Microsoft.Maps.Polygon(points, {
+      fillColor: "rgba(0,0,0,0)",
+      strokeColor: "#0000FF",
+      strokeThickness: 2
+    });
+    this.map.entities.push(poly);
+    b.bingObject = poly;
+    b.bingObjectBounds = poly.geometry.boundingBox;
+
+    // add to active bounds
+    this.boundaries.push(b);
+  }
+
+  showBoundaries() {
+    // set map bounds to fit union of all active boundaries
+    let bobjs = this.boundaries.map(x => x.bingObject);
+    let bounds = Microsoft.Maps.LocationRect.fromShapes(bobjs);
+    this.map.setView({ bounds: bounds, padding: 0 });
+  }
+
+  retrieveDrawnBoundaries() {
+    let shapes = this.drawingManager.getPrimitives();
+    let polys = [];
+
+    if (shapes && shapes.length > 0) {
+      console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
+      for (let s of shapes) {
+        console.log("Adding polygon" + s.geometry.bounds.toString());
+        let x = s.geometry.rings[0].x;
+        let y = s.geometry.rings[0].y;
+        let points = []
+        for (let i = 0; i < x.length; i++) {
+          points.push([x[i], y[i]]);
+        }
+        polys.push(new PolygonBoundary(points))
+      }
+    } else {
+      console.log('No shapes in the drawing manager.');
+    }
+
+    return polys;
+  }
+
+  hasShapes() {
+    let shapes = this.drawingManager.getPrimitives();
+    return shapes && shapes.length > 0;
+  }
+
+  addShapes() {
+    let shapes = this.drawingManager.getPrimitives();
+
+    if (shapes && shapes.length > 0) {
+      console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
+      for (let s of shapes) {
+        console.log("Adding " + s.geometry.bounds.toString());
+        let x1 = s.geometry.boundingBox.getWest();
+        let y1 = s.geometry.boundingBox.getNorth();
+        let x2 = s.geometry.boundingBox.getEast();
+        let y2 = s.geometry.boundingBox.getSouth();
+
+        let tileIds = Tile.getTileIds(x1, y1, x2, y2);
+        for (let tileId of tileIds) {
+          let tile = Tile_tiles[tileId]
+          x1 = Math.max(x1, tile.x1);
+          x1 = Math.min(x1, tile.x2);
+          x2 = Math.max(x2, tile.x1);
+          x2 = Math.min(x2, tile.x2);
+          y1 = Math.max(y1, tile.y2);
+          y1 = Math.min(y1, tile.y1);
+          y2 = Math.max(y2, tile.y2);
+          y2 = Math.min(y2, tile.y1);
+          let det = new Detection(x1, y1, x2, y2,
+            'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
+          det.update();
+        }
+
+        augmentDetections();
+      }
+      this.drawingManager.clear();
+      // this.map.entities.clear();
+    } else {
+      console.log('No shapes in the drawing manager.');
+    }
+  }
+
+  clearShapes() {
+    this.drawingManager.clear();
+    this.map.entities.clear();
+  }
+
+  clearAll() {
+    this.clearShapes();
+    // now, also go through Detection_detections and take out the blue ones
+    // let dets = [];
+    // for (let det of Detection_detections) {
+    //   if (det.conf !== 1.0) {
+    //     det.id = dets.length;
+    //     dets.push(det);
+    //   }
+    // }
+    
+    // Detection_detections = dets;
+    // Detection.generateList();
+    Detection.resetAll();
+  }
+
+  getBoundariesStr() {
+    let result = [];
+    for (let b of this.boundaries) {
+      result.push(b.toString())
+    }
+    return "[" + result.join(",") + "]";
+  }
+
+}
 //
 // boundaries: simple, circle, polygon
 //
@@ -828,7 +1193,6 @@ class Detection extends PlaceRect {
       det.id = i;
     }
   }
-
   static generateList() {
     let currentAddr = "";
     let firstDet = null;
@@ -844,7 +1208,8 @@ class Detection extends PlaceRect {
         boxes += "this.parentElement.querySelector(\".nested\").classList.toggle(\"active\"),";
         boxes += "this.classList.toggle(\"caret-down\")';"
         boxes += "'></span>";
-        boxes += "<input type='checkbox' id='addrcb" + det.id + "' name='addrcb" + det.id;
+        boxes += "<label id='lbladdrcb" + det.id + "' style='display:none' for='addrcb" + det.id + "'>addrcb"+det.id + "</label>"
+        boxes += "<input aria-labelledby = 'lbladdrcb" + det.id + "' type='checkbox' id='addrcb" + det.id + "' name='addrcb" + det.id;
         boxes + "' value='";
         boxes += det.id + "' checked style='display:inline;vertical-align:-10%;'"
         boxes += " onclick='Detection_detections[" + det.id + "].selectAddr(this.checked)'>";
@@ -866,13 +1231,16 @@ class Detection extends PlaceRect {
     }
     boxes += "</li></ul>";
     detectionsList.innerHTML = boxes;
+    // Call the function
+    assignAriaLabels();
   }
 
   generateCheckBox() {
     let meta = Tile_tiles[this.tile].metadata;
     let p2 = (this.secondary > 0 && this.secondary < 1.0 ? ",&nbsp;P2(" + this.secondary.toFixed(2) + ")" : "")
     let box = "<li><div style='display:block' id='detdiv" + this.id + "'>";
-    box += "<input type='checkbox' id='detcb" + this.id + "' name='detcb" + this.id + "'";
+    box += "<label id ='lbldetcb" + this.id + "' style='display:none' for='detcb" + this.id + "'>lbl" + this.id + "</label>"
+    box += "<input aria-labelledby = 'lbldetcb" + this.id + "' type='checkbox' id='detcb" + this.id + "' name='detcb" + this.id + "'";
     box += " value='" + this.id + "' " + (this.selected ? "checked" : "");
     box += " style='display:inline;vertical-align:-10%;'"
     box += " onclick='Detection_detections[" + this.id + "].select(undefined)'>";
@@ -1138,7 +1506,10 @@ function getObjects(estimate) {
       fetch("/getobjects", { method: "POST", body: formData })
         .then(response => response.json())
         .then(result => {
-          processObjects(result, startTime);
+          // Need to add code to process the results from EDAV
+          disableProgress(0, 0);
+          return;
+          // processObjects(result, startTime);
         })
         .catch(e => {
           console.log(e + ": "); disableProgress(0, 0);
@@ -1889,15 +2260,91 @@ function parseZipcodeResult(result) {
 // init actions
 console = new myConsole();
 
-if (dev === 0) {
-  about(6)
-}
-fillEngines();
+// fillEngines();
 fillProviders();
 confSlider.value = Math.round(Detection_minConfidence * 100);
 
-// about(0);
+// Function to assign aria-labels to elements that need them
+function assignAriaLabels() {
+  // Select specific elements that typically need aria-labels
+  const elementsNeedingAriaLabel = document.querySelectorAll('button, a, input, textarea, select, checkbox');
 
+  // // Define a mapping of elements to their corresponding aria-labels
+  // const ariaLabelMapping = {
+  //     'submit-button': 'Submit Form',
+  //     'cancel-button': 'Cancel Action',
+  //     'username-input': 'Enter your username',
+  //     'password-input': 'Enter your password',
+  //     'email-input': 'Enter your email address',
+  //     // Add more mappings as needed
+  // };
+
+  // Loop through each element
+  elementsNeedingAriaLabel.forEach(element => {
+      const id = element.id; // Get the element's ID
+      if (!element.hasAttribute('aria-label')) {
+          
+              element.setAttribute('aria-label', element.id);
+              // console.log(`Assigned aria-label to ${id}: ${element.id}`);
+         
+      }
+  });
+  const mapelementsNeedingAriaLabel=document.getElementById("bingMap").querySelectorAll('*');
+   // Loop through each element
+   mapelementsNeedingAriaLabel.forEach(element => {
+    const id = element.id; // Get the element's ID
+    if (!element.hasAttribute('aria-label')) {
+        
+            element.setAttribute('aria-label', element.id);
+            // console.log(`Assigned aria-label to ${id}: ${element.id}`);
+       
+    }
+});
+}
+function assignAriaLabelsToMapControl() {
+  // // Example: Accessing zoom buttons
+  // const zoomInButton = document.querySelector('.zoom-in-button-class'); // Use the correct class
+  // const zoomOutButton = document.querySelector('.zoom-out-button-class'); // Use the correct class
+  const rotateLeft = document.getElementById("bingMap").querySelector('#RotateLeftButton'); // Use the correct class
+  const rotateRight = document.getElementById("bingMap").querySelector('#RotateRightButton'); // Use the correct class
+  const rotate = document.getElementById("bingMap").querySelector('#RotateButton'); // Use the correct class
+  const birdseye = document.getElementById("bingMap").querySelector('#BirdseyeV2ExitButton'); // Use the correct class
+  const labelStyleSwitch = document.getElementById("bingMap").querySelector('.labelStyleSwitch'); // Use the correct class
+  const labelTogglelabel = document.getElementById("bingMap").querySelector('.labelToggle_label'); // Use the correct class
+  const chkToggle = document.getElementById("bingMap").querySelector('#navbarLabelToggleInput'); // Use the correct class
+  const chkToggle1 = document.getElementById("bingMap").querySelector('#be2ToggleInput'); // Use the correct class
+  if (labelStyleSwitch) {
+    labelStyleSwitch.setAttribute('ID', 'lbllabelStyleSwitch');
+  }
+
+  if (chkToggle) {
+    chkToggle.setAttribute('aria-label', 'lbllabelStyleSwitch');
+  }
+  if (labelTogglelabel) {
+    labelTogglelabel.setAttribute('ID', 'lbllabelTogglelabel');
+  }
+  if (chkToggle1) {
+    chkToggle1.setAttribute('aria-label', 'lbllabelStyleSwitch');
+  }
+  if (rotateLeft) {
+    rotateLeft.setAttribute('aria-label', 'Rotate Left');
+  }
+
+  if (rotateRight) {
+    rotateRight.setAttribute('aria-label', 'Rotate Right');
+  }
+  
+  if (rotate) {
+    rotate.setAttribute('aria-label', 'Rotate');
+  }
+  if (birdseye) {
+    birdseye.setAttribute('aria-label', 'Birds Eye View');
+  }
+}
+
+window.addEventListener('load', () => {
+  assignAriaLabelsToMapControl();
+});
 
 
 console.log("TowerScout initialized.");
