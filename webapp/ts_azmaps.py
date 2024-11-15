@@ -10,18 +10,38 @@
 #
 
 #
-# bing map class
+# azure map class
 #
 
 from ts_maps import Map
 import math
 import json
 
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+# from azure.identity import InteractiveBrowserCredential
+# from azure.mgmt.resource import ResourceManagementClient
+
+
 class AzureMap(Map):
+   # VAULT_URL = os.environ["https://towerscout-mapkeyvault.vault.azure.net/"]
+   # credential = DefaultAzureCredential()
+   # client = SecretClient(vault_url=VAULT_URL, credential=credential)
+
    def __init__(self, api_key):
       self.key = api_key
       self.has_metadata = False
 
+   def get_mapkey():
+      credential = DefaultAzureCredential()
+
+      secret_client = SecretClient(vault_url="https://towerscout-mapkeyvault.vault.azure.net/", credential=credential)
+      secretazuremapkey = secret_client.get_secret("TowerScout-Azuremapkey")
+
+      # print(secretazuremapkey.name)
+      print(secretazuremapkey)
+   
    def get_url(self, tile, zoom=19, size="640,640", sc=2, fmt="jpeg", maptype="satellite"):
       # get satellite image url for static map API
 #Tiles cost less - 15 tiles 1 transaction
@@ -122,7 +142,13 @@ class AzureMap(Map):
    #  url+="&zoom=18" #+ str(zoom) - Need to subtract zoom level by 1 to get the same scale 
    #  url+="&x=" + str(x) + "&y=" + str(y)
    #  url+="&format=png"
+   #  credential = DefaultAzureCredential()
+    credential = DefaultAzureCredential()
+    secret_client = SecretClient(vault_url=f"https://TowerScout-mapkeyvault.vault.azure.net/", credential=credential)
+    secretazuremapkey = secret_client.get_secret("TowerScout-Azuremapkey").value
 
+   #  print(secretazuremapkey.name)
+    print(secretazuremapkey)
 # More results working
     url="https://atlas.microsoft.com/map/static?subscription-key=" + self.key
     url+="&zoom=18&trafficLayer=microsoft.traffic.relative.main" #+ str(zoom) - Need to subtract zoom level by 1 to get the same scale 
