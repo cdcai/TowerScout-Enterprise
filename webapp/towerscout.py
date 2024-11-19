@@ -42,6 +42,8 @@ import datetime
 import sys
 import uuid
 
+from ts_azuremaps import AzureMap
+
 dev = 0
 
 MAX_TILES = 1000
@@ -91,11 +93,13 @@ def add_model(m):
 providers = {
     # 'google': {'id': 'google', 'name': 'Google Maps'},
     "bing": {"id": "bing", "name": "Bing Maps"},
+    "azure": {"id": "azure", "name": "Azure Maps"},
 }
 
 # other global variables
 google_api_key = ""
 bing_api_key = ""
+azure_map_key = ""
 
 # prepare uploads directory
 if not os.path.isdir("./uploads"):
@@ -111,11 +115,11 @@ zipcode_lock = threading.Lock()
 zipcode_provider = None
 
 
-def start_zipcodes():
-    global zipcode_provider
-    with zipcode_lock:
-        print("instantiating zipcode frame, could take 10 seconds ...")
-        zipcode_provider = Zipcode_Provider()
+# def start_zipcodes():
+#     global zipcode_provider
+#     with zipcode_lock:
+#         print("instantiating zipcode frame, could take 10 seconds ...")
+#         zipcode_provider = Zipcode_Provider()
 
 
 # Flask boilerplate stuff
@@ -219,7 +223,12 @@ def map_func():
         del session["tmpdirname"]
 
     # now render the map.html template, inserting the key
-    return render_template("towerscout.html", bing_map_key=bing_api_key, dev=dev)
+    return render_template(
+        "towerscout.html",
+        bing_map_key=bing_api_key,
+        azure_map_key=azure_map_key,
+        dev=dev,
+    )
 
 
 # cache control
@@ -322,6 +331,8 @@ def get_objects():
             map = BingMap(bing_api_key)
         elif provider == "google":
             map = GoogleMap(google_api_key)
+        elif provider == "azure":
+            map = AzureMap(azure_map_key)
         if map is None:
             print(" could not instantiate map provider:", provider)
 
@@ -804,6 +815,7 @@ if __name__ == "__main__":
     # has to be an api key with access to maps, staticmaps and places
     # todo: deploy CDC-owned key in final version
     with open("apikey.txt") as f:
+        azure_map_key = f.readline().split()[0]
         bing_api_key = f.readline().split()[0]
         f.close
     # app.run(debug = True)
@@ -811,11 +823,6 @@ if __name__ == "__main__":
     # app.config['SESSION_TYPE'] = 'filesystem'
     get_custom_models()
     engine_default = sorted(engines.items(), key=lambda x: -x[1]["ts"])[0][0]
-
-    if len(sys.argv) <= 1 or sys.argv[1] != "dev":
-        start_zipcodes()
-    else:
-        dev = 1
 
     print("Tower Scout ready on port 5000...")
     serve(app, host="0.0.0.0", port=5000)

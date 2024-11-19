@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 
-<!-- 
+<!--
 TowerScout
 A tool for identifying cooling towers from satellite and aerial imagery
 
@@ -9,18 +9,21 @@ TowerScout Team:
 Karen Wong, Gunnar Mein, Thaddeus Segura, Jia Lu
 
 Licensed under CC-BY-NC-SA-4.0
-(see LICENSE.TXT in the root of the repository for details) 
+(see LICENSE.TXT in the root of the repository for details)
 -->
 
 
-  
+
 <head>
   <title>TowerScout</title>
   <link rel="stylesheet" media="screen and (min-device-width: 1200px)" href="/css/ts_styles.css">
   <link rel="stylesheet" media="screen and (max-device-width: 1200px)" href="/css/ts_styles_mobile.css">
+  <link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.css" type="text/css">
+  <link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/drawing/1/atlas-drawing.min.css" type="text/css" />
+  <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/smoothness/jquery-ui.css">
 </head>
 
-<body style="margin:0 0 0 0;">
+<body style="margin:0 0 0 0;"  onload="initAzureMap()">
   <div id="about_div"
     style="display:flex;z-index:2000;position:absolute; justify-content:center; align-items: center;top:0px; left:0px;width:100%;height:100%; background-color: white; opacity: 0.93;">
     <div style="font-size: large;text-align: center;">
@@ -108,7 +111,9 @@ Licensed under CC-BY-NC-SA-4.0
       <form id="uis" name="uis">
         <!-- <input type="radio" id="google" name="uis" value="google" checked> -->
         <!-- <label for="google">Google Maps</label><br> -->
-        <input type="radio" id="bing" name="uis" value="bing" checked>
+        <input type="radio" id="azure" name="uis" value="azure" checked>
+        <label for="azure">Azure Maps</label><br>
+        <input type="radio" id="bing" name="uis" value="bing" >
         <label for="bing">Bing Maps</label><br>
         <input type="radio" id="upload" name="uis" value="upload">
         <label for="upload">Image upload</label><br>
@@ -136,7 +141,8 @@ Licensed under CC-BY-NC-SA-4.0
     <!--The div element for the map -->
     <div class="fmap" style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
       <!-- <div id="googleMap" style="display:block"></div> -->
-      <div id="bingMap" style="display:block"></div>
+       <div id="azureMap" style="display:none"></div>
+       <div id="bingMap" style="display:none"></div>
       <div id="uploadMap" style="display:none; overflow-y:scroll">
         <img id="canvas" style="width:100%;">
       </div>
@@ -209,13 +215,17 @@ Licensed under CC-BY-NC-SA-4.0
 
 
   <script src="/js/jquery-3.5.1.min.js"></script>
-  <script type='text/javascript' src='https://www.bing.com/api/maps/mapcontrol?callback=initBingMap&key={{bing_map_key}}'
+  <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+  <script type='text/javascript' src='https://www.bing.com/api/maps/mapcontrol'
     async defer>
     </script>
-  <script>
-    let bak = "{{bing_map_key}}";
-    let dev = {{ dev }};
-  </script>
+    <script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.js"></script>
+    <script src="https://atlas.microsoft.com/sdk/javascript/drawing/1/atlas-drawing.min.js"></script>
+    <script>
+      let bak = "{{bing_map_key}}";
+      let AZURE_MAP_API_KEY = "{{azure_map_key}}";
+      let dev = "{{ dev }}";
+   </script>
   <script src="/js/towerscout.js"></script>
 </body>
 
