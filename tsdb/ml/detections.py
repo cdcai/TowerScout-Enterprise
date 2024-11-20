@@ -22,13 +22,7 @@ from pyspark.sql import SparkSession
 
 from tsdb.ml.efficientnet import ENClassifier
 from tsdb.ml.utils import get_model_tags, YOLOv5Detection
-from pyspark.sql.types import (
-    StructType,
-    StructField,
-    StringType,
-    FloatType,
-    IntegerType,
-)
+import pyspark.sql.types as T
 
 
 def initialize_yolov5_cluster(model_name, alias):
@@ -52,17 +46,17 @@ class YOLOv5_Detector:
         self.batch_size = batch_size
 
         # follows the InferenceModelType protocol
-        self.return_type = StructType(
-            [
-                StructField("x1", FloatType(), True),
-                StructField("y1", FloatType(), True),
-                StructField("x2", FloatType(), True),
-                StructField("y2", FloatType(), True),
-                StructField("conf", FloatType(), True),
-                StructField("class", IntegerType(), True),
-                StructField("class_name", StringType(), True),
-                StructField("secondary", FloatType(), True),
-            ]
+        self.return_type = T.ArrayType(
+            T.StructType([
+                T.StructField("x1", T.FloatType(), True),
+                T.StructField("y1", T.FloatType(), True),
+                T.StructField("x2", T.FloatType(), True),
+                T.StructField("y2", T.FloatType(), True),
+                T.StructField("conf", T.FloatType(), True),
+                T.StructField("class", T.IntegerType(), True),
+                T.StructField("class_name", T.StringType(), True),
+                T.StructField("secondary", T.FloatType(), True),
+            ])
         )
 
     @classmethod
