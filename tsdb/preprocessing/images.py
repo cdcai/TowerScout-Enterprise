@@ -21,14 +21,14 @@ def make_image_metadata_udf(spark: SparkSession):
         exif = image._getexif()
         user_comment_exif_id = 37510
 
-        if user_comment_exif_id not in exif:
+        if exif is None or user_comment_exif_id not in exif:
             # we need to return with default values
             return {
                 "height": image.height,
                 "width": image.width,
                 "lat": 0.0,
                 "long": 0.0,
-                "image_id": -1,
+                "id": -1,
                 "map_provider": "unknown"
             }
         
@@ -41,12 +41,13 @@ def make_image_metadata_udf(spark: SparkSession):
         except UnicodeDecodeError as e:
             raise ValueError(f"Unable to decode exif data: {e}")
         
+        image_id = -1 if "id" not in exif_dict else int(exif_dict["id"])
         return {
             "height": image.height,
             "width": image.width,
             "lat": exif_dict["lat"],
             "long": exif_dict["lng"],
-            "image_id": int(exif_dict["id"]),
+            "image_id": image_id,
             "map_provider": exif_dict["mapProvider"]
         }
     
