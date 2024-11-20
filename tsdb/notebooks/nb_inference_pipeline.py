@@ -69,12 +69,10 @@ catalog_info = CatalogInfo.from_spark_config(spark)
 
 # Get schema and source table from widgets
 catalog = catalog_info.name
-schema = dbutils.widgets.get("source_schema")
-source_table = dbutils.widgets.get("source_table")
-alias = dbutils.widgets.get("mlflow-alias")
+schema = "towerscout" # delete
 
 # table stuff
-image_directory_path = "/Volumes/edav_dev_csels/towerscout/images/maps/bronze/"
+image_directory_path = "/Volumes/edav_dev_csels/towerscout/images/maps/bronze/*/*"
 sink_table = f"{catalog}.{schema}.test_image_silver"
 
 # Create our UDFs
@@ -98,17 +96,15 @@ struct_literal = F.struct(
 # Read Images
 image_config = {
     "cloudFiles.format": "binaryFile",
-    "pathGlobFilter": "*.jpeg"
+    "pathGlobFilter": "*.jpeg" # */*/*.jpeg
 }
-
-path = "/Volumes/edav_dev_csels/towerscout/images/maps/bronze/cnu4/f4c7f28a/"
 
 image_df = (
     spark
     .readStream
     .format("cloudFiles")
     .options(**image_config)
-    .load(path)
+    .load(image_directory_path) # parameterize
 )
 
 transformed_df = (
