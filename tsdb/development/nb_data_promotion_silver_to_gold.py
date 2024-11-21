@@ -88,25 +88,6 @@ spark.sql(drop_existing_view)
 
 # COMMAND ----------
 
-# # create temp view containing validated data 
-# # perform a join with silver table on uuid to get relevant information for image from silver table
-# # using from_json to unpack bounding boxes
-# create_updates_view = f"""
-#         CREATE TEMPORARY VIEW gold_updates AS
-#         WITH temp_data(uuid, image_hash, bboxes, split_label) AS (
-#         VALUES
-#             {values}
-#         )
-        
-#         SELECT from_json(temp.bboxes, 'array<struct<`class`:int,`x1`:float,`y1`:float,`x2`:float,`y2`:float,`conf`:float>>') as bboxes, temp.uuid, temp.image_hash, silver.request_id, silver.user_id, silver.image_path, temp.split_label
-#         FROM {catalog}.{schema}.{silver_table} AS silver
-#         JOIN temp_data AS temp
-#         ON silver.uuid = temp.uuid
-#         WHERE silver.uuid in ({uuids});
-#         """
-
-# COMMAND ----------
-
 create_updates_view = create_updates_view_query(catalog, schema, silver_table, values, uuids)
 
 # COMMAND ----------
@@ -120,33 +101,6 @@ display(spark.sql("SELECT * from gold_updates"))
 # COMMAND ----------
 
 df = spark.sql("SELECT * from gold_updates")
-
-# COMMAND ----------
-
-q = f"SELECT * FROM {catalog}.{schema}.{gold_table} WHERE image_hash IN (-1467659206, 802091180);"
-df = spark.sql(q)
-print(df.count())
-
-# COMMAND ----------
-
-# # merge temp view into gold table on image hash
-# merge_updates_into_gold = f"""
-#         MERGE INTO {catalog}.{schema}.{gold_table} AS target
-#         USING gold_updates AS source
-#         ON (target.image_hash = source.image_hash)
-#         WHEN MATCHED THEN
-#             UPDATE SET target.bboxes = source.bboxes,
-#                     target.uuid = source.uuid,
-#                     target.image_hash = source.image_hash,
-#                     target.image_path = source.image_path,
-#                     target.request_id = source.request_id,
-#                     target.user_id = source.user_id,
-#                     target.reviewed_time = CURRENT_TIMESTAMP(),
-#                     target.split_label = source.split_label 
-#         WHEN NOT MATCHED THEN
-#             INSERT (bboxes, uuid, image_hash, image_path, request_id, reviewed_time, user_id, split_label) 
-#             VALUES (source.bboxes, source.uuid, source.image_hash, source.image_path, source.request_id, CURRENT_TIMESTAMP(), source.user_id, source.split_label);
-#         """
 
 # COMMAND ----------
 

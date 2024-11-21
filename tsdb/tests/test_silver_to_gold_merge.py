@@ -25,12 +25,12 @@ def spark() -> SparkSession:
     return spark
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def db_args() -> list[str]:
     return ["edav_dev_csels", "towerscout", "test_image_silver", "test_image_gold"]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def validated_data() -> dict[str, Any]:
     validated = (
         (
@@ -85,19 +85,20 @@ def test_create_update_view_query(
 def test_merge_updates_into_gold(
     spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
 ) -> None:
-    
-     """
+    """
     Tests the create_gold_merge_query function
     """
-    
+
     catalog, schema, silver_table, gold_table = db_args
 
+    # remove existing gold_table updates view if it exists
+    spark.sql("DROP VIEW IF EXISTS gold_updates;")
+
+    # remove testing data from gold table if it exists
     query = f"DELETE FROM {catalog}.{schema}.{gold_table} WHERE image_hash IN (-1467659206, 802091180);"
     df = spark.sql(query)
 
     values, uuids = convert_data_to_str(validated_data)
-
-    spark.sql("DROP VIEW IF EXISTS gold_updates;")
 
     create_updates_view = create_updates_view_query(
         catalog, schema, silver_table, values, uuids
@@ -107,10 +108,9 @@ def test_merge_updates_into_gold(
 
     merge_updates_into_gold = create_gold_merge_query(catalog, schema, gold_table)
 
-    spark.sql(create_updates_view)
+    spark.sql(merge_updates_into_gold)
 
     query = f"SELECT * FROM {catalog}.{schema}.{gold_table} WHERE image_hash IN (-1467659206, 802091180);"
     df = spark.sql(query)
 
     assert df.count() == 2
-
