@@ -119,6 +119,16 @@ display(spark.sql("SELECT * from gold_updates"))
 
 # COMMAND ----------
 
+df = spark.sql("SELECT * from gold_updates")
+
+# COMMAND ----------
+
+q = f"SELECT * FROM {catalog}.{schema}.{gold_table} WHERE image_hash IN (-1467659206, 802091180);"
+df = spark.sql(q)
+print(df.count())
+
+# COMMAND ----------
+
 # # merge temp view into gold table on image hash
 # merge_updates_into_gold = f"""
 #         MERGE INTO {catalog}.{schema}.{gold_table} AS target
@@ -220,87 +230,87 @@ spark.sql(merge_updates_into_gold)
 
 # COMMAND ----------
 
-catalog = "edav_dev_csels"
-schema = "towerscout_test_schema"
-gold_table = "test_image_gold"
-silver_table = "test_image_silver"
+# catalog = "edav_dev_csels"
+# schema = "towerscout_test_schema"
+# gold_table = "test_image_gold"
+# silver_table = "test_image_silver"
 
 
-func_input = (
-    (
-        "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k121.jpg",
-        [
-            {"ymax": 0.028906, "xmin": 0.169141, "label": 0, "ymin": 0.551953, "xmax": 0.030469},
-            {"ymax": 0.028906, "xmin": 0.183984, "label": 0, "ymin": 0.530859, "xmax": 0.030469},
-        ],
+# func_input = (
+#     (
+#         "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k121.jpg",
+#         [
+#             {"ymax": 0.028906, "xmin": 0.169141, "label": 0, "ymin": 0.551953, "xmax": 0.030469},
+#             {"ymax": 0.028906, "xmin": 0.183984, "label": 0, "ymin": 0.530859, "xmax": 0.030469},
+#         ],
 
-    ),
-    (
-        "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k115.jpg",
-        [
-            {"ymax": 0.049219, "xmin": 0.441797, "label": 0, "ymin": 0.290234, "xmax": 0.039844},
-            {"ymax": 0.049219, "xmin": 0.461328, "label": 0, "ymin": 0.283984, "xmax": 0.039844},
-        ]
-    ),
-)
+#     ),
+#     (
+#         "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k115.jpg",
+#         [
+#             {"ymax": 0.049219, "xmin": 0.441797, "label": 0, "ymin": 0.290234, "xmax": 0.039844},
+#             {"ymax": 0.049219, "xmin": 0.461328, "label": 0, "ymin": 0.283984, "xmax": 0.039844},
+#         ]
+#     ),
+# )
 
-paths = ", ".join([f"'{x}'" for (path, bboxes, img_hash) in func_input])
-
-# COMMAND ----------
-
-mappings = ", ".join([f"('{x}', '{json.dumps(y)}')" for (path, bboxes, img_hash) in func_input])
-
-print(mappings)
+# paths = ", ".join([f"'{x}'" for (path, bboxes, img_hash) in func_input])
 
 # COMMAND ----------
 
-query = "DROP VIEW IF EXISTS gold_updates;"
-spark.sql(query)
+# mappings = ", ".join([f"('{x}', '{json.dumps(y)}')" for (path, bboxes, img_hash) in func_input])
 
-query = f"""
-CREATE TEMPORARY VIEW gold_updates AS
-WITH temp_data(path, statistics) AS (
-  VALUES
-    {mappings}
-)
-
-SELECT from_json(temp.statistics, 'mean array<double>, median array<int>, stddev array<double>, extrema array<array<int>>') as statistics, temp.path, silver.length
-FROM {catalog}.{schema}.{silver_table} AS silver
-
-JOIN temp_data AS temp
-ON silver.path = temp.path
-WHERE silver.path in ({paths});
-"""
-
-display(spark.sql(query))
-
-# uuid's bounding boxes, image hash, userID, set review time as CURRENT_TIMESTAMP()
-# get requestID from silver table
+# print(mappings)
 
 # COMMAND ----------
 
-display(spark.sql("SELECT * from gold_updates"))
+# query = "DROP VIEW IF EXISTS gold_updates;"
+# spark.sql(query)
+
+# query = f"""
+# CREATE TEMPORARY VIEW gold_updates AS
+# WITH temp_data(path, statistics) AS (
+#   VALUES
+#     {mappings}
+# )
+
+# SELECT from_json(temp.statistics, 'mean array<double>, median array<int>, stddev array<double>, extrema array<array<int>>') as statistics, temp.path, silver.length
+# FROM {catalog}.{schema}.{silver_table} AS silver
+
+# JOIN temp_data AS temp
+# ON silver.path = temp.path
+# WHERE silver.path in ({paths});
+# """
+
+# display(spark.sql(query))
+
+# # uuid's bounding boxes, image hash, userID, set review time as CURRENT_TIMESTAMP()
+# # get requestID from silver table
 
 # COMMAND ----------
 
-display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
+# display(spark.sql("SELECT * from gold_updates"))
 
 # COMMAND ----------
 
-query = f"""
-MERGE INTO {catalog}.{schema}.{gold_table} AS target
-USING gold_updates AS source
-ON (target.path = source.path)
-WHEN MATCHED THEN
-    UPDATE SET target.statistics = source.statistics,
-               target.path = source.path
-WHEN NOT MATCHED THEN
-    INSERT (statistics, path) VALUES (source.statistics, source.path)
-               ;
-"""
-
-spark.sql(query)
+# display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
 
 # COMMAND ----------
 
-display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))
+# query = f"""
+# MERGE INTO {catalog}.{schema}.{gold_table} AS target
+# USING gold_updates AS source
+# ON (target.path = source.path)
+# WHEN MATCHED THEN
+#     UPDATE SET target.statistics = source.statistics,
+#                target.path = source.path
+# WHEN NOT MATCHED THEN
+#     INSERT (statistics, path) VALUES (source.statistics, source.path)
+#                ;
+# """
+
+# spark.sql(query)
+
+# COMMAND ----------
+
+# display(spark.sql(f"SELECT * from {catalog}.{schema}.{gold_table}"))

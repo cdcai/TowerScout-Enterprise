@@ -1,25 +1,45 @@
-#from databricks import sql
+from databricks import sql
 import json
+from typing import Any
+
 from numpy.random import choice
 
 
-# def execute_query(query: str, cursor: sql.Cursor, connection: sql.Connection) -> None:
-#     """
-#     Function to execute queries on databricks using the databricks SQL API
+def execute_query(query: str, cursor: sql.Cursor, connection: sql.Connection) -> None:
+    """
+    Function to execute queries on databricks using the databricks SQL API
 
-#     Args:
-#         query: The query to execute
-#         cursor: The cursor to execute the query on
-#         connection: The connection to execute the query on
-#     """
-#     try:
-#         cursor.execute(query)
-#         return
-#     except:
-#         cursor.close()
-#         connection.close()
-#         return
+    Args:
+        query: The query to execute
+        cursor: The cursor to execute the query on
+        connection: The connection to execute the query on
+    """
+    try:
+        cursor.execute(query)
+        return
+    except:
+        cursor.close()
+        connection.close()
+        return
 
+def convert_data_to_str(validated_data: tuple[str, str, dict[str, Any]]) -> tuple[str, str]:
+    """
+    Function to convert validated data to string for SQL query
+
+    Args:
+        validated_data: uuids, image hash and bounding boxes of the image (in that order) validated by an end user
+    """
+
+    values = ", ".join(
+        [
+            f"('{uuid}', '{image_hash}', '{json.dumps(bboxes)}', '{choice(a=['train', 'val', 'test'], p=[0.6, 0.2, 0.2])}')"
+            for (uuid, image_hash, bboxes) in validated_data
+        ]
+    )
+
+    uuids = ", ".join([f"'{uuid}'" for (uuid, image_hash, bboxes) in validated_data])
+
+    return values, uuids
 
 def create_updates_view_query(
     catalog: str, schema: str, silver_table: str, values: str, uuids: str
@@ -112,14 +132,7 @@ def promote_silver_to_gold(
         server_hostname="<host-name>", http_path="<http-path>", access_token="<token>"
     )
 
-    values = ", ".join(
-        [
-            f"('{uuid}', '{image_hash}', '{json.dumps(bboxes)}', '{choice(a=['train', 'val', 'test'], p=[0.6, 0.2, 0.2])}')"
-            for (uuid, image_hash, bboxes) in validated_data
-        ]
-    )
-
-    uuids = ", ".join([f"'{uuid}'" for (uuid, image_hash, bboxes) in validated_data])
+    values, uuids = convert_data_to_str(validated_data)
 
     cursor = connection.cursor()
 

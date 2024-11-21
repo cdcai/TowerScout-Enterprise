@@ -1,7 +1,14 @@
 import pytest
 import json
+from typing import Any
 
 from pyspark.sql import SparkSession
+
+from tsdb.utils.silver_to_gold import (
+    create_updates_view_query,
+    create_gold_merge_query,
+    convert_data_to_str,
+)
 
 
 @pytest.fixture(scope="module")
@@ -11,57 +18,99 @@ def spark() -> SparkSession:
     """
     spark = (
         SparkSession.builder.master("local")
-        .appName("test_functions_transformation")
+        .appName("test_silver_to_gold_functions")
         .getOrCreate()
     )
 
     return spark
 
 
-def test_merge_into_gold_query(spark: SparkSession) -> None:
-    """
-    Tests the <gold silver promotion func name> function
-    """
-    validated_data = (
+@pytest.fixture(scope="module")
+def db_args() -> list[str]:
+    return ["edav_dev_csels", "towerscout", "test_image_silver", "test_image_gold"]
+
+
+@pytest.fixture(scope="module")
+def validated_data() -> dict[str, Any]:
+    validated = (
         (
-            "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k121.jpg",
-            "ab3c5de",
-            {0: {'label':0, 'xmin':8.2, 'xmax':5.4, 'ymin':5.1, 'ymax':9.2}, 1: {'labe':0, 'xmin':0.2, 'xmax':3.3, 'ymin':55.4, 'ymax':3.5}}
+            "75c96459-1946-4950-af0f-df774c6b1f52_tmp1sdnfexw0",
+            -1467659206,
+            [
+                {"conf": 0.77, "class": 0, "x1": 8.2, "x2": 5.4, "y1": 5.1, "y2": 9.2},
+                {"conf": 0.88, "class": 0, "x1": 0.2, "x2": 3.3, "y1": 55.4, "y2": 3.5},
+            ],
         ),
         (
-            "abfss://ddphss-csels@davsynapseanalyticsdev.dfs.core.windows.net/PD/TowerScout/Unstructured/test_images/tmp5j0qh5k119.jpg",
-            "g4mf8n",
-            {0: {'label':0, 'xmin':1.2, 'xmax':75.4, 'ymin':55.1, 'ymax':98.2}, 1: {'labe':0, 'xmin':1.2, 'xmax':2.3, 'ymin':3.4, 'ymax':7.5}}
-        )
+            "86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0",
+            "802091180",
+            [
+                {
+                    "conf": 0.8,
+                    "class": 0,
+                    "x1": 1.2,
+                    "x2": 75.4,
+                    "y1": 55.1,
+                    "y2": 98.2,
+                },
+                {"conf": 0.9, "class": 0, "x1": 1.2, "x2": 2.3, "y1": 3.4, "y2": 7.5},
+            ],
+        ),
     )
 
-    values = ", ".join(
-        [f"('{path}', '{img_hash}', '{json.dumps(bboxes)}')" for (path, img_hash, bboxes) in validated_data]
+    return validated
+
+
+def test_create_update_view_query(
+    spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
+) -> None:
+    """
+    Tests the create_updates_view_query function
+    """
+
+    catalog, schema, silver_table, _ = db_args
+    values, uuids = convert_data_to_str(validated_data)
+
+    spark.sql("DROP VIEW IF EXISTS gold_updates;")
+
+    create_updates_view = create_updates_view_query(
+        catalog, schema, silver_table, values, uuids
     )
 
-    paths = ", ".join([f"'{path}'" for (path, img_hash, bboxes) in validated_data])
-    delete_existing = "DELETE FROM edav_dev_csels.towerscout_test_schema.test_image_gold WHERE path IN ({paths});"
-    spark.sql(delete_existing) # delete exisiting record from test gold table for test
-
-    drop_existing_view = "DROP VIEW IF EXISTS gold_updates;"
-    spark.sql(delete_existing)
-
-    create_updates_view = f"""
-            CREATE TEMPORARY VIEW gold_updates AS
-            WITH temp_data(paths, imgHash, bboxs) AS (
-            VALUES
-                {values}
-            )
-
-            SELECT from_json(temp.bboxs, 'annotations array<struct<`xmin`:float, `xmax`:float, `ymim`:float, `ymax`:float, `label`:int>>') as bbox, temp.uuid, temp.imgHash, silver.length
-            FROM edav_dev_csels.towerscout_test_schema.test_image_silver AS silver
-            JOIN temp_data AS temp
-            ON silver.path = temp.path
-            WHERE silver.path in ({paths});
-            """
     spark.sql(create_updates_view)
+
+    assert spark.catalog.tableExists("gold_updates")
+
+
+def test_merge_updates_into_gold(
+    spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
+) -> None:
     
+     """
+    Tests the create_gold_merge_query function
+    """
     
-    assert isinstance(
-        result, F.Column
-    ), f"Expected a PySpark Column object, got {type(result)}"
+    catalog, schema, silver_table, gold_table = db_args
+
+    query = f"DELETE FROM {catalog}.{schema}.{gold_table} WHERE image_hash IN (-1467659206, 802091180);"
+    df = spark.sql(query)
+
+    values, uuids = convert_data_to_str(validated_data)
+
+    spark.sql("DROP VIEW IF EXISTS gold_updates;")
+
+    create_updates_view = create_updates_view_query(
+        catalog, schema, silver_table, values, uuids
+    )
+
+    spark.sql(create_updates_view)
+
+    merge_updates_into_gold = create_gold_merge_query(catalog, schema, gold_table)
+
+    spark.sql(create_updates_view)
+
+    query = f"SELECT * FROM {catalog}.{schema}.{gold_table} WHERE image_hash IN (-1467659206, 802091180);"
+    df = spark.sql(query)
+
+    assert df.count() == 2
+
