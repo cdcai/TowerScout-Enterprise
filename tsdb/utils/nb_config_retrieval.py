@@ -59,11 +59,11 @@ def get_cluster_tag_val(key_name: str) -> str:
 def get_catalog_schema_config(cat, schema):
     # Query to get the catalog name and schema name from the information schema
     conf = spark.sql(
-        f"SELECT catalog_name, schema_name FROM information_schema.schemata WHERE catalog_name LIKE '%{cat}%' and schema_name LIKE '%{schema}%'"
+        f"SELECT catalog_name, schema_name FROM information_schema.schemata WHERE catalog_name LIKE '%{cat}%'"
     )
     # Extract the catalog name and schema name from the query result
     catalog_name = conf.collect()[0]["catalog_name"]
-    schema_name = conf.collect()[0]["schema_name"]
+    schema_name = "towerscout"
 
     # Query to get the volumes in the specified catalog and schema
     vols = spark.sql(f"show volumes in {catalog_name}.{schema_name}")
@@ -109,7 +109,12 @@ if "configs" in volumes:
             spark.conf.set("debug_mode", conf.collect()[0][env]["debug_mode"])
             spark.conf.set("unit_test_mode", conf.collect()[0][env]["unit_test_mode"])
             spark.conf.set("key_vault_name", conf.collect()[0][env]["key_vault_name"])
+            spark.conf.set("batch_size", conf.collect()[0][env]["batch_size"])
+            spark.conf.set("bronze_path", conf.collect()[0][env]["bronze_path"])
+            spark.conf.set("silver_table_name", conf.collect()[0][env]["silver_table_name"])
             client_id = conf.collect()[0][env]["azure_config"]["client_id"]
+            writestream_trigger_args = conf.collect()[0][env]["writestream_trigger_args"]
+            image_config = conf.collect()[0][env]["image_config"]
         else:
             dbutils.notebook.exit(
                 f"Failure: Enviornment is neither development or production is {env}."
@@ -138,6 +143,11 @@ config_data = [
         spark.conf.get("debug_mode"),
         spark.conf.get("vol_location_configs"),
         spark.conf.get("key_vault_name"),
+        spark.conf.get("silver_table_name"),
+        spark.conf.get("batch_size"),
+        spark.conf.get("bronze_path"),
+        image_config,
+        writestream_trigger_args,
         client_id,
         tenant_id,
         spark.conf.get("unit_test_mode"),
@@ -151,6 +161,11 @@ config_columns = [
     "debug_mode",
     "vol_location_configs",
     "key_vault_name",
+    "silver_table_name",
+    "batch_size",
+    "bronze_path",
+    "image_config",
+    "writestream_trigger_args",
     "client_id",
     "tenant_id",
     "unit_test_mode",
