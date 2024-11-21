@@ -7,12 +7,144 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC DELETE FROM edav_dev_csels.towerscout_test_schema.test_image_gold; -- Delete all records in testing gold table
+# %sql
+# DELETE FROM edav_dev_csels.towerscout.test_image_gold; -- Delete all records in testing gold table
+
+# COMMAND ----------
+
+# %sql
+# DROP TABLE edav_dev_csels.towerscout.test_image_gold; -- Delete testing gold table
+
+# COMMAND ----------
+
+# %sql
+# USE CATALOG edav_dev_csels;
+# USE SCHEMA towerscout;
+
+# CREATE TABLE  IF NOT EXISTS test_image_gold (
+#   user_id STRING,
+#   request_id STRING,
+#   uuid STRING,
+#   reviewed_time TIMESTAMP,
+#   bboxes ARRAY<STRUCT<class: INT, x1: FLOAT, y1: FLOAT, x2: FLOAT, y2: FLOAT, conf: FLOAT>>,
+#   image_hash INT,
+#   image_path STRING,
+#   split_label STRING
+#   );
 
 # COMMAND ----------
 
 import json
+from tsdb.utils.silver_to_gold import create_gold_merge_query, create_updates_view_query
+from numpy.random import choice
+
+# COMMAND ----------
+
+catalog = "edav_dev_csels"
+schema = "towerscout"
+silver_table = "test_image_silver"
+gold_table = "test_image_gold"
+
+# COMMAND ----------
+
+validated_data = (
+    (
+        "75c96459-1946-4950-af0f-df774c6b1f52_tmp1sdnfexw0",
+        -1467659206,
+        [
+            {"conf": 0.77, "class": 0, "x1": 8.2, "x2": 5.4, "y1": 5.1, "y2": 9.2},
+            {"conf": 0.88, "class": 0, "x1": 0.2, "x2": 3.3, "y1": 55.4, "y2": 3.5},
+        ],
+    ),
+    
+    (
+        "86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0",
+        "802091180",
+        [
+            {"conf": 0.8, "class": 0, "x1": 1.2, "x2": 75.4, "y1": 55.1, "y2": 98.2},
+            {"conf": 0.9, "class": 0, "x1": 1.2, "x2": 2.3, "y1": 3.4, "y2": 7.5},
+        ],
+    ),
+)
+
+# COMMAND ----------
+
+values = ", ".join(
+    [
+        f"('{uuid}', '{image_hash}', '{json.dumps(bboxes)}', '{choice(a=['train', 'val', 'test'], p=[0.6, 0.2, 0.2])}')"
+        for (uuid, image_hash, bboxes) in validated_data
+    ]
+)
+
+uuids = ", ".join([f"'{uuid}'" for (uuid, image_hash, bboxes) in validated_data])
+
+# COMMAND ----------
+
+drop_existing_view = "DROP VIEW IF EXISTS gold_updates;"
+
+# COMMAND ----------
+
+spark.sql(drop_existing_view)
+
+# COMMAND ----------
+
+# # create temp view containing validated data 
+# # perform a join with silver table on uuid to get relevant information for image from silver table
+# # using from_json to unpack bounding boxes
+# create_updates_view = f"""
+#         CREATE TEMPORARY VIEW gold_updates AS
+#         WITH temp_data(uuid, image_hash, bboxes, split_label) AS (
+#         VALUES
+#             {values}
+#         )
+        
+#         SELECT from_json(temp.bboxes, 'array<struct<`class`:int,`x1`:float,`y1`:float,`x2`:float,`y2`:float,`conf`:float>>') as bboxes, temp.uuid, temp.image_hash, silver.request_id, silver.user_id, silver.image_path, temp.split_label
+#         FROM {catalog}.{schema}.{silver_table} AS silver
+#         JOIN temp_data AS temp
+#         ON silver.uuid = temp.uuid
+#         WHERE silver.uuid in ({uuids});
+#         """
+
+# COMMAND ----------
+
+create_updates_view = create_updates_view_query(catalog, schema, silver_table, values, uuids)
+
+# COMMAND ----------
+
+spark.sql(create_updates_view)
+
+# COMMAND ----------
+
+display(spark.sql("SELECT * from gold_updates"))
+
+# COMMAND ----------
+
+# # merge temp view into gold table on image hash
+# merge_updates_into_gold = f"""
+#         MERGE INTO {catalog}.{schema}.{gold_table} AS target
+#         USING gold_updates AS source
+#         ON (target.image_hash = source.image_hash)
+#         WHEN MATCHED THEN
+#             UPDATE SET target.bboxes = source.bboxes,
+#                     target.uuid = source.uuid,
+#                     target.image_hash = source.image_hash,
+#                     target.image_path = source.image_path,
+#                     target.request_id = source.request_id,
+#                     target.user_id = source.user_id,
+#                     target.reviewed_time = CURRENT_TIMESTAMP(),
+#                     target.split_label = source.split_label 
+#         WHEN NOT MATCHED THEN
+#             INSERT (bboxes, uuid, image_hash, image_path, request_id, reviewed_time, user_id, split_label) 
+#             VALUES (source.bboxes, source.uuid, source.image_hash, source.image_path, source.request_id, CURRENT_TIMESTAMP(), source.user_id, source.split_label);
+#         """
+
+# COMMAND ----------
+
+merge_updates_into_gold = create_gold_merge_query(catalog, schema, gold_table)
+
+# COMMAND ----------
+
+spark.sql(merge_updates_into_gold)
 
 # COMMAND ----------
 
