@@ -26,6 +26,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./nb_config_retrieval
+
+# COMMAND ----------
+
 from tsdb.utils.uc import CatalogInfo
 import tsdb.preprocessing.transformations as trf
 from tsdb.preprocessing.images import make_image_metadata_udf
@@ -54,10 +58,6 @@ if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_confi
 else:
     # Exit the notebook with an error message if the global view does not exist
     dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
-
-# COMMAND ----------
-
-print(image_config)
 
 # COMMAND ----------
 
