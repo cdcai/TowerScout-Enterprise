@@ -55,6 +55,7 @@ if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_confi
     writestream_trigger_args = result['writestream_trigger_args'].asDict()
     image_config = result['image_config'].asDict()
     batch_size = int(result['batch_size'])
+    checkpoint_path = result['checkpoint_path']
 else:
     # Exit the notebook with an error message if the global view does not exist
     dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
@@ -163,6 +164,6 @@ else:
         # Option 3
         # Trigger workflow on file arrival, but it only works on directories with less than 10,000 files
         .trigger(**writestream_trigger_args) 
-        .option("checkpointLocation", "file:/tmp/checkpoints_2") # parameterized
+        .option("checkpointLocation", checkpoint_path) # parameterized
         .table(sink_table)
     )
