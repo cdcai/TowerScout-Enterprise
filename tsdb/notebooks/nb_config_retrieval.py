@@ -114,6 +114,7 @@ if "configs" in volumes:
             spark.conf.set("batch_size", conf.collect()[0][env]["batch_size"])
             spark.conf.set("bronze_path", conf.collect()[0][env]["bronze_path"])
             spark.conf.set("silver_table_name", conf.collect()[0][env]["silver_table_name"])
+            spark.conf.set("checkpoint_path", conf.collect()[0][env]["checkpoint_path"])
             client_id = conf.collect()[0][env]["azure_config"]["client_id"]
             writestream_trigger_args = conf.collect()[0][env]["writestream_trigger_args"]
             image_config = conf.collect()[0][env]["image_config"]
@@ -153,6 +154,7 @@ config_data = [
         client_id,
         tenant_id,
         spark.conf.get("unit_test_mode"),
+        spark.conf.get("checkpoint_path")
     )
 ]
 
@@ -171,6 +173,7 @@ config_columns = [
     "client_id",
     "tenant_id",
     "unit_test_mode",
+    "checkpoint_path"
 ]
 
 # Create a DataFrame with the configuration values and column names
