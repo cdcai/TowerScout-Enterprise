@@ -105,6 +105,8 @@ if "configs" in volumes:
         conf = spark.read.format("json").load(vol_loc, multiLine=True)
         tenant_id = conf.collect()[0]["tenant_id"]
         # Set the debug mode from the loaded configuration data based on the environment
+        if env == "dev":
+            env = "development"
         if env == "development" or env == "production":
             spark.conf.set("debug_mode", conf.collect()[0][env]["debug_mode"])
             spark.conf.set("unit_test_mode", conf.collect()[0][env]["unit_test_mode"])
