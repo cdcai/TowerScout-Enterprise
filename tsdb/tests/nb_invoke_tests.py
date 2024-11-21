@@ -35,7 +35,7 @@ def run_pytest_main(flags: list[str]):
 
 # COMMAND ----------
 
-run_pytest_main(["test_silver_to_gold_merge.py", "-v", "-p", "no:cacheprovider"])
+run_pytest_main([".", "-v", "-p", "no:cacheprovider"])
 
 # COMMAND ----------
 
