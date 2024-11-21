@@ -166,11 +166,3 @@ else:
         .option("checkpointLocation", "file:/tmp/checkpoints_2") # parameterized
         .table(sink_table)
     )
-
-# COMMAND ----------
-
-display(spark.sql("SELECT * from inference_predictions"))
-
-# COMMAND ----------
-
-
