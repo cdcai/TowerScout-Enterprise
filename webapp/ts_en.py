@@ -21,28 +21,37 @@ from efficientnet_pytorch import EfficientNet
 from torchvision import transforms
 
 import PIL
-from ts_imgutil import cut_square_detection
+from webapp.ts_imgutil import cut_square_detection
 
-class EN_Classifier:
 
-    def __init__(self):
+
+class EN_Classifier(nn.Module):
+
+    def __init__(self, pretrained_path):
+        super(EN_Classifier, self).__init__()
         # load pre-trained EfficientNet model
         self.model = EfficientNet.from_pretrained('efficientnet-b5', include_top=True)
 
         # replace classification head
         self.model._fc = nn.Sequential(
             nn.Linear(2048, 512), #b5
-            nn.Linear(512, 1))
-
+            nn.Linear(512, 1)
+        )
+        
+        self.PATH_best = None
         # load our weights
-        PATH_best = 'model_params/EN/b5_unweighted_best.pt'
+        if pretrained_path:
+            self.PATH_best = pretrained_path
+            print("Weights loaded from: ", pretrained_path)
+        else:
+            self.PATH_best = 'model_params/EN/b5_unweighted_best.pt'
 
         # switch to GPU memory if available
         if torch.cuda.is_available():
             self.model.cuda()
-            checkpoint = torch.load(PATH_best)
+            checkpoint = torch.load(self.PATH_best)
         else:
-            checkpoint = torch.load(PATH_best, map_location=torch.device('cpu'))
+            checkpoint = torch.load(self.PATH_best, map_location=torch.device('cpu'))
 
         self.model.load_state_dict(checkpoint)
         self.model.eval()
@@ -54,6 +63,9 @@ class EN_Classifier:
             transforms.Normalize(mean=(0.5553, 0.5080, 0.4960), std=(0.1844, 0.1982, 0.2017))
             ])
     
+    def forward(self, x):
+        return x
+
     #
     # classify:
     #

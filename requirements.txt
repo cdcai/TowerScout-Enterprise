@@ -1,0 +1,5 @@
+numpy>=1.23.5
+Pillow>=9.0.1
+pyarrow
+packaging
+importlib-metadata<=7.1

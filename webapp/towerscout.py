@@ -54,6 +54,7 @@ from PIL import Image, ImageDraw
 import threading
 import gc
 import datetime
+import sys
 import uuid
 
 dev = 0
@@ -62,7 +63,7 @@ MAX_TILES = 1000
 MAX_TILES_SESSION = 100000
 
 current_directory = os.getcwd()
-model_dir = os.path.join(os.getcwd(), 'webapp/model_params/yolov5')
+model_dir = os.path.join(os.getcwd(), "webapp/model_params/yolov5")
 
 engines = {}
 
@@ -106,8 +107,8 @@ def add_model(m):
 # map providers
 providers = {
     # 'google': {'id': 'google', 'name': 'Google Maps'},
-    'bing': {'id': 'bing', 'name': 'Bing Maps'},
-    'azure': {'id': 'azure', 'name': 'Azure Maps'},
+    "bing": {"id": "bing", "name": "Bing Maps"},
+    "azure": {"id": "azure", "name": "Azure Maps"},
 }
 
 # other global variables
@@ -118,7 +119,7 @@ loop = asyncio.get_event_loop()
 
 # prepare uploads directory
 
-uploads_dir = os.path.join(os.getcwd(), 'webapp/uploads')
+uploads_dir = os.path.join(os.getcwd(), "webapp/uploads")
 if not os.path.isdir(uploads_dir):
     os.mkdir(uploads_dir)
 for f in os.listdir(uploads_dir):
@@ -150,19 +151,21 @@ Session(app)
 
 # route for js code
 
-@app.route('/site/')
+
+@app.route("/site/")
 def send_site_index():
-    return send_site('towerscout.html')
+    return send_site("towerscout.html")
 
 
-@app.route('/site/<path:path>')
+@app.route("/site/<path:path>")
 def send_site(path):
     # print("site page requested:",path)
-    return send_from_directory('/', path)
+    return send_from_directory("/", path)
 
-@app.route('/about')
+
+@app.route("/about")
 def about():
-    return render_template('about.html')
+    return render_template("about.html")
 
 
 # route for images
@@ -312,17 +315,17 @@ def get_objects_process_status(process_id):
 
 
 # detection route
-@app.route('/getobjects', methods=['POST'])
+@app.route("/getobjects", methods=["POST"])
 def get_objects():
     try:
         print(" session:", id(session))
 
         # check whether this session is over its limit
-        if 'tiles' not in session:
-            session['tiles'] = 0
+        if "tiles" not in session:
+            session["tiles"] = 0
 
-        print("tiles queried in session:", session['tiles'])
-        if session['tiles'] > MAX_TILES_SESSION:
+        print("tiles queried in session:", session["tiles"])
+        if session["tiles"] > MAX_TILES_SESSION:
             return "-1"
 
         # start time, get params
@@ -359,11 +362,11 @@ def get_objects():
         elif provider == "google":
             map = GoogleMap(google_api_key)
         elif provider == "azure":
-            map = AzureMap(azure_api_key)        
-            
+            map = AzureMap(azure_api_key)
+
         if map is None:
             print(" could not instantiate map provider:", provider)
-        
+
         # divide the map into 640x640 parts
         tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
         print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
@@ -374,7 +377,7 @@ def get_objects():
         tiles = [t for t in tiles if ts_maps.check_tile_against_bounds(t, bounds)]
         tiles = [t for t in tiles if ts_imgutil.tileIntersectsPolygons(t, polygons)]
         for i, tile in enumerate(tiles):
-            tile['id'] = i
+            tile["id"] = i
         print(" tiles left after viewport and polygon filter:", len(tiles))
 
         if request.form.get("estimate") == "yes":
@@ -391,14 +394,14 @@ def get_objects():
             return "[]"
         else:
             # tally the new request
-            session['tiles'] += len(tiles)
+            session["tiles"] += len(tiles)
 
         # main processing:
         # first, clean out the old tempdir
         if "tmpdirname" in session:
-            rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
-            print("cleaned up tmp dir", session['tmpdirname'])
-            del session['tmpdirname']
+            rmtree(session["tmpdirname"], ignore_errors=True, onerror=None)
+            print("cleaned up tmp dir", session["tmpdirname"])
+            del session["tmpdirname"]
 
         # make a new tempdir name and attach to session
         tmpdir = tempfile.TemporaryDirectory()
@@ -406,7 +409,7 @@ def get_objects():
         # tmpfilename = tmpdirname[tmpdirname.rindex("/")+1:]
         tmpfilename = get_file_name(tmpdirname)
         print("creating tmp dir", tmpdirname)
-        session['tmpdirname'] = tmpdirname
+        session["tmpdirname"] = tmpdirname
         tmpdir.cleanup()  # yeah this is asinine but I need the tmpdir to survive to I will create it manually next
         os.mkdir(tmpdirname)
         print("created tmp dir", tmpdirname)
@@ -415,7 +418,7 @@ def get_objects():
         # databricks feature - autoloader - writes detections with labels to Silver
         # retrieve tiles and metadata if available
         meta = map.get_sat_maps(tiles, loop, tmpdirname, tmpfilename)
-        session['metadata'] = meta
+        session["metadata"] = meta
         print(" asynchronously retrieved", len(tiles), "files")
 
         # check for abort
@@ -426,101 +429,11 @@ def get_objects():
 
         # augment tiles with retrieved filenames
         for i, tile in enumerate(tiles):
-            tile['filename'] = tmpdirname+"/"+tmpfilename+str(i)+".jpeg"
+            tile["filename"] = tmpdirname + "/" + tmpfilename + str(i) + ".jpeg"
         # Temporary code
         return tiles
-       
-        # # 
-        # # detect all towers
-        # # Sending a request to databricks with a url to the bronze
-
-        # # Need to Add code to read results from EDAV
-        # results_raw = det.detect(tiles, exit_events, id(session), crop_tiles=crop_tiles, secondary=secondary_en)
-        # # abort if signaled
-        # if exit_events.query(id(session)):
-        #     print(" client aborted request.")
-        #     exit_events.free(id(session))
-        #     return "[]"
-
-        # # read metadata if present
-        # for tile in tiles:
-        #     if meta:
-        #         filename = tmpdirname+"/"+tmpfilename+str(tile['id'])+".meta.txt"
-        #         with open(filename) as f:
-        #             tile['metadata'] = map.get_date(f.read())
-        #             # print(" metadata: "+tile['metadata'])
-        #             f.close
-        #     else:
-        #         tile['metadata'] = ""
-
-        # # record some results in session for later saving if desired
-        # session['detections'] = make_persistable_tile_results(tiles)
-
-        # # post-process the results
-        # results = []
-        # for result, tile in zip(results_raw, tiles):
-        #     # adjust xyxy normalized results to lat, long pairs
-        #     for i, object in enumerate(result):
-        #         # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
-        #         object['x1'] = tile['lng'] - 0.5*tile['w'] + object['x1']*tile['w']
-        #         object['x2'] = tile['lng'] - 0.5*tile['w'] + object['x2']*tile['w']
-        #         object['y1'] = tile['lat'] + 0.5*tile['h'] - object['y1']*tile['h']
-        #         object['y2'] = tile['lat'] + 0.5*tile['h'] - object['y2']*tile['h']
-        #         object['tile'] = tile['id']
-        #         object['id_in_tile'] = i
-        #         object['selected'] = object['secondary'] >= 0.35
-
-        #         # print(" output:",str(object))
-        #     results += result
-
-        # # mark results out of bounds or polygon
-        # for o in results:
-        #     o['inside'] = ts_imgutil.resultIntersectsPolygons(o['x1'], o['y1'], o['x2'], o['y2'], polygons) and \
-        #         ts_maps.check_bounds(o['x1'], o['y1'], o['x2'], o['y2'], bounds)
-        #     #print("in " if o['inside'] else "out ", end="")
-
-        # # sort the results by lat, long, conf
-        # results.sort(key=lambda x: x['y1']*2*180+2*x['x1']+x['conf'])
-
-        # # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
-        # if len(results) > 1:
-        #     i = 0
-        #     while i < len(results)-1:
-        #         if ts_maps.get_distance(results[i]['x1'], results[i]['y1'],
-        #                                 results[i+1]['x1'], results[i+1]['y1']) < 1:
-        #             print(" removing 1 duplicate result")
-        #             results.remove(results[i+1])
-        #         else:
-        #             i += 1
-
-        # # prepend a pseudo-result for each tile, for debugging
-        # tile_results = []
-        # for tile in tiles:
-        #     tile_results.append({
-        #         'x1': tile['lng'] - 0.5*tile['w'],
-        #         'y1': tile['lat'] + 0.5*tile['h'],
-        #         'x2': tile['lng'] + 0.5*tile['w'],
-        #         'y2': tile['lat'] - 0.5*tile['h'],
-        #         'class': 1,
-        #         'class_name': 'tile',
-        #         'conf': 1,
-        #         'metadata': tile['metadata'],
-        #         'url': tile['url'],
-        #         'selected': True
-        #     })
-
-        # # all done
-        # selected = str(reduce(lambda a,e: a+(e['selected']),results, 0))
-        # print(" request complete," + str(len(results)) +" detections (" + selected +" selected), elapsed time: ", (time.time()-start))
-        # results = tile_results+results
-        # print()
-
-        # exit_events.free(id(session))
-        # results = json.dumps(results)
-        # session['results'] = results
-        # return results
     except Exception as e:
-        logging.error('Error at %s', 'division', exc_info=e)
+        logging.error("Error at %s", "division", exc_info=e)
 
 
 def get_file_name(file_path):
@@ -588,17 +501,19 @@ def drawResult(r, im):
         outline="red",
     )
 
-@ app.route('/getazmaptransactions', methods=['GET'])
+
+@app.route("/getazmaptransactions", methods=["GET"])
 def getazmaptransactions():
- try:
-  
-    result =  azTransactions.getAZTransactionCount(2)
-   
-    return result
- except Exception as e:
-     logging.error(e)
- except RuntimeError as e:
-     logging.error(e)
+    try:
+
+        result = azTransactions.getAZTransactionCount(2)
+
+        return result
+    except Exception as e:
+        logging.error(e)
+    except RuntimeError as e:
+        logging.error(e)
+
 
 # download results as dataset for formal training /testing
 @app.route("/getdataset", methods=["POST"])
@@ -840,7 +755,6 @@ def write_contents_file(tmpdirname, tiles, keep_ids, additions, meta):
         f.write("]")
 
 
-
 def adapt_filenames(filenames, old_stem, new_stem):
     # print("f[0]", filenames[0])
     # print("old_dir",old_dir)
@@ -884,11 +798,6 @@ if __name__ == "__main__":
         bing_api_key = f.readline().split()[0]
         azure_api_key = f.readline().split()[0]
         f.close
-    # app.run(debug = True)
-    # app.secret_key = 'super secret key'
-    # # app.config['SESSION_TYPE'] = 'filesystem'
-    # get_custom_models()
-    # engine_default = sorted(engines.items(), key=lambda x: -x[1]["ts"])[0][0]
 
     if len(sys.argv) <= 1 or sys.argv[1] != "dev":
         start_zipcodes()
