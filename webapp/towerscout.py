@@ -8,6 +8,15 @@
 # Licensed under CC-BY-NC-SA-4.0
 # (see LICENSE.TXT in the root of the repository for details)
 #
+# import basic functionality
+import sys
+import os
+
+# Get the directory of the current script (main.py)
+current_dir = os.path.dirname(__file__)
+
+# Append the current directory to sys.path
+sys.path.append(os.path.abspath(current_dir))
 
 # import basic functionality
 import logging
@@ -17,6 +26,12 @@ from ts_gmaps import GoogleMap
 from ts_zipcode import Zipcode_Provider
 from ts_events import ExitEvents
 import ts_maps
+from ts_azmaps import AzureMap
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+from ts_azmapmetrics import azTransactions
+import asyncio
+
 from flask import (
     Flask,
     render_template,
@@ -49,6 +64,8 @@ dev = 0
 MAX_TILES = 1000
 MAX_TILES_SESSION = 100000
 
+current_directory = os.getcwd()
+model_dir = os.path.join(os.getcwd(), "webapp/model_params/yolov5")
 
 engines = {}
 
@@ -71,7 +88,7 @@ def find_model(m):
 
 def get_custom_models():
     # TODO: Rework this to load models from Databricks or equivalent
-    for f in os.listdir("./model_params/yolov5"):
+    for f in os.listdir(model_dir):
         if f.endswith(".pt") and not find_model(f):
             add_model(f)
 
@@ -85,7 +102,7 @@ def add_model(m):
         "name": mid,
         "file": m,
         "engine": None,
-        "ts": os.path.getmtime("./model_params/yolov5/" + m),
+        "ts": os.path.getmtime(model_dir + m),
     }
 
 
@@ -102,10 +119,12 @@ bing_api_key = ""
 azure_map_key = ""
 
 # prepare uploads directory
-if not os.path.isdir("./uploads"):
-    os.mkdir("./uploads")
-for f in os.listdir("./uploads"):
-    os.remove(os.path.join("./uploads", f))
+
+uploads_dir = os.path.join(os.getcwd(), "webapp/uploads")
+if not os.path.isdir(uploads_dir):
+    os.mkdir(uploads_dir)
+for f in os.listdir(uploads_dir):
+    os.remove(os.path.join(uploads_dir, f))
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -136,13 +155,18 @@ Session(app)
 
 @app.route("/site/")
 def send_site_index():
-    return send_site("index.html")
+    return send_site("towerscout.html")
 
 
 @app.route("/site/<path:path>")
 def send_site(path):
     # print("site page requested:",path)
-    return send_from_directory("../TowerScoutSite", path)
+    return send_from_directory("/", path)
+
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
 
 
 # route for images
@@ -241,15 +265,15 @@ def add_header(response):
     return response
 
 
-# retrieve available engine choices
+# # retrieve available engine choices
 
 
-@app.route("/getengines")
-def get_engines():
-    print("engines requested")
-    sorted_engines = sorted(engines.items(), key=lambda x: -x[1]["ts"])
-    result = json.dumps([{"id": k, "name": v["name"]} for (k, v) in sorted_engines])
-    return result
+# @app.route("/getengines")
+# def get_engines():
+#     print("engines requested")
+#     sorted_engines = sorted(engines.items(), key=lambda x: -x[1]["ts"])
+#     result = json.dumps([{"id": k, "name": v["name"]} for (k, v) in sorted_engines])
+#     return result
 
 
 # retrieve available map providers
@@ -300,6 +324,8 @@ def get_objects_process_status(process_id):
 @app.route("/getobjects", methods=["POST"])
 def get_objects():
     try:
+        print(" session:", id(session))
+
         # check whether this session is over its limit
         if "tiles" not in session:
             session["tiles"] = 0
@@ -308,22 +334,32 @@ def get_objects():
         if session["tiles"] > MAX_TILES_SESSION:
             return "-1"
 
+        # start time, get params
+        start = time.time()
         bounds = request.form.get("bounds")
         engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
-
         print("incoming detection request:")
         print(" bounds:", bounds)
         print(" engine:", engine)
         print(" map provider:", provider)
         print(" polygons:", polygons)
 
+        # cropping
+        crop_tiles = True
+
         # make the polygons
         polygons = json.loads(polygons)
         # print(" parsed polygons:", polygons)
         polygons = [ts_imgutil.make_boundary(p) for p in polygons]
         print(" Shapely polygons:", polygons)
+
+        # # get the proper detector
+        # det = get_engines(engine)
+
+        # empty results
+        results = []
 
         # create a map provider object
         map = None
@@ -337,7 +373,7 @@ def get_objects():
             print(" could not instantiate map provider:", provider)
 
         # divide the map into 640x640 parts
-        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=True)
+        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
         print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
         # print(" Tile centers:")
         # for c in tiles:
@@ -365,7 +401,8 @@ def get_objects():
             # tally the new request
             session["tiles"] += len(tiles)
 
-            # first, clean out the old tempdir
+        # main processing:
+        # first, clean out the old tempdir
         if "tmpdirname" in session:
             rmtree(session["tmpdirname"], ignore_errors=True, onerror=None)
             print("cleaned up tmp dir", session["tmpdirname"])
@@ -378,16 +415,28 @@ def get_objects():
         tmpfilename = get_file_name(tmpdirname)
         print("creating tmp dir", tmpdirname)
         session["tmpdirname"] = tmpdirname
-        tmpdir.cleanup()
+        tmpdir.cleanup()  # yeah this is asinine but I need the tmpdir to survive to I will create it manually next
         os.mkdir(tmpdirname)
         print("created tmp dir", tmpdirname)
-        process_id = str(uuid.uuid4())
-        process_status[process_id] = "Running"
-        # TODO: Implement Polling to get the status of the inference job
-        # thread = threading.Thread(target=process_objects_task, args=( bounds, engine, map, polygons, tiles, process_id, tmpdirname, tmpfilename))
-        # thread.start()
 
-        return jsonify({"status": "Task started", "process_id": process_id}), 202
+        # Images get uploaded to datalake witha unique directory name
+        # databricks feature - autoloader - writes detections with labels to Silver
+        # retrieve tiles and metadata if available
+        meta = map.get_sat_maps(tiles, loop, tmpdirname, tmpfilename)
+        session["metadata"] = meta
+        print(" asynchronously retrieved", len(tiles), "files")
+
+        # check for abort
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+
+        # augment tiles with retrieved filenames
+        for i, tile in enumerate(tiles):
+            tile["filename"] = tmpdirname + "/" + tmpfilename + str(i) + ".jpeg"
+        # Temporary code
+        return tiles
     except Exception as e:
         logging.error("Error at %s", "division", exc_info=e)
 
@@ -456,6 +505,19 @@ def drawResult(r, im):
         ],
         outline="red",
     )
+
+
+@app.route("/getazmaptransactions", methods=["GET"])
+def getazmaptransactions():
+    try:
+
+        result = azTransactions.getAZTransactionCount(2)
+
+        return result
+    except Exception as e:
+        logging.error(e)
+    except RuntimeError as e:
+        logging.error(e)
 
 
 # download results as dataset for formal training /testing
@@ -698,83 +760,6 @@ def write_contents_file(tmpdirname, tiles, keep_ids, additions, meta):
         f.write("]")
 
 
-#
-#
-# upload dataset for further editing:
-#
-
-# @app.route('/uploaddataset', methods=['POST'])
-# def upload_dataset():
-#     print("Dataset upload")
-
-#     # make a temp dir as usual
-#     # first, clean out the old tempdir
-#     if "tmpdirname" in session:
-#         rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
-#         print(" cleaned up tmp dir", session['tmpdirname'])
-#         del session['tmpdirname']
-
-#     # make a new tempdir name and attach to session
-#     tmpdirname = tempfile.mkdtemp()
-#     print(" creating tmp dir", tmpdirname)
-#     session['tmpdirname'] = tmpdirname
-
-#     # check if the post request has the file part
-#     if 'dataset' not in request.files:
-#         print(" --- no file part in request")
-#         return None
-
-#     file = request.files['dataset']
-#     if file.filename == '':
-#         print(' --- no selected dataset file')
-#         return None
-
-#     if not file or not file.filename.endswith(".zip"):
-#         print(" --- invalid file or extension:", file.filename)
-#         return None
-
-#     filename = tmpdirname + "/" + file.filename
-#     file.save(filename)
-#     new_stem = tmpdirname[tmpdirname.rindex("/")+1:]
-
-#     # unzip dataset.zip
-#     # - "empty" tiles and labels right into "."
-#     # - "train" combine "images" and "labels" folders into "."
-#     # content.txt in "."
-#     with zipfile.ZipFile(filename) as zipf:
-#         # read previous results and tiles from content.txt and add to session
-#         # print(" zip contents:")
-#         filenames = zipf.namelist()
-#         old_stem = filenames[0][:filenames[0].index("/")]
-#         files = adapt_filenames(filenames, old_stem, new_stem)
-#         # print(files)
-#         for f_zip, f_new in zip(zipf.namelist(), files):
-#             print(" processing",f_zip,"to:",f_new)
-#             if not f_zip.endswith(".xml"):
-#                 with zipf.open(f_zip) as f:
-#                     with open(tmpdirname+"/"+f_new, "wb") as f_target:
-#                         print(" writing", tmpdirname+"/"+f_new)
-#                         f_target.write(f.read())
-
-#     # process contents file
-#     results = []
-#     print("parsing contents.txt in", tmpdirname)
-#     with open(tmpdirname+"/contents.txt") as f:
-#         results = json.loads(f.read())
-
-#     session['detections'] = adapt_tiles(
-#         results[0], tmpdirname, old_stem, new_stem)
-#     session['results'] = json.dumps(results[1])
-#     session['metadata'] = results[2]
-#     # print("Results:", results[1])
-#     # return previous results
-#     print(" dataset restored.")
-
-#     return session['results']
-
-# carefully unravel the zip structure we created in the dataset, and make it all flat
-
-
 def adapt_filenames(filenames, old_stem, new_stem):
     # print("f[0]", filenames[0])
     # print("old_dir",old_dir)
@@ -817,12 +802,8 @@ if __name__ == "__main__":
     with open("apikey.txt") as f:
         azure_map_key = f.readline().split()[0]
         bing_api_key = f.readline().split()[0]
+        azure_api_key = f.readline().split()[0]
         f.close
-    # app.run(debug = True)
-    # app.secret_key = 'super secret key'
-    # app.config['SESSION_TYPE'] = 'filesystem'
-    get_custom_models()
-    engine_default = sorted(engines.items(), key=lambda x: -x[1]["ts"])[0][0]
 
     print("Tower Scout ready on port 5000...")
     serve(app, host="0.0.0.0", port=5000)
