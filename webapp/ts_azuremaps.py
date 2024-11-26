@@ -20,7 +20,8 @@ import json
 class AzureMap(Map):
     def __init__(self, api_key):
         self.key = api_key
-        self.has_metadata = True
+        self.has_metadata = False
+        self.mapType = "Azure"
 
     def get_url(self, tile, zoom=19, size="640,640", fmt="jpeg"):
         # get satellite image url for Azure Maps Static Image API

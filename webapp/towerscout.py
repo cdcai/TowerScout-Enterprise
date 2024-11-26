@@ -8,11 +8,9 @@
 # Licensed under CC-BY-NC-SA-4.0
 # (see LICENSE.TXT in the root of the repository for details)
 #
-# import basic functionality
-import sys
-import os
-
 # Get the directory of the current script (main.py)
+import os, sys
+
 current_dir = os.path.dirname(__file__)
 
 # Append the current directory to sys.path
@@ -30,10 +28,18 @@ from ts_azmaps import AzureMap
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 from ts_azmapmetrics import azTransactions
+from authlib.integrations.flask_client import OAuth
+from ts_readdetections import SilverTable
+from functools import reduce
 import asyncio
+import jwt
+import msal
+from msal import ConfidentialClientApplication
 
 from flask import (
     Flask,
+    redirect,
+    url_for,
     render_template,
     send_from_directory,
     request,
@@ -44,7 +50,6 @@ from flask import (
 from flask_session import Session
 from waitress import serve
 import json
-import os
 from shutil import rmtree
 import zipfile
 import ssl
@@ -54,7 +59,6 @@ from PIL import Image, ImageDraw
 import threading
 import gc
 import datetime
-import sys
 import uuid
 
 from ts_azuremaps import AzureMap
@@ -116,7 +120,8 @@ providers = {
 # other global variables
 google_api_key = ""
 bing_api_key = ""
-azure_map_key = ""
+azure_api_key = ""
+loop = asyncio.get_event_loop()
 
 # prepare uploads directory
 
@@ -143,6 +148,14 @@ zipcode_provider = None
 
 # Flask boilerplate stuff
 app = Flask(__name__)
+
+
+@app.before_request
+def initialize_msal_client():
+    # Store the MSAL client object in app.config
+    app.config["MSAL_CLIENT"] = _build_msal_app()
+
+
 # session = Session()
 # configure server-sise session
 SESSION_TYPE = "filesystem"
@@ -203,31 +216,29 @@ def send_css(path):
     return send_from_directory("css", path)
 
 
+CLIENT_ID = ""
+CLIENT_SECRET = ""
+TENANT_ID = ""
+AUTHORITY = "https://login.microsoftonline.com/" + TENANT_ID
+REDIRECT_URI = "https://csels-pd-towerscrt-dev-web-01.edav-dev-app.appserviceenvironment.net/towerscoutmainnodetection/getAToken"
+
+SCOPES = ["User.Read"]
+
+
 # main page route
-
-
 @app.route("/")
 def map_func():
+    # Check if the user is authenticated
+    # if 'user' not in session:
+    #     return redirect(url_for('login'))
+    # If the user is authenticated, you can add more validation if needed
+    # user_info = session['user']
+    # if user_info.get('roles') != 'admin':  # Example of checking user roles
+    #     # If user does not have the correct role, redirect to home
+    #     return redirect(url_for('home'))
 
-    # for h in request.headers:
-    #    print(h)
-
-    # if request.headers.getlist("X-Real-Ip"):
-    #    ip = request.headers.getlist("X-Real-Ip")[0]
-    # else:
-    #    ip = request.remote_addr
-
-    # print("from:", ip)
-    # allowed = {"47.215.225.26", "67.188.108.149", "24.126.148.202" } #, "127.0.0.1"}
-    # access checks
-
-    # if ip in allowed:
-    #    pass
-    # elif request.args.get("pw") == "CDC":
-    #    pass
-    # else:
-    #    return send_from_directory('templates', "unauthorized.html")
-
+    # # If all validations pass, you can return something (e.g., a success message or data)
+    # return None  # No redirection, validation passed
     if dev == 1:
         session["tiles"] = 0
 
@@ -250,13 +261,54 @@ def map_func():
     return render_template(
         "towerscout.html",
         bing_map_key=bing_api_key,
-        azure_map_key=azure_map_key,
+        azure_map_key=azure_api_key,
         dev=dev,
     )
 
 
-# cache control
-# todo: ratchet this up after development
+# Scopes for accessing the Microsoft Graph API (we don't need to access Graph in your case, but you'll need at least User.Read)
+
+
+# Initialize the MSAL confidential client
+def _build_msal_app():
+    return msal.ConfidentialClientApplication(
+        CLIENT_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET
+    )
+
+
+# Route to initiate the authentication process (redirects to Microsoft login)
+@app.route("/login")
+def login():
+    msal_app = _build_msal_app()
+
+    # Create the authorization URL to redirect the user for login (if not already logged in)
+    auth_url = msal_app.get_authorization_request_url(SCOPES, redirect_uri=REDIRECT_URI)
+    return redirect(auth_url)
+
+
+# Callback route to handle the response from Microsoft after login
+@app.route("/towerscoutmainnodetection/getAToken")
+def authorized():
+    code = request.args.get("code")
+
+    if not code:
+        return "Authorization failed", 400
+
+    msal_app = _build_msal_app()
+
+    # Exchange the authorization code for an access token
+    result = msal_app.acquire_token_by_authorization_code(
+        code, scopes=SCOPES, redirect_uri=REDIRECT_URI
+    )
+
+    if "access_token" in result:
+        # Store the user's information (including user_id) in the session
+        session["user"] = result.get("id_token_claims")
+        # return redirect(url_for('/'))
+        # now render the map.html template, inserting the key
+        return render_template("towerscout.html", bing_map_key=bing_api_key, dev=dev)
+    else:
+        return "Error: Unable to acquire token", 400
 
 
 @app.after_request
@@ -265,15 +317,20 @@ def add_header(response):
     return response
 
 
-# # retrieve available engine choices
+# Function to decode the JWT token and extract the user ID (oid)
+def get_user_id_from_token(token):
+    try:
+        # Decode the token (without verifying the signature for simplicity)
+        # You may want to verify the token using MS Entra ID's public keys for production
+        decoded_token = jwt.decode(token, options={"verify_signature": False})
 
-
-# @app.route("/getengines")
-# def get_engines():
-#     print("engines requested")
-#     sorted_engines = sorted(engines.items(), key=lambda x: -x[1]["ts"])
-#     result = json.dumps([{"id": k, "name": v["name"]} for (k, v) in sorted_engines])
-#     return result
+        # Extract the user ID from the decoded token (oid is the claim representing the user ID)
+        user_id = decoded_token.get(
+            "oid"
+        )  # 'oid' is the claim representing the user ID
+        return user_id
+    except Exception as e:
+        return None
 
 
 # retrieve available map providers
@@ -320,12 +377,89 @@ def get_objects_process_status(process_id):
     return jsonify(results)
 
 
+# def get_ms_entra_ID():
+
+# #     # user_id = request.headers.get('X-MS-CLIENT-PRINCIPAL-ID')
+# #     # return user_id
+# #     client_id = "6095d61a-3d9c-4499-a4c1-262709bc2044"
+# #     client_secret = "5fd05eaa-4b75-4ec1-96d5-8efb87e017b3"
+# #     tenant_id = "9ce70869-60db-44fd-abe8-d2767077fc8f"
+# #     redirect_url="https://intranet.cdc.gov"
+
+# #     oauth = OAuth(app)
+# #     oauth.register(
+# #     name='azure',
+# #     client_id=client_id,
+# #     client_secret=client_secret,
+# #     authorize_url=f'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize',
+# #     authorize_params=None,
+# #     access_token_url=f'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token',
+# #     refresh_token_url=None,
+# #     client_kwargs={'scope': 'openid profile email'},
+# # )
+# #     token = oauth.azure.authorize_access_token()
+
+#     # # Decode the ID Token to extract the user ID (sub claim)
+#     # user_info = oauth.azure.parse_id_token(token)
+#     # user_id = user_info['sub']  # User ID in Azure AD (subject claim)
+#     # return user_id
+#     # return jsonify(user_info)
+#     # Create a ConfidentialClientApplication instance
+#     app.config['MSAL_CLIENT'] = ConfidentialClientApplication(
+#         client_id=CLIENT_ID,
+#         client_credential=CLIENT_SECRET,
+#         authority='https://login.microsoftonline.com/9ce70869-60db-44fd-abe8-d2767077fc8f'
+#     )
+#     auth_code = request.args.get('authorization')
+
+#      # Use the authorization code to acquire an access token and ID token
+#     result = app.config['MSAL_CLIENT'].acquire_token_by_authorization_code(
+#          auth_code,
+#          scopes=['User.Read'],
+#          redirect_uri='https://intranet.cdc.gov'
+#      )
+
+#     resultstring =json.dumps(result)
+#     app.logger.info("result{resultstring}")
+#     # logging.info("result{resultstring}")
+#     print(json.dumps(resultstring))
+#      # Extract and return the user ID from the ID token claims
+#     user_id = result.get("id_token_claims", {}).get("sub")
+#     return user_id
+
+
 # detection route
 @app.route("/getobjects", methods=["POST"])
 def get_objects():
     try:
         print(" session:", id(session))
+        # print("session(user_id)",session['user'])
+        # id_token = request.headers.get('X-MS-TOKEN-AAD-ID-TOKEN')
+        # logging.info("id_token:{id_token}")
+        auth_code = request.args.get("code")
+        print("auth_code:", auth_code)
+        # user_id = get_ms_entra_ID(auth_code)
+        # logging.info(f"user_id:{user_id}")
+        # Get the token from the Authorization header
+        auth_header = request.headers.get("Authorization")
+        print("auth_header", auth_header)
+        if auth_header:
+            # Extract the token (after 'Bearer ' prefix)
+            token = auth_header.split(" ")[1]
 
+            # Get the user ID from the token
+            user_id = get_user_id_from_token(token)
+            session["user_id"] = user_id
+            if user_id:
+                print(
+                    jsonify(
+                        {"message": "Welcome to the Home page!", "user_id": user_id}
+                    )
+                )
+            else:
+                print(jsonify({"error": "Unable to extract user ID"}), 400)
+        else:
+            print(jsonify({"error": "Authorization header missing"}), 401)
         # check whether this session is over its limit
         if "tiles" not in session:
             session["tiles"] = 0
@@ -340,6 +474,14 @@ def get_objects():
         # engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
+        id_token = request.headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
+        access_token = request.headers.get("X-MS-TOKEN-AAD-ACCESS-TOKEN")
+        user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
+        user_name = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
+        print("id_token:", id_token)
+        print("access_token:", access_token)
+        print("user_id:", user_id)
+        print("user_name:", user_name)
         print("incoming detection request:")
         print(" bounds:", bounds)
         # print(" engine:", engine)
@@ -368,7 +510,8 @@ def get_objects():
         elif provider == "google":
             map = GoogleMap(google_api_key)
         elif provider == "azure":
-            map = AzureMap(azure_map_key)
+            map = AzureMap(azure_api_key)
+
         if map is None:
             print(" could not instantiate map provider:", provider)
 
@@ -389,7 +532,7 @@ def get_objects():
             # reset abort flag
             exit_events.alloc(id(session))  # todo: might leak some of these
             print(" returning number of tiles")
-            print()
+
             # + ("" if len(tiles) > MAX_TILES else " (exceeds limit)")
             return str(len(tiles))
 
@@ -422,6 +565,8 @@ def get_objects():
         # Images get uploaded to datalake witha unique directory name
         # databricks feature - autoloader - writes detections with labels to Silver
         # retrieve tiles and metadata if available
+        # user_id = get_ms_entra_ID()
+        # print({user_id})
         meta = map.get_sat_maps(tiles, loop, tmpdirname, tmpfilename)
         session["metadata"] = meta
         print(" asynchronously retrieved", len(tiles), "files")
@@ -436,7 +581,122 @@ def get_objects():
         for i, tile in enumerate(tiles):
             tile["filename"] = tmpdirname + "/" + tmpfilename + str(i) + ".jpeg"
         # Temporary code
-        return tiles
+        # return tiles
+
+        # #
+        # # detect all towers
+        # # Sending a request to databricks with a url to the bronze
+
+        # # Need to Add code to read results from EDAV
+        stInstance = SilverTable()
+        user_id = map.user_id
+        request_id = map.request_id
+
+        results_raw = stInstance.get_bboxesfortiles(
+            tiles, exit_events, id(session), request_id, user_id
+        )
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+
+        # read metadata if present
+        for tile in tiles:
+            if meta:
+                filename = (
+                    tmpdirname + "/" + tmpfilename + str(tile["id"]) + ".meta.txt"
+                )
+                with open(filename) as f:
+                    tile["metadata"] = map.get_date(f.read())
+                    # print(" metadata: "+tile['metadata'])
+                    f.close
+            else:
+                tile["metadata"] = ""
+
+        # record some results in session for later saving if desired
+        session["detections"] = make_persistable_tile_results(tiles)
+        print(f"tile results: {results_raw}")
+        # post-process the results
+        results = []
+        for result, tile in zip(results_raw, tiles):
+            # adjust xyxy normalized results to lat, long pairs
+            for i, object in enumerate(result):
+                # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
+                object["x1"] = tile["lng"] - 0.5 * tile["w"] + object["x1"] * tile["w"]
+                object["x2"] = tile["lng"] - 0.5 * tile["w"] + object["x2"] * tile["w"]
+                object["y1"] = tile["lat"] + 0.5 * tile["h"] - object["y1"] * tile["h"]
+                object["y2"] = tile["lat"] + 0.5 * tile["h"] - object["y2"] * tile["h"]
+                object["tile"] = tile["id"]
+                object["id_in_tile"] = i
+                object["selected"] = object["secondary"] >= 0.35
+
+                # print(" output:",str(object))
+            results += result
+
+        # mark results out of bounds or polygon
+        for o in results:
+            o["inside"] = ts_imgutil.resultIntersectsPolygons(
+                o["x1"], o["y1"], o["x2"], o["y2"], polygons
+            ) and ts_maps.check_bounds(o["x1"], o["y1"], o["x2"], o["y2"], bounds)
+            # print("in " if o['inside'] else "out ", end="")
+
+        # sort the results by lat, long, conf
+        results.sort(key=lambda x: x["y1"] * 2 * 180 + 2 * x["x1"] + x["conf"])
+
+        # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
+        if len(results) > 1:
+            i = 0
+            while i < len(results) - 1:
+                if (
+                    ts_maps.get_distance(
+                        results[i]["x1"],
+                        results[i]["y1"],
+                        results[i + 1]["x1"],
+                        results[i + 1]["y1"],
+                    )
+                    < 1
+                ):
+                    print(" removing 1 duplicate result")
+                    results.remove(results[i + 1])
+                else:
+                    i += 1
+
+        # prepend a pseudo-result for each tile, for debugging
+        tile_results = []
+        for tile in tiles:
+            tile_results.append(
+                {
+                    "x1": tile["lng"] - 0.5 * tile["w"],
+                    "y1": tile["lat"] + 0.5 * tile["h"],
+                    "x2": tile["lng"] + 0.5 * tile["w"],
+                    "y2": tile["lat"] - 0.5 * tile["h"],
+                    "class": 1,
+                    "class_name": "tile",
+                    "conf": 1,
+                    "metadata": tile["metadata"],
+                    "url": tile["url"],
+                    "selected": True,
+                }
+            )
+
+        # all done
+        selected = str(reduce(lambda a, e: a + (e["selected"]), results, 0))
+        print(
+            " request complete,"
+            + str(len(results))
+            + " detections ("
+            + selected
+            + " selected), elapsed time: ",
+            (time.time() - start),
+        )
+        results = tile_results + results
+        # print()
+
+        exit_events.free(id(session))
+        results = json.dumps(results)
+        session["results"] = results
+        return results
     except Exception as e:
         logging.error("Error at %s", "division", exc_info=e)
 
@@ -562,7 +822,7 @@ def send_dataset():
     print(" zipping data ...")
     zipdir(session["tmpdirname"], filenames)
     print(" done.")
-    print()
+    # print()
     return send_from_directory("temp", "dataset.zip")
 
 
@@ -760,6 +1020,83 @@ def write_contents_file(tmpdirname, tiles, keep_ids, additions, meta):
         f.write("]")
 
 
+#
+#
+# upload dataset for further editing:
+#
+
+# @app.route('/uploaddataset', methods=['POST'])
+# def upload_dataset():
+#     print("Dataset upload")
+
+#     # make a temp dir as usual
+#     # first, clean out the old tempdir
+#     if "tmpdirname" in session:
+#         rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
+#         print(" cleaned up tmp dir", session['tmpdirname'])
+#         del session['tmpdirname']
+
+#     # make a new tempdir name and attach to session
+#     tmpdirname = tempfile.mkdtemp()
+#     print(" creating tmp dir", tmpdirname)
+#     session['tmpdirname'] = tmpdirname
+
+#     # check if the post request has the file part
+#     if 'dataset' not in request.files:
+#         print(" --- no file part in request")
+#         return None
+
+#     file = request.files['dataset']
+#     if file.filename == '':
+#         print(' --- no selected dataset file')
+#         return None
+
+#     if not file or not file.filename.endswith(".zip"):
+#         print(" --- invalid file or extension:", file.filename)
+#         return None
+
+#     filename = tmpdirname + "/" + file.filename
+#     file.save(filename)
+#     new_stem = tmpdirname[tmpdirname.rindex("/")+1:]
+
+#     # unzip dataset.zip
+#     # - "empty" tiles and labels right into "."
+#     # - "train" combine "images" and "labels" folders into "."
+#     # content.txt in "."
+#     with zipfile.ZipFile(filename) as zipf:
+#         # read previous results and tiles from content.txt and add to session
+#         # print(" zip contents:")
+#         filenames = zipf.namelist()
+#         old_stem = filenames[0][:filenames[0].index("/")]
+#         files = adapt_filenames(filenames, old_stem, new_stem)
+#         # print(files)
+#         for f_zip, f_new in zip(zipf.namelist(), files):
+#             print(" processing",f_zip,"to:",f_new)
+#             if not f_zip.endswith(".xml"):
+#                 with zipf.open(f_zip) as f:
+#                     with open(tmpdirname+"/"+f_new, "wb") as f_target:
+#                         print(" writing", tmpdirname+"/"+f_new)
+#                         f_target.write(f.read())
+
+#     # process contents file
+#     results = []
+#     print("parsing contents.txt in", tmpdirname)
+#     with open(tmpdirname+"/contents.txt") as f:
+#         results = json.loads(f.read())
+
+#     session['detections'] = adapt_tiles(
+#         results[0], tmpdirname, old_stem, new_stem)
+#     session['results'] = json.dumps(results[1])
+#     session['metadata'] = results[2]
+#     # print("Results:", results[1])
+#     # return previous results
+#     print(" dataset restored.")
+
+#     return session['results']
+
+# carefully unravel the zip structure we created in the dataset, and make it all flat
+
+
 def adapt_filenames(filenames, old_stem, new_stem):
     # print("f[0]", filenames[0])
     # print("old_dir",old_dir)
@@ -800,9 +1137,14 @@ if __name__ == "__main__":
     # has to be an api key with access to maps, staticmaps and places
     # todo: deploy CDC-owned key in final version
     with open("webapp/apikey.txt") as f:
-        azure_map_key = f.readline().split()[0]
+        azure_api_key = f.readline().split()[0]
         bing_api_key = f.readline().split()[0]
         f.close
+    # app.run(debug = True)
+    # app.secret_key = 'super secret key'
+    # app.config['SESSION_TYPE'] = 'filesystem'
+    # get_custom_models()
+    # engine_default = sorted(engines.items(), key=lambda x: -x[1]["ts"])[0][0]
 
     print("Tower Scout ready on port 5000...")
     serve(app, host="0.0.0.0", port=5000)
