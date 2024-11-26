@@ -109,8 +109,8 @@ def add_model(m):
 # map providers
 providers = {
     # 'google': {'id': 'google', 'name': 'Google Maps'},
-    "bing": {"id": "bing", "name": "Bing Maps"},
     "azure": {"id": "azure", "name": "Azure Maps"},
+    "bing": {"id": "bing", "name": "Bing Maps"},
 }
 
 # other global variables
@@ -120,7 +120,7 @@ azure_map_key = ""
 
 # prepare uploads directory
 
-uploads_dir = os.path.join(os.getcwd(), "webapp/uploads")
+uploads_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp/uploads")
 if not os.path.isdir(uploads_dir):
     os.mkdir(uploads_dir)
 for f in os.listdir(uploads_dir):
@@ -337,12 +337,12 @@ def get_objects():
         # start time, get params
         start = time.time()
         bounds = request.form.get("bounds")
-        engine = request.form.get("engine")
+        # engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
         print("incoming detection request:")
         print(" bounds:", bounds)
-        print(" engine:", engine)
+        # print(" engine:", engine)
         print(" map provider:", provider)
         print(" polygons:", polygons)
 
@@ -460,9 +460,9 @@ def allowed_extension(filename):
 @app.route("/getobjectscustom", methods=["POST"])
 def get_objects_custom():
     start = time.time()
-    engine = request.form.get("engine")
+    # engine = request.form.get("engine")
     print("incoming custom image detection request:")
-    print(" engine:", engine)
+    # print(" engine:", engine)
 
     # upload the file
     if request.method != "POST":
@@ -799,10 +799,9 @@ if __name__ == "__main__":
     # read maps api key (not in source code due to security reasons)
     # has to be an api key with access to maps, staticmaps and places
     # todo: deploy CDC-owned key in final version
-    with open("apikey.txt") as f:
+    with open("webapp/apikey.txt") as f:
         azure_map_key = f.readline().split()[0]
         bing_api_key = f.readline().split()[0]
-        azure_api_key = f.readline().split()[0]
         f.close
 
     print("Tower Scout ready on port 5000...")
