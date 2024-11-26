@@ -1506,10 +1506,10 @@ function getObjects(estimate) {
       fetch("/getobjects", { method: "POST", body: formData })
         .then(response => response.json())
         .then(result => {
-          // Need to add code to process the results from EDAV
-          disableProgress(0, 0);
-          return;
-          // processObjects(result, startTime);
+          // // Need to add code to process the results from EDAV
+          // disableProgress(0, 0);
+          // return;
+          processObjects(result, startTime);
         })
         .catch(e => {
           console.log(e + ": "); disableProgress(0, 0);
