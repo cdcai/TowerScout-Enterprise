@@ -252,32 +252,6 @@ class AzureMap extends TSMap {
     });
   }
 
-  getBoundary(location) {
-    // Use the Azure Maps GeoData API to get the boundary
-    const geoDataRequestOptions = {
-      entityType: 'Neighborhood', // Adjust based on your needs
-      location: location
-    };
-
-    this.searchService.getPolygon(geoDataRequestOptions)
-      .then(data => {
-        if (data && data.results && data.results.length > 0) {
-          const polygon = new atlas.data.Polygon(data.results[0].geometry.coordinates);
-          this.map.sources.add(new atlas.source.DataSource('boundarySource', { data: polygon }));
-          this.map.layers.add(new atlas.layer.PolygonLayer('boundarySource', {
-            fillColor: 'rgba(0, 0, 255, 0.5)',
-            strokeColor: 'blue',
-            strokeWidth: 2
-          }));
-        } else {
-          console.log("Could not find boundary.");
-        }
-      })
-      .catch(error => {
-        console.error("Error retrieving boundary:", error);
-      });
-  }
-
   loadDrawingTools() {
     // Load the DrawingTools module
     this.drawingManager = new atlas.drawing.DrawingManager(this.map, {
@@ -305,7 +279,8 @@ class AzureMap extends TSMap {
     } else {
       console.log('No shapes in the drawing manager.');
     }
-    console.log(`Polys: ${polys}`)
+    console.log(`Polys: ${polys}`);
+    this.boundaries = polys;
     return polys;
   }
 
@@ -394,12 +369,22 @@ class AzureMap extends TSMap {
     this.drawingManager.getSource().clear();
   }
 
+
   getBoundariesStr() {
-    return this.boundaries.map(b => b.toString()).join(", ");
+    let result = [];
+    for (let b of this.boundaries) {
+      result.push(b.toString())
+    }
+    return "[" + result.join(",") + "]";
   }
 
   getZoom() {
     return this.map.getCamera().zoom;
+  }
+
+  getBoundsUrl() {
+    const bounds = this.map.getCamera().bounds;
+    return [bounds[1], bounds[0], bounds[3], bounds[2]];
   }
 }
 
@@ -419,6 +404,7 @@ function drawBoundary(map, results) {
     });
     map.entities.push(polygon);
   })
+
 }
 
 class BingMap extends TSMap {
@@ -697,7 +683,9 @@ class BingMap extends TSMap {
   }
 
   resetBoundaries() {
-    this.drawingManager.clear()
+    if(this.drawingManager) {
+      this.drawingManager.clear();
+    }
     for (let b of this.boundaries) {
       for (let i = this.map.entities.getLength() - 1; i >= 0; i--) {
         let obj = this.map.entities.get(i);
@@ -1974,7 +1962,7 @@ function fillProviders() {
 
       // add change listeners for the backend provider radio box
       let rad = document.providers.provider;
-      currentProvider = 'bing';//rad; //Bing Maps is the defacto provider for now
+      currentProvider = 'azure';//rad; //Bing Maps is the defacto provider for now
 
       // for (let r of rad) {
       //   r.addEventListener('change', function () {
@@ -2050,11 +2038,11 @@ function setMap(newMap) {
     document.getElementById("freview").style.display = null;
     // document.getElementById("ffilter").style.display = null;
     document.getElementById("fadd").style.display = null;
-    currentMap = bingMap;
+    initBingMap();
     // recreate boundaries for bing
-    let bs = bingMap.boundaries;
-    bingMap.resetBoundaries();
-    bs.map(b => bingMap.addBoundary(b));
+    // let bs = currentMap.getBounds();
+    // bingMap.resetBoundaries();
+    // bs.map(b => bingMap.addBoundary(b));
     zoom = currentMap.getZoom();
     center = currentMap.getCenter();
   } else if (currentUI.value === "azure") {
