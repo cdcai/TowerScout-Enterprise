@@ -1,11 +1,9 @@
-# from databricks import sql
+# from databricks import sql # Commenting out because the import causes the unit test to fail since the library seems to only be installable in non-databricks envs
 import json
 from typing import Any
 
 from numpy.random import choice
 
-# Commenting out the databricks sql import because the import causes 
-# the unit test to fail since the library seems to only be installable in non-databricks envs
 
 def execute_query(query: str, cursor, connection) -> None:
     """
