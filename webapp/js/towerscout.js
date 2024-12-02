@@ -176,7 +176,7 @@ class AzureMap extends TSMap {
       language: 'en-US',
       authOptions: {
         authType: 'subscriptionKey',
-        subscriptionKey: AZURE_MAP_API_KEY
+        subscriptionKey: azure_api_key
       },
       style: 'satellite'
     });

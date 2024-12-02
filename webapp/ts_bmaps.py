@@ -19,7 +19,7 @@ import json
 class BingMap(Map):
    def __init__(self, api_key):
       self.key = api_key
-      self.has_metadata = True
+      self.has_metadata = False
       self.mapType = "Bing"
 
    def get_url(self, tile, zoom=19, size="640,640", sc=2, fmt="jpeg", maptype="satellite"):
