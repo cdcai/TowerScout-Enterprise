@@ -38,7 +38,7 @@ import logging, ts_secrets
 from flask import request
 
 current_directory = os.getcwd()
-config_dir = os.path.join(os.getcwd(), "webapp")
+config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
 
 class Map:
@@ -667,16 +667,20 @@ def generate_unique_directory_name(self):
 
 
 import getpass
-
-
 def get_current_user():
     username = getpass.getuser()  # Get the username
     # Optionally, you can also get the domain
-    domain = os.getenv("USERDOMAIN") or os.getenv("COMPUTERNAME")
-    logging.info("ts_maps domain {domain} username {username}")
-    # Implementing for azure app services
-    user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
-    return f"{user_id}"
+    domain = os.getenv('USERDOMAIN') or os.getenv('COMPUTERNAME')
+    return f"{username}"
+
+# def get_current_user():
+#     username = getpass.getuser()  # Get the username
+#     # Optionally, you can also get the domain
+#     domain = os.getenv("USERDOMAIN") or os.getenv("COMPUTERNAME")
+#     logging.info("ts_maps domain {domain} username {username}")
+#     # Implementing for azure app services
+#     user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
+#     return f"{user_id}"
 
 
 def uploadImage(blobcontent, blbname):

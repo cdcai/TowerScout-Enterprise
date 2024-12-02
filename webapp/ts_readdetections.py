@@ -22,7 +22,7 @@ class SilverTable:
             try:
                 cursor = connection.cursor()
       
-                cursor.execute("SELECT bboxes, image_id from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "' order by image_id")
+                cursor.execute("SELECT bboxes from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "' order by image_id")
                 result = cursor.fetchall()
     
                 # print(result)
@@ -174,5 +174,5 @@ class SilverTable:
              # tr[1] is tile id
                 tile['detections'] = boxes
             print(f" batch of {len(tile_batch)} processed")
-        
+            
         return results

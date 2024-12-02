@@ -61,8 +61,6 @@ import gc
 import datetime
 import uuid
 
-from ts_azuremaps import AzureMap
-
 dev = 0
 
 MAX_TILES = 1000
@@ -121,6 +119,7 @@ providers = {
 google_api_key = ""
 bing_api_key = ""
 azure_api_key = ""
+loop = asyncio.get_event_loop()
 
 # prepare uploads directory
 
@@ -149,10 +148,10 @@ zipcode_provider = None
 app = Flask(__name__)
 
 
-@app.before_request
-def initialize_msal_client():
-    # Store the MSAL client object in app.config
-    app.config["MSAL_CLIENT"] = _build_msal_app()
+# @app.before_request
+# def initialize_msal_client():
+#     # Store the MSAL client object in app.config
+#     app.config["MSAL_CLIENT"] = _build_msal_app()
 
 
 # session = Session()
@@ -1136,7 +1135,7 @@ if __name__ == "__main__":
     # read maps api key (not in source code due to security reasons)
     # has to be an api key with access to maps, staticmaps and places
     # todo: deploy CDC-owned key in final version
-    with open("webapp/apikey.txt") as f:
+    with open("apikey.txt") as f:
         azure_api_key = f.readline().split()[0]
         bing_api_key = f.readline().split()[0]
         f.close
