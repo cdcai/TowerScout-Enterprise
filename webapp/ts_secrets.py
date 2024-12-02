@@ -11,7 +11,7 @@ from azure.keyvault.secrets import SecretClient
 import json, os
 
 current_directory = os.getcwd()
-config_dir = os.path.join(os.getcwd(), 'webapp')
+config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
 class devSecrets:
     def getSecret(secret_name):

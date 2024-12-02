@@ -27,7 +27,7 @@ class SilverTable:
                 cursor = connection.cursor()
 
                 cursor.execute(
-                    "SELECT bboxes, image_id from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
+                    "SELECT bboxes from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
                     + user_id
                     + "' AND request_id = '"
                     + request_id

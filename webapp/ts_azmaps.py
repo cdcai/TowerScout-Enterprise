@@ -28,7 +28,7 @@ class AzureMap(Map):
 
     def __init__(self, api_key):
         self.key = api_key
-        self.has_metadata = True
+        self.has_metadata = False
         self.mapType = "Azure"
 
     def get_mapkey():
