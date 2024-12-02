@@ -37,7 +37,7 @@ def data_augmentation(
     rotation_angle: int = 15,
     prob_H_flip: float = 0.2,
     prob_V_flip: float = 0.2,
-    blur: [int, float] = tuple[1, 0.1],
+    blur: tuple[int, float] = (1, 0.1),
 ) -> list:
     """
     Data Augmentation function to add label invariant transforms to training pipeline
