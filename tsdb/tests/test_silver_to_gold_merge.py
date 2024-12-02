@@ -96,7 +96,7 @@ def test_merge_updates_into_gold(
 
     # remove testing data from gold table if it exists
     query = f"DELETE FROM {catalog}.{schema}.{gold_table} WHERE image_hash IN (-1467659206, 802091180);"
-    df = spark.sql(query)
+    spark.sql(query)
 
     values, uuids = convert_data_to_str(validated_data)
 
