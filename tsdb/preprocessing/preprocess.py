@@ -1,6 +1,5 @@
 from pyspark.context import SparkContext
 from petastorm.spark import SparkDatasetConverter, make_spark_converter
-from pyspark.sql._typing import ColumnOrName
 from tsdb.preprocessing.functions import sum_bytes
 from torchvision.transforms import v2
 
@@ -10,7 +9,7 @@ that use a combination of tsdb.preprocessing.functions
 """
 
 def create_converter(
-    dataframe, bytes_column: ColumnOrName, sc: SparkContext, parallelism: int = 0
+    dataframe, bytes_column: "ColumnOrName", sc: SparkContext, parallelism: int = 0
 ) -> SparkDatasetConverter:
     """
     Returns a PetaStorm converter created from dataframe.
