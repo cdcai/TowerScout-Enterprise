@@ -261,7 +261,8 @@ class AzureMap extends TSMap {
           style: 'light'
       })
     });
-
+    this.map.events.add('drawingchanging', this.drawingManager, (shape) => { this.measureShape(shape) });
+    this.map.events.add('drawingchanged', this.drawingManager, (shape) => { this.measureShape(shape) });
     this.map.events.add('drawingcomplete', this.drawingManager, () => { this.retrieveDrawnBoundaries() });
   }
 
@@ -271,8 +272,13 @@ class AzureMap extends TSMap {
 
     if (shapes && shapes.length > 0) {
       console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
-      for (let s of shapes) {
-        const coordinates = s.data.geometry.coordinates[0];
+      for (let shape of shapes) {
+        let coordinates = [];
+        if("circlePolygon" in shape) {
+          coordinates = shape.circlePolygon.geometry.coordinates[0];
+        } else {
+          coordinates = shape.data.geometry.coordinates[0];
+        }
         const points = coordinates.map(coord => [coord[0], coord[1]]);
         polys.push(new PolygonBoundary(points));
       }
@@ -281,6 +287,7 @@ class AzureMap extends TSMap {
     }
     console.log(`Polys: ${polys}`);
     this.boundaries = polys;
+    this.showBoundaries()
     return polys;
   }
 
@@ -295,13 +302,12 @@ class AzureMap extends TSMap {
   }
 
   getBounds() {
-    const bounds = this.map.getCamera().bounds;
-    return [
-      bounds.minLongitude,
-      bounds.maxLatitude,
-      bounds.maxLongitude,
-      bounds.minLatitude
-    ];
+    return this.map.getCamera().bounds;
+  }
+
+  getCenter() {
+    let b = this.getBounds();
+    return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
   }
 
   fitBounds(b) {
@@ -328,36 +334,27 @@ class AzureMap extends TSMap {
   }
 
   addBoundary(b) {
-    const points = b.points.map(p => new atlas.data.Position(p[0], p[1]));
-    const polygon = new atlas.data.Polygon([points]);
-
-    // Add the polygon to the map
-    this.map.sources.add(new atlas.source.DataSource('boundarySource', { data: polygon }));
-    this.map.layers.add(new atlas.layer.PolygonLayer('boundarySource', {
-      fillColor: 'rgba(0, 0, 255, 0.5)',
-      strokeColor: 'blue',
-      strokeWidth: 2
-    }));
-
-    // Store the boundary for later use
-    this.boundaries.push(b);
+    return;
   }
 
   showBoundaries() {
     // Set map bounds to fit the union of all active boundaries
     if (this.boundaries.length > 0) {
-      const bounds = this.boundaries.reduce((acc, b) => {
-        const polygonBounds = new atlas.data.BoundingBox(b.points);
-        return acc.union(polygonBounds);
-      }, new atlas.data.BoundingBox());
+      var polygon = this.boundaries[0].points;
+      var minX = Math.min(...polygon.map(p => p[0]));
+      var minY = Math.min(...polygon.map(p => p[1]));
+      var maxX = Math.max(...polygon.map(p => p[0]));
+      var maxY = Math.max(...polygon.map(p => p[1]));
 
-      this.map.setCamera({ bounds: bounds, padding: 0 });
+      var bounds = atlas.data.BoundingBox.fromEdges(minX, minY, maxX, maxY);
+      this.map.setCamera({ bounds, padding: 5 });
     }
   }
 
   resetBoundaries() {
     this.boundaries = [];
     this.drawingManager?.getSource()?.clear();
+    this.map.sources.getById('circleDataSource')?.clear();
   }
 
   hasShapes() {
@@ -367,6 +364,7 @@ class AzureMap extends TSMap {
 
   clearShapes() {
     this.drawingManager.getSource().clear();
+    this.map.sources.remove('boundarySource');
   }
 
 
@@ -385,6 +383,15 @@ class AzureMap extends TSMap {
   getBoundsUrl() {
     const bounds = this.map.getCamera().bounds;
     return [bounds[1], bounds[0], bounds[3], bounds[2]];
+  }
+
+  measureShape(shape) {
+    var msg = '';
+
+    if (shape.isCircle()) {
+        document.getElementById("radius").value = shape.getProperties().radius;
+    }
+
   }
 }
 
@@ -723,7 +730,7 @@ class BingMap extends TSMap {
     // set map bounds to fit union of all active boundaries
     let bobjs = this.boundaries.map(x => x.bingObject);
     let bounds = Microsoft.Maps.LocationRect.fromShapes(bobjs);
-    this.map.setView({ bounds: bounds, padding: 0 });
+    this.map.setView({ bounds, padding: 0 });
   }
 
   retrieveDrawnBoundaries() {
@@ -1274,12 +1281,36 @@ class SimpleBoundary extends PolygonBoundary {
 class CircleBoundary extends PolygonBoundary {
   constructor(center, radius) {
     super("circle: " + center + ", " + radius + " m");
-    // use MSFT stuff to compute the circle
-    let locs = Microsoft.Maps.SpatialMath.getRegularPolygon(
+    let locs = [];
+    if (currentUI.value === 'azure') {
+      var circleShape = new atlas.Shape(new atlas.data.Point(center), 'circleShape', {
+        subType: "Circle",
+        radius
+      });
+      const existingCircleDataSource = currentMap.map.sources.getById('circleDataSource');
+      var dataSource = existingCircleDataSource ?? new atlas.source.DataSource('circleDataSource');
+      if(!existingCircleDataSource){
+        currentMap.map.sources.add(dataSource);
+      }
+      dataSource.add(circleShape);
+      currentMap.map.layers.add(new atlas.layer.LineLayer(dataSource, 'circleShapeLayer', {
+          strokeColor: 'black',
+          strokeWidth: 2
+      }));
+      this.points = circleShape.circlePolygon.geometry.coordinates;
+      currentMap.boundaries.push(new PolygonBoundary(this.points[0]));
+      return;
+    }
+
+    if(currentUI.value === 'bing') {
+
+    locs = Microsoft.Maps.SpatialMath.getRegularPolygon(
       new Microsoft.Maps.Location(center[1], center[0]),
       radius,
       256,
       Microsoft.Maps.SpatialMath.DistanceUnits.Meters);
+    }
+
     this.points = locs.map(l => [l.longitude, l.latitude]);
   }
 }
@@ -1861,10 +1892,6 @@ function cancelRequest() {
 }
 
 function circleBoundary() {
-  if(currentUI.value === "azure") {
-    console.log("Please use the draw toolbar on the top left corner of the map to draw a circle boundary.");
-    return;
-  }
   // radius? construct a circle
   let radius = document.getElementById("radius").value;
   if (radius !== "") {
@@ -1881,15 +1908,11 @@ function circleBoundary() {
 
     // googleMap.showBoundaries();
 
-    bingMap.showBoundaries();
+    currentMap.showBoundaries();
   }
 }
 
 function drawnBoundary() {
-  if(currentUI.value === "azure") {
-    console.log("Please use the draw toolbar on the top left corner of the map to draw a custom shape.");
-    return;
-  }
   console.log("using custom boundary polygon(s)");
   let boundaries = currentMap.retrieveDrawnBoundaries();
   for (let b of boundaries) {
