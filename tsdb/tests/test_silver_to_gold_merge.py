@@ -78,8 +78,11 @@ def test_create_update_view_query(
     )
 
     spark.sql(create_updates_view)
+    
+    query = f"SELECT * FROM gold_updates;"
+    df = spark.sql(query)
 
-    assert spark.catalog.tableExists("gold_updates")
+    assert df.count() == 2
 
 
 def test_merge_updates_into_gold(
