@@ -4,25 +4,25 @@ from typing import Any
 
 from numpy.random import choice
 
-# Commenting this out along with the databricks sql import because the import causes 
+# Commenting out the databricks sql import because the import causes 
 # the unit test to fail since the library seems to only be installable in non-databricks envs
 
-# def execute_query(query: str, cursor: sql.Cursor, connection: sql.Connection) -> None:
-#     """
-#     Function to execute queries on databricks using the databricks SQL API
+def execute_query(query: str, cursor, connection) -> None:
+    """
+    Function to execute queries on databricks using the databricks SQL API
 
-#     Args:
-#         query: The query to execute
-#         cursor: The cursor to execute the query on
-#         connection: The connection to execute the query on
-#     """
-#     try:
-#         cursor.execute(query)
-#         return
-#     except:
-#         cursor.close()
-#         connection.close()
-#         return
+    Args:
+        query (str): The query to execute
+        cursor (sql.Cursor): The cursor to execute the query on
+        connection (sql.Connection): The connection to execute the query on
+    """
+    try:
+        cursor.execute(query)
+        return
+    except:
+        cursor.close()
+        connection.close()
+        return
 
 
 def convert_data_to_str(validated_data: tuple[str, str, dict[str, Any]]) -> tuple[str, str]:
