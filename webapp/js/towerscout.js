@@ -32,7 +32,6 @@ let xhr = null;
 let currentElement = null;
 let currentAddrElement = null;
 
-const input = document.getElementById("search");
 const upload = document.getElementById("upload_file");
 const detectionsList = document.getElementById("checkBoxes");
 const confSlider = document.getElementById("conf");
@@ -166,6 +165,24 @@ async function processRequest(url, map) {
  * Azure Maps
  */
 
+function fetchGeometry(geometryId) {
+  const url = `https://atlas.microsoft.com/search/polygon/json?api-version=1.0&geometries=${geometryId}&subscription-key=${azure_api_key}`;
+
+  return fetch(url)
+      .then(response => {
+          if (!response.ok) {
+              throw new Error('Network response was not ok');
+          }
+          return response.json();
+      })
+      .then(data => {
+          return data; // Return the geometry data
+      })
+      .catch(error => {
+          console.error('Error fetching geometry:', error);
+      });
+}
+
 class AzureMap extends TSMap {
   constructor() {
     super();
@@ -196,14 +213,14 @@ class AzureMap extends TSMap {
     this.map.events.add('ready', () => {
       // Now it's safe to load drawing tools and add sources/layers
       this.loadDrawingTools();
-      let datasource = new atlas.source.DataSource();
+      let datasource = new atlas.source.DataSource('searchResultDataSource');
       this.map.sources.add(datasource);
       //Add a layer for rendering point data.
-      this.map.layers.add(new atlas.layer.SymbolLayer(datasource));
+      // this.map.layers.add(new atlas.layer.SymbolLayer(datasource));
 
       //Create a jQuery autocomplete UI widget.
       var geocodeServiceUrlTemplate = 'https://{azMapsDomain}/search/fuzzy/json?typeahead=true&api-version=1.0&query={query}&language=en-US&lon={lon}&lat={lat}&countrySet=US&view=Auto';
-      $("#search").autocomplete({
+      $("#azureSearch").autocomplete({
           minLength: 4,   //Don't ask for suggestions until atleast 3 characters have been typed. This will reduce costs by not making requests that will likely not have much relevance.
           source: (request, response) => {
               var center = this.map.getCamera().center;
@@ -219,14 +236,42 @@ class AzureMap extends TSMap {
           },
           select: (event, ui) => {
               event.preventDefault();
-              document.getElementById("search").value = ui.item.address.freeformAddress
+              document.getElementById("azureSearch").value = ui.item.address.freeformAddress
               //Remove any previous added data from the map.
               datasource.clear();
 
-              //Create a point feature to mark the selected location.
-              // datasource.add(new atlas.data.Feature(new atlas.data.Point([ui.item.position.lon, ui.item.position.lat]), ui.item));
-              //TODO: Do not add a point/feature. Instead shade the area if it is a township/postal code... if it is an address then
-              // just center on that address
+              const geometryId = ui.item?.dataSources?.geometry?.id;
+              if(geometryId) {
+                fetchGeometry(geometryId).then(geometryData => {
+                  if (geometryData) {
+                      // Assuming geometryData contains the boundary coordinates
+                      const coordinates = geometryData.additionalData[0].geometryData.features[0].geometry.coordinates; // Adjust based on the actual response structure
+
+                      // Create a polygon feature to shade the area
+                      const polygon = new atlas.data.Polygon(coordinates);
+                      datasource.add(new atlas.data.Feature(polygon));
+
+                      // Optionally, you can set the fill color for the polygon
+                      const polygonStyle = {
+                          fillColor: 'rgba(0, 0, 255, 0.5)', // Semi-transparent blue
+                          strokeColor: 'blue',
+                          strokeWidth: 2
+                      };
+
+                      // Add the polygon to the map with the specified style
+                      const polygonLayer = new atlas.layer.PolygonLayer(datasource, 'searchResultPolygon', {
+                          fillColor: polygonStyle.fillColor,
+                          strokeColor: polygonStyle.strokeColor,
+                          strokeWidth: polygonStyle.strokeWidth
+                      });
+                      this.map.layers.add(polygonLayer);
+                      const polys = [];
+                      const points = polygon.coordinates[0].map(coord => [coord[0], coord[1]]);
+                      polys.push(new PolygonBoundary(points));
+                      this.boundaries = polys;
+                  }
+                });
+              }
 
               //Zoom the map into the selected location.
               this.map.setCamera({
@@ -254,12 +299,21 @@ class AzureMap extends TSMap {
 
   loadDrawingTools() {
     // Load the DrawingTools module
-    this.drawingManager = new atlas.drawing.DrawingManager(this.map, {
+    this.drawingManager = new atlas.drawing.DrawingManager(this.map,
+      {
         mode: "draw-polygon",
         toolbar: new atlas.control.DrawingToolbar({
           position: 'top-left',
           style: 'light'
       })
+    });
+    var layers = this.drawingManager.getLayers();
+    layers.lineLayer.setOptions({
+      strokeColor: 'blue',
+      strokeWidth: 3
+    });
+    layers.polygonOutlineLayer.setOptions({
+      strokeColor: 'blue'
     });
     this.map.events.add('drawingchanging', this.drawingManager, (shape) => { this.measureShape(shape) });
     this.map.events.add('drawingchanged', this.drawingManager, (shape) => { this.measureShape(shape) });
@@ -355,6 +409,7 @@ class AzureMap extends TSMap {
     this.boundaries = [];
     this.drawingManager?.getSource()?.clear();
     this.map.sources.getById('circleDataSource')?.clear();
+    this.map.sources.getById('searchResultDataSource')?.clear();
   }
 
   hasShapes() {
@@ -365,6 +420,7 @@ class AzureMap extends TSMap {
   clearShapes() {
     this.drawingManager.getSource().clear();
     this.map.sources.remove('boundarySource');
+    this.map.sources.remove('searchResultDataSource');
   }
 
 
@@ -432,10 +488,10 @@ class BingMap extends TSMap {
           map: bingMap
       };
       var manager = new Microsoft.Maps.AutosuggestManager(options);
-      manager.attachAutosuggest('#search', '#searchBoxContainer', selectedSuggestion);
+      manager.attachAutosuggest('#bingSearch', '#bingSearchBoxContainer', selectedSuggestion);
     });
 
-    document.getElementById('search').addEventListener('change', Search);
+    document.getElementById('bingSearch').addEventListener('change', Search);
 
     let searchManager;
     Microsoft.Maps.loadModule(['Microsoft.Maps.SpatialDataService',
@@ -449,7 +505,7 @@ class BingMap extends TSMap {
 
       //Create the geocode request.
       var geocodeRequest = {
-          where: document.getElementById('search').value,
+          where: document.getElementById('bingSearch').value,
           callback: getBoundary,
           errorCallback: function (e) {
               //If there is an error, alert the user about it.
@@ -458,40 +514,6 @@ class BingMap extends TSMap {
       };
       searchManager.geocode(geocodeRequest);
     }
-
-//     function Search() {
-//       //Remove all data from the map.
-//       bingMap.entities.clear;
-
-//         var geocodeRequest = {
-//           where: document.getElementById('search').value,
-//           callback: function (r) {
-
-//               //Add the first result to the map and zoom into it.
-//               if (r && r.results && r.results.length > 0) {
-//                 if ((r.results[0].entitySubType == "Address") || (r.results[0].entityType == "PostalAddress")){
-// var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
-//                   bingMap.entities.push(pin);
-
-//                   bingMap.setView({ bounds: r.results[0].bestView });
-//                 }
-
-//               }
-//               else{
-//                 getBoundary;
-//               }
-
-//           },
-//           errorCallback: function (e) {
-//               //If there is an error, alert the user about it.
-//               alert("No results found.");
-//           }
-
-//     }
-
-//       searchManager.geocode(geocodeRequest);
-//     }
-
       function getBoundary(geocodeResult){
         //Add the first result to the map and zoom into it.
         if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
@@ -534,7 +556,7 @@ class BingMap extends TSMap {
                   if (data.results && data.results.length > 0) {
                     bingMap.entities.push(data.results[0].Polygons);
                   } else {
-                      console.log(`Could not find boundary for ${document.getElementById('search').value}`)
+                      console.log(`Could not find boundary for ${document.getElementById('bingSearch').value}`)
                   }
               }
             );
@@ -564,13 +586,13 @@ class BingMap extends TSMap {
     }
       else{
         geocodeRequest = {
-        where: result.title,
-        callback: getBoundary,
-        errorCallback: function (e) {
-            //If there is an error, alert the user about it.
-            alert("No results found.");
-        }
-    };
+          where: result.title,
+          callback: getBoundary,
+          errorCallback: function (e) {
+              //If there is an error, alert the user about it.
+              alert("No results found.");
+          }
+        };
 
       }
       searchManager.geocode(geocodeRequest);
@@ -1294,8 +1316,8 @@ class CircleBoundary extends PolygonBoundary {
       }
       dataSource.add(circleShape);
       currentMap.map.layers.add(new atlas.layer.LineLayer(dataSource, 'circleShapeLayer', {
-          strokeColor: 'black',
-          strokeWidth: 2
+          strokeColor: 'blue',
+          strokeWidth: 3
       }));
       this.points = circleShape.circlePolygon.geometry.coordinates;
       currentMap.boundaries.push(new PolygonBoundary(this.points[0]));
@@ -2061,6 +2083,8 @@ function setMap(newMap) {
     document.getElementById("freview").style.display = null;
     // document.getElementById("ffilter").style.display = null;
     document.getElementById("fadd").style.display = null;
+    document.getElementById("azureSearchBoxContainer").style.display = "none";
+    document.getElementById("bingSearchBoxContainer").style.display = "inline";
     initBingMap();
     // recreate boundaries for bing
     // let bs = currentMap.getBounds();
@@ -2077,6 +2101,8 @@ function setMap(newMap) {
     document.getElementById("freview").style.display = null;
     // document.getElementById("ffilter").style.display = null;
     document.getElementById("fadd").style.display = null;
+    document.getElementById("bingSearchBoxContainer").style.display = "none";
+    document.getElementById("azureSearchBoxContainer").style.display = "inline";
     currentMap = azureMap;
     // recreate boundaries for bing
     let bs = currentMap.boundaries;
