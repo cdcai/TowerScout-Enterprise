@@ -17,7 +17,7 @@ optimizer_args = OptimizerArgs(optimizer_name="Adam", lr0=0.002, momentum=0.9)
 
 # COMMAND ----------
 
-data_yaml_path = "/Volumes/edav_dev_csels/towerscout_test_schema/towerscout_data/data.yaml" #"coco8.yaml"
+data_yaml_path = "coco8.yaml"
 data = check_det_dataset(data_yaml_path)
 print(data)
 
@@ -72,3 +72,65 @@ for image_batch in loader:
 for image_batch in loader:
     metrics = yolo_trainer.validation_step(image_batch)
     print(f"Validation metrics: {metrics}")
+
+# COMMAND ----------
+
+from tsdb.ml.yolo_trainer import postprocess
+import torch
+
+for image_batch in loader:
+    print(len(image_batch['img'])) # batch of 4 imgs
+    proccessed = yolo_trainer.preprocess_val(image_batch)
+    model.eval()
+    preds = model(proccessed["img"]) # YOLOv8 model in validation model, output = (inference_out, loss_out)
+    preds = preds[0]
+    print("preds.shape:", preds.shape)
+    print("preds[0].shape:", preds[0].shape)
+    postprocessed = postprocess(preds, model.args, [])
+    print(postprocessed[3])
+    #test_input = (torch.tensor([1,2,3,4]), torch.tensor([1,2,3,4]))
+    #print(postprocess(test_input, model.args, []))
+
+# COMMAND ----------
+
+import torch
+#from ultralytics.utils.ops import non_max_suppression
+from ultralytics.utils import IterableSimpleNamespace
+from tsdb.ml.yolo_trainer import postprocess
+
+def sample_prediction():
+
+    # box format: (x1, y1, x2, y2, confidence, class)
+    prediction = torch.tensor([
+                [0.508, 0.141, 0.27, 0.4, 0.9, 0],  # Box 1 (keep)
+                [0.31, -0.42, 0.443, 0.5, 0.6, 0],  # Box 2 (keep)
+                [0.92, 0.442, -0.43, 0.5, 0.46, 0],  # Box 3 (filter)
+                [0.444, 0.2, 0.3, 0.5, 0.39, 0],  # Box 4 (filter)
+            ]).unsqueeze(0) # Adding batch dimension
+    
+    return prediction
+
+
+sample_prediction = sample_prediction()
+
+
+args = IterableSimpleNamespace(conf=0.5, iou=0.0, single_cls=True, max_det=300)
+lb = []
+# Test with default thresholds and no classes specified
+output = postprocess(sample_prediction, args, lb)
+
+assert isinstance(output, list), "Output should be a list"
+assert (
+    len(output) == sample_prediction.shape[0]
+), "Output list length should match batch size"
+
+for out in output:
+    assert isinstance(out, torch.Tensor), "Each output element should be a tensor"
+    if len(out) > 0:
+        assert (
+            out[:, 4] >= args.conf
+        ).all(), "All confidences should be above or equal to the threshold"
+
+        assert len(out) == 2, "Output should contain 50% of the original boxes (2)"
+
+print("Simple test passed.")
