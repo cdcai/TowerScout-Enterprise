@@ -1,10 +1,6 @@
 from collections import namedtuple
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field
 from typing import TypedDict
-
-from pyspark.sql import SparkSession, DataFrame, Column
-from pyspark.sql.types import Row
-import pyspark.sql.functions as F
 
 from enum import Enum
 
@@ -13,7 +9,6 @@ from torch import nn
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 from mlflow import MlflowClient
-from mlflow.entities.model_registry import ModelVersion
 
 from logging import Logger
 
