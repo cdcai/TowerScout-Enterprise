@@ -404,6 +404,17 @@ class AzureMap extends TSMap {
       this.map.setCamera({ bounds, padding: 5 });
     }
   }
+  // showBoundaries() {
+  //   // Set map bounds to fit the union of all active boundaries
+  //   if (this.boundaries.length > 0) {
+  //     const bounds = this.boundaries.reduce((acc, b) => {
+  //       const polygonBounds = new atlas.data.BoundingBox(b.points);
+  //       return acc.union(polygonBounds);
+  //     }, new atlas.data.BoundingBox());
+
+  //     this.map.setCamera({ bounds: bounds, padding: 0 });
+  //   }
+  // }
 
   resetBoundaries() {
     this.boundaries = [];
@@ -417,6 +428,42 @@ class AzureMap extends TSMap {
     return shapes && shapes.length > 0;
   }
 
+  addShapes() {
+    let shapes = this.drawingManager.getPrimitives();
+
+    if (shapes && shapes.length > 0) {
+      console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
+      for (let s of shapes) {
+        console.log("Adding " + s.geometry.bounds.toString());
+        let x1 = s.geometry.boundingBox.getWest();
+        let y1 = s.geometry.boundingBox.getNorth();
+        let x2 = s.geometry.boundingBox.getEast();
+        let y2 = s.geometry.boundingBox.getSouth();
+
+        let tileIds = Tile.getTileIds(x1, y1, x2, y2);
+        for (let tileId of tileIds) {
+          let tile = Tile_tiles[tileId]
+          x1 = Math.max(x1, tile.x1);
+          x1 = Math.min(x1, tile.x2);
+          x2 = Math.max(x2, tile.x1);
+          x2 = Math.min(x2, tile.x2);
+          y1 = Math.max(y1, tile.y2);
+          y1 = Math.min(y1, tile.y1);
+          y2 = Math.max(y2, tile.y2);
+          y2 = Math.min(y2, tile.y1);
+          let det = new Detection(x1, y1, x2, y2,
+            'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
+          det.update();
+        }
+
+        augmentDetections();
+      }
+      this.drawingManager.clear();
+      // this.map.entities.clear();
+    } else {
+      console.log('No shapes in the drawing manager.');
+    }
+  }
   clearShapes() {
     this.drawingManager.getSource().clear();
     this.map.sources.remove('boundarySource');
@@ -449,6 +496,127 @@ class AzureMap extends TSMap {
     }
 
   }
+  //Draw bounding boxes
+  makeMapRect(o, listener) {
+    try {
+      let locs = [
+        new atlas.data.Point(o.y1, o.x1),
+        new atlas.data.Point(o.y1, o.x2),
+        new atlas.data.Point(o.y2, o.x2),
+        new atlas.data.Point(o.y2, o.x1),
+        new atlas.data.Point(o.y1, o.x1)
+      ];
+      // Create the four corners of the polygon
+      const boundingBoxCoordinates = [
+        [o.x1, o.y1],  // Top-left corner
+        [o.x2, o.y1],  // Top-right corner
+        [o.x2, o.y2],  // Bottom-right corner
+        [o.x1, o.y2],  // Bottom-left corner
+        [o.x1, o.y1]   // Closing the polygon (back to top-left)
+      ];
+     
+        
+    // });
+    // Create a polygon (bounding box) from the coordinates
+    var boundingBoxPolygon = new atlas.data.Polygon([boundingBoxCoordinates ]);
+    // Create a data source and add the bounding box (polygon) to it
+    var dataSource = new atlas.source.DataSource();
+    this.map.sources.add(dataSource);
+    dataSource.add(boundingBoxPolygon);
+    var fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
+      fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
+    });
+    if (o.classname == "tile"){
+    // Create a layer for just the border of the bounding box/tile (without fill)
+      const tileborderLayer = new atlas.layer.LineLayer(dataSource, null, {
+        strokeColor: 'blue',
+        strokeWidth: 2                   // Border width
+      });
+      
+      this.map.layers.add(tileborderLayer);
+    }
+    else {
+      // Create a layer for just the border of the bounding box/tile (without fill)
+      const borderLayer = new atlas.layer.LineLayer(dataSource, null, {
+      strokeColor: 'red',
+      strokeWidth: 2                   // Border width
+      });
+      // Create another layer for the bounding box (with fill)
+      fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
+      strokeColor: 'red',
+      fillColor: 'rgba(255, 0, 0, 0.5)', // Semi-transparent red fill
+      strokeWidth: 2                   // Border width
+    });
+      this.map.layers.add(borderLayer);
+      this.map.layers.add(fillLayer);
+    }
+   
+   
+    if ((typeof listener !== 'undefined') && (o.classname != 'tile')) {
+      // Add click event to the layer using the 'addEventListener' method on the map
+      this.map.events.add('click', fillLayer , function(e) {
+          // Check if the click happened inside the polygon
+          const clickedEntity = e.shapes[0];
+          if (clickedEntity) {
+              listener(clickedEntity);  // Call the listener function
+          }
+      });
+      
+  }
+    if (o.classname == "tile"){
+      return boundingBoxPolygon;
+    }
+    else {
+      return fillLayer;
+    }
+      
+    }
+    catch (error){
+      console.log('An error occurred makeMapRect: ' + error);  // This won't execute
+    }
+    finally{
+
+    }
+    }
+  
+  colorMapRect(o, color) {
+    try{
+      // Create a fill color with opacity
+      // let fillColor = `rgba(${parseInt(o.color.slice(1, 3), 16)}, ${parseInt(o.color.slice(3, 5), 16)}, ${parseInt(o.color.slice(5), 16)}, ${o.opacity})`;
+
+      let fcolor = Microsoft.Maps.Color.fromHex(color);
+      fcolor.a = o.opacity;
+      o.mapRect.fillColor = fcolor;
+      o.mapRect.color = color;
+      // o.mapRect.setOptions({ strokeColor: o.color, fillColor: fcolor });
+    }
+    catch (error){
+      console.log('An error occurred colorMapRect: ' + error);  // This won't execute
+    }
+    finally{
+
+    }
+    }
+  
+  updateMapRect(o, onoff) {
+    try{
+      if (onoff)
+      {
+        o.opacity = 1
+      }
+      else{
+        o.opacity = 0
+      }
+      
+    }
+    catch (error){
+      console.log('An error occurred updateMapRect: ' + error);  // This won't execute
+    }
+    finally{
+
+    }
+    }
+
 }
 
 
@@ -851,418 +1019,6 @@ class BingMap extends TSMap {
 
 }
 
-class clsAzureMap extends TSMap {
-  constructor() {
-    super();
-    this.map = new new atlas.Map('#azureMap', {
-      center: new Microsoft.Maps.Location(nyc[1], nyc[0]),
-      mapTypeId: Microsoft.Maps.MapTypeId.road,
-      zoom: 19,
-      maxZoom: 21,
-      disableStreetside: true,
-      View: 'Auto'
-      // showSearchBar: true
-    });
-    let azureMap = this.map;
-    Microsoft.Maps.loadModule('Microsoft.Maps.AutoSuggest', function () {
-      var options = {
-          maxResults: 4,
-          map: bingMap
-      };
-      var manager = new Microsoft.Maps.AutosuggestManager(options);
-      manager.attachAutosuggest('#search', '#searchBoxContainer', selectedSuggestion);
-    });
-
-    document.getElementById('search').addEventListener('change', Search);
-
-    let searchManager;
-    Microsoft.Maps.loadModule(['Microsoft.Maps.SpatialDataService',
-    'Microsoft.Maps.Search'], function () {
-        searchManager = new Microsoft.Maps.Search.SearchManager(bingMap);
-    });
-
-    function Search() {
-      //Remove all data from the map.
-      bingMap.entities.clear();
-
-      //Create the geocode request.
-      var geocodeRequest = {
-          where: document.getElementById('search').value,
-          callback: getBoundary,
-          errorCallback: function (e) {
-              //If there is an error, alert the user about it.
-              //alert("No results found.");
-          }
-      };
-      searchManager.geocode(geocodeRequest);
-    }
-
-//     function Search() {
-//       //Remove all data from the map.
-//       bingMap.entities.clear;
-
-//         var geocodeRequest = {
-//           where: document.getElementById('search').value,
-//           callback: function (r) {
-
-//               //Add the first result to the map and zoom into it.
-//               if (r && r.results && r.results.length > 0) {
-//                 if ((r.results[0].entitySubType == "Address") || (r.results[0].entityType == "PostalAddress")){
-// var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
-//                   bingMap.entities.push(pin);
-
-//                   bingMap.setView({ bounds: r.results[0].bestView });
-//                 }
-
-//               }
-//               else{
-//                 getBoundary;
-//               }
-
-//           },
-//           errorCallback: function (e) {
-//               //If there is an error, alert the user about it.
-//               alert("No results found.");
-//           }
-
-//     }
-
-//       searchManager.geocode(geocodeRequest);
-//     }
-
-      function getBoundary(geocodeResult){
-        //Add the first result to the map and zoom into it.
-        if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
-            //Zoom into the location.
-
-            bingMap.setView({ bounds: geocodeResult.results[0].bestView });
-
-            //Create the request options for the GeoData API.
-            var geoDataRequestOptions = {
-                lod: 1,
-                getAllPolygons: true
-            };
-
-            //Verify that the geocoded location has a supported entity type.
-            switch (geocodeResult.results[0].entityType) {
-                case "CountryRegion":
-                case "AdminDivision1":
-                case "AdminDivision2":
-                case "Postcode1":
-                case "Postcode2":
-                case "Postcode3":
-                case "Postcode4":
-                case "Neighborhood":
-                case "PopulatedPlace":
-                    geoDataRequestOptions.entityType = geocodeResult.results[0].entityType;
-                    break;
-                default:
-                    //Display a pushpin if GeoData API does not support EntityType.
-                    console.log(`GeoData API does not support EntityType ${geocodeResult.results[0].entityType}.`);
-                    return;
-            }
-
-            //Use the GeoData API manager to get the boundaries of the zip codes.
-            Microsoft.Maps.SpatialDataService.GeoDataAPIManager.getBoundary(
-              geocodeResult.results[0].location,
-              geoDataRequestOptions,
-              bingMap,
-              function (data) {
-                  //Add the polygons to the map.
-                  if (data.results && data.results.length > 0) {
-                    bingMap.entities.push(data.results[0].Polygons);
-                  } else {
-                      console.log(`Could not find boundary for ${document.getElementById('search').value}`)
-                  }
-              }
-            );
-        }
-      }
-
-    function selectedSuggestion(result) {
-      bingMap.entities.clear;
-      var geocodeRequest;
-      if ((result.entitySubType == "Address") || (result.entityType == "PostalAddress")){
-        geocodeRequest = {
-          where: result.formattedSuggestion,
-          callback: function (r) {
-              //Add the first result to the map and zoom into it.
-              if (r && r.results && r.results.length > 0) {
-                  var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
-                  bingMap.entities.push(pin);
-
-                  bingMap.setView({ bounds: r.results[0].bestView });
-              }
-          },
-          errorCallback: function (e) {
-              //If there is an error, alert the user about it.
-              alert("No results found.");
-          }
-      }
-    }
-      else{
-        geocodeRequest = {
-        where: result.title,
-        callback: getBoundary,
-        errorCallback: function (e) {
-            //If there is an error, alert the user about it.
-            alert("No results found.");
-        }
-    };
-
-      }
-      searchManager.geocode(geocodeRequest);
-    }
-
-
-
-    // get view change event to bias place search results
-    // Microsoft.Maps.Events.addHandler(this.map, 'viewchangeend', () => googleMap.biasSearchBox());
-
-    // load the spatial math module
-    Microsoft.Maps.loadModule('Microsoft.Maps.SpatialMath', () => { });
-
-    // load the DrawingTools module
-    this.tools = null;
-    this.drawingManager = null;
-    let bMap = this;
-    Microsoft.Maps.loadModule('Microsoft.Maps.DrawingTools', function () {
-      let tools = new Microsoft.Maps.DrawingTools(bMap.map);
-      tools.showDrawingManager(function (manager) {
-        bMap.drawingManager = manager;
-        manager.setOptions({ drawingBarActions: Microsoft.Maps.DrawingTools.DrawingBarAction.polygon });
-        Microsoft.Maps.Events.addHandler(manager, 'drawingEnded', function () { console.log('drawingEnded'); });
-        Microsoft.Maps.Events.addHandler(manager, 'drawingModeChanged', function () { console.log('drawingModeChanged'); });
-        Microsoft.Maps.Events.addHandler(manager, 'drawingStarted', function () { console.log('drawingStarted'); });
-      });
-    });
-
-    this.boundaries = [];
-  }
-
-  getBounds() {
-    let locations = [];
-
-    for(var i = 0; i < this.map.entities.getLength(); i++) {
-      var entity = this.map.entities.get(i);
-      if(entity instanceof Microsoft.Maps.Polygon) {
-        var vertices = entity.getLocations();
-        locations = locations.concat(vertices);
-      }
-    }
-
-    if(locations.length > 0) {
-      var bounds = Microsoft.Maps.LocationRect.fromLocations(locations);
-      this.map.setView({ bounds: bounds });
-    }
-
-    let rect = this.map.getBounds();
-    return [
-      rect.center.longitude - rect.width / 2,
-      rect.center.latitude + rect.height / 2,
-      rect.center.longitude + rect.width / 2,
-      rect.center.latitude - rect.height / 2
-    ];
-  }
-
-  fitBounds(b) {
-    let locs = [
-      new Microsoft.Maps.Location(b[1], b[0]),
-      new Microsoft.Maps.Location(b[3], b[2]),
-    ];
-    let rect = Microsoft.Maps.LocationRect.fromLocations(locs);
-    this.map.setView({ bounds: rect, padding: 0, zoom: 19 });
-  }
-
-  setCenter(c) {
-    this.map.setView({
-      center: new Microsoft.Maps.Location(c[1], c[0]),
-    });
-  }
-
-  setZoom(z) {
-    this.map.setView({
-      zoom: z
-    });
-  }
-
-
-  makeMapRect(o, listener) {
-    let locs = [
-      new Microsoft.Maps.Location(o.y1, o.x1),
-      new Microsoft.Maps.Location(o.y1, o.x2),
-      new Microsoft.Maps.Location(o.y2, o.x2),
-      new Microsoft.Maps.Location(o.y2, o.x1),
-      new Microsoft.Maps.Location(o.y1, o.x1)
-    ];
-    let color = Microsoft.Maps.Color.fromHex(o.color);
-    color.a = o.opacity;
-    let polygon = new Microsoft.Maps.Polygon(
-      locs,
-      {
-        fillColor: color,
-        strokeColor: o.color,
-        strokeThickness: 1
-      });
-
-    if (typeof listener !== 'undefined') {
-      Microsoft.Maps.Events.addHandler(polygon, 'click', listener);
-    }
-    this.map.entities.push(polygon);
-    return polygon;
-  }
-
-  colorMapRect(o, color) {
-    let fcolor = Microsoft.Maps.Color.fromHex(color);
-    fcolor.a = o.opacity;
-    o.mapRect.setOptions({ strokeColor: color, fillColor: fcolor });
-  }
-
-  updateMapRect(o, onoff) {
-    let r = o.mapRect;
-    r.setOptions({ visible: onoff });
-  }
-
-  getZoom() {
-    return this.map.getZoom();
-  }
-
-  resetBoundaries() {
-    for (let b of this.boundaries) {
-      for (let i = this.map.entities.getLength() - 1; i >= 0; i--) {
-        let obj = this.map.entities.get(i);
-        // if (obj === b.bingObject) {
-          this.map.entities.removeAt(i);
-        // }
-      }
-      b.bingObject = null;
-    }
-    this.boundaries = [];
-    this.map.entities.clear();
-  }
-
-  addBoundary(b) {
-    // make BingMap objects and link to them
-    // all boundaries are polygons
-    let points = [];
-    for (let p of b.points) {
-      points.push(new Microsoft.Maps.Location(p[1], p[0]));
-    }
-    const poly = new Microsoft.Maps.Polygon(points, {
-      fillColor: "rgba(0,0,0,0)",
-      strokeColor: "#0000FF",
-      strokeThickness: 2
-    });
-    this.map.entities.push(poly);
-    b.bingObject = poly;
-    b.bingObjectBounds = poly.geometry.boundingBox;
-
-    // add to active bounds
-    this.boundaries.push(b);
-  }
-
-  showBoundaries() {
-    // set map bounds to fit union of all active boundaries
-    let bobjs = this.boundaries.map(x => x.bingObject);
-    let bounds = Microsoft.Maps.LocationRect.fromShapes(bobjs);
-    this.map.setView({ bounds: bounds, padding: 0 });
-  }
-
-  retrieveDrawnBoundaries() {
-    let shapes = this.drawingManager.getPrimitives();
-    let polys = [];
-
-    if (shapes && shapes.length > 0) {
-      console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
-      for (let s of shapes) {
-        console.log("Adding polygon" + s.geometry.bounds.toString());
-        let x = s.geometry.rings[0].x;
-        let y = s.geometry.rings[0].y;
-        let points = []
-        for (let i = 0; i < x.length; i++) {
-          points.push([x[i], y[i]]);
-        }
-        polys.push(new PolygonBoundary(points))
-      }
-    } else {
-      console.log('No shapes in the drawing manager.');
-    }
-
-    return polys;
-  }
-
-  hasShapes() {
-    let shapes = this.drawingManager.getPrimitives();
-    return shapes && shapes.length > 0;
-  }
-
-  addShapes() {
-    let shapes = this.drawingManager.getPrimitives();
-
-    if (shapes && shapes.length > 0) {
-      console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
-      for (let s of shapes) {
-        console.log("Adding " + s.geometry.bounds.toString());
-        let x1 = s.geometry.boundingBox.getWest();
-        let y1 = s.geometry.boundingBox.getNorth();
-        let x2 = s.geometry.boundingBox.getEast();
-        let y2 = s.geometry.boundingBox.getSouth();
-
-        let tileIds = Tile.getTileIds(x1, y1, x2, y2);
-        for (let tileId of tileIds) {
-          let tile = Tile_tiles[tileId]
-          x1 = Math.max(x1, tile.x1);
-          x1 = Math.min(x1, tile.x2);
-          x2 = Math.max(x2, tile.x1);
-          x2 = Math.min(x2, tile.x2);
-          y1 = Math.max(y1, tile.y2);
-          y1 = Math.min(y1, tile.y1);
-          y2 = Math.max(y2, tile.y2);
-          y2 = Math.min(y2, tile.y1);
-          let det = new Detection(x1, y1, x2, y2,
-            'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
-          det.update();
-        }
-
-        augmentDetections();
-      }
-      this.drawingManager.clear();
-      // this.map.entities.clear();
-    } else {
-      console.log('No shapes in the drawing manager.');
-    }
-  }
-
-  clearShapes() {
-    this.drawingManager.clear();
-    this.map.entities.clear();
-  }
-
-  clearAll() {
-    this.clearShapes();
-    // now, also go through Detection_detections and take out the blue ones
-    // let dets = [];
-    // for (let det of Detection_detections) {
-    //   if (det.conf !== 1.0) {
-    //     det.id = dets.length;
-    //     dets.push(det);
-    //   }
-    // }
-
-    // Detection_detections = dets;
-    // Detection.generateList();
-    Detection.resetAll();
-  }
-
-  getBoundariesStr() {
-    let result = [];
-    for (let b of this.boundaries) {
-      result.push(b.toString())
-    }
-    return "[" + result.join(",") + "]";
-  }
-
-}
 //
 // boundaries: simple, circle, polygon
 //
@@ -1366,8 +1122,15 @@ class PlaceRect {
     // currentMap.setZoom(19);
     // googleMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
     // googleMap.setZoom(19);
-    bingMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
-    bingMap.setZoom(19);
+    if(currentUI.value === 'bing'){
+      bingMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
+      bingMap.setZoom(19);
+    }
+    else if(currentUI.value === 'azure'){
+      azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
+      azureMap.setZoom(19);
+    }
+    
   }
 
   getCenter() {
@@ -1770,13 +1533,7 @@ function getObjects(estimate) {
   let engine = $('input[name=model]:checked', '#engines').val()
   let provider = $('input[name=provider]:checked', '#providers').val()
   provider = provider.substring(0, provider.length - 9);
-  // let boundaries = googleMap.getBoundariesStr();
-  // if (boundaries === "[]" && radius == "") {
-  //   console.log("No boundary selected, instead using viewport: " + googleMap.getBounds())
-  //   googleMap.addBoundary(new SimpleBoundary(googleMap.getBounds()));
-  //   bingMap.addBoundary(new SimpleBoundary(googleMap.getBounds()));
-  // }
-
+ 
 
   // now get the boundaries ready to ship
   let bounds = currentMap.getBoundsUrl();
@@ -2617,15 +2374,6 @@ function assignAriaLabels() {
   // Select specific elements that typically need aria-labels
   const elementsNeedingAriaLabel = document.querySelectorAll('button, a, input, textarea, select, checkbox');
 
-  // // Define a mapping of elements to their corresponding aria-labels
-  // const ariaLabelMapping = {
-  //     'submit-button': 'Submit Form',
-  //     'cancel-button': 'Cancel Action',
-  //     'username-input': 'Enter your username',
-  //     'password-input': 'Enter your password',
-  //     'email-input': 'Enter your email address',
-  //     // Add more mappings as needed
-  // };
 
   // Loop through each element
   elementsNeedingAriaLabel.forEach(element => {
