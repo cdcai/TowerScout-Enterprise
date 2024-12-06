@@ -346,15 +346,38 @@ class AzureMap extends TSMap {
   }
 
   clearShapes() {
-    this.drawingManager.clear();
-    this.map.sources.clear();
+    this.drawingManager?.getSource()?.clear();
+    this.drawingManager.getSource().clear();
+    this.map.sources.getById('circleDataSource')?.clear();
+    this.removeLayerById("circleShapeLayer");
   }
 
   clearAll() {
     this.clearShapes();
     Detection.resetAll();
+    this.drawingManager?.getSource()?.clear();
+    this.drawingManager.getSource().clear();
+    this.map.sources.getById('tileDataSource')?.clear();
+    this.map.sources.getById('bBoxDataSource')?.clear();
+    this.removeLayerById("bBoxBoderLayer");
+    this.removeLayerById("bBoxFillLayer");
   }
-
+// Function to clear all layers from the map
+  clearAllLayers() {
+    var layers = this.map.layers.getLayers(); // Get all layers in the map
+    layers.forEach(function(layer) {
+      this.map.layers.remove(layer); // Remove each layer from the map
+    });
+  }
+  // Function to remove a layer by its id
+  removeLayerById(layerId) {
+    var layers = this.map.layers.getLayers(); // Get all layers in the map
+    layers.forEach(function (layer) {
+      if (layer.id === layerId) {
+          currentMap.map.layers.remove(layer); // Remove the layer with the matching id
+      }
+    });
+  }
   getBounds() {
     return this.map.getCamera().bounds;
   }
@@ -390,7 +413,6 @@ class AzureMap extends TSMap {
   addBoundary(b) {
     return;
   }
-
   showBoundaries() {
     // Set map bounds to fit the union of all active boundaries
     if (this.boundaries.length > 0) {
@@ -464,13 +486,7 @@ class AzureMap extends TSMap {
       console.log('No shapes in the drawing manager.');
     }
   }
-  clearShapes() {
-    this.drawingManager.getSource().clear();
-    this.map.sources.remove('boundarySource');
-    this.map.sources.remove('searchResultDataSource');
-  }
-
-
+  
   getBoundariesStr() {
     let result = [];
     for (let b of this.boundaries) {
@@ -520,35 +536,57 @@ class AzureMap extends TSMap {
     // Create a polygon (bounding box) from the coordinates
     var boundingBoxPolygon = new atlas.data.Polygon([boundingBoxCoordinates ]);
     // Create a data source and add the bounding box (polygon) to it
-    var dataSource = new atlas.source.DataSource();
-    this.map.sources.add(dataSource);
-    dataSource.add(boundingBoxPolygon);
+    
+    var existingTileDataSource = currentMap.map.sources.getById('tileDataSource');
+    var dataSource = existingTileDataSource ?? new atlas.source.DataSource('tileDataSource');
+    if(!existingTileDataSource){
+        currentMap.map.sources.add(dataSource);
+        dataSource.add(boundingBoxPolygon);
+        
+    }
+    
     var fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
       fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
     });
+    
     if (o.classname == "tile"){
     // Create a layer for just the border of the bounding box/tile (without fill)
       const tileborderLayer = new atlas.layer.LineLayer(dataSource, null, {
         strokeColor: 'blue',
         strokeWidth: 2                   // Border width
       });
-      
+      tileborderLayer.name = 'tileBorderLayer';
       this.map.layers.add(tileborderLayer);
     }
     else {
+      var existingBBOXDataSource = currentMap.map.sources.getById('bBoxDataSource');
+      var dataSource = existingBBOXDataSource ?? new atlas.source.DataSource('bBoxDataSource');
+      if(!existingBBOXDataSource){
+        currentMap.map.sources.add(dataSource);
+      }
+      dataSource.add(boundingBoxPolygon);
+      const existingBBOXLineLayer = currentMap.getLayerById('bBoxBoderLayer');
       // Create a layer for just the border of the bounding box/tile (without fill)
-      const borderLayer = new atlas.layer.LineLayer(dataSource, null, {
-      strokeColor: 'red',
-      strokeWidth: 2                   // Border width
+      var borderLayer = existingBBOXLineLayer ?? new atlas.layer.LineLayer(dataSource, null, {
+        strokeColor: 'red',
+        strokeWidth: 2                   // Border width
       });
-      // Create another layer for the bounding box (with fill)
-      fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
-      strokeColor: 'red',
-      fillColor: 'rgba(255, 0, 0, 0.5)', // Semi-transparent red fill
-      strokeWidth: 2                   // Border width
-    });
-      this.map.layers.add(borderLayer);
-      this.map.layers.add(fillLayer);
+      if(!existingBBOXLineLayer){
+        borderLayer.id = "bBoxBoderLayer";
+        this.map.layers.add(borderLayer);
+      }
+      const existingBBOXFillLayer = currentMap.getLayerById('bBoxFillLayer');
+      var fillLayer = existingBBOXFillLayer ?? new atlas.layer.PolygonLayer(dataSource, null, {
+        strokeColor: 'red',
+        fillColor: 'rgba(255, 0, 0, 0.5)', // Semi-transparent red fill
+        strokeWidth: 2                   // Border width
+      });
+      if(!existingBBOXFillLayer){
+        fillLayer.id = "bBoxFillLayer",
+        this.map.layers.add(fillLayer);
+      }
+            
+      
     }
    
    
@@ -563,12 +601,12 @@ class AzureMap extends TSMap {
       });
       
   }
-    if (o.classname == "tile"){
+    // if (o.classname == "tile"){
       return boundingBoxPolygon;
-    }
-    else {
-      return fillLayer;
-    }
+    // }
+    // else {
+    //   return fillLayer;
+    // }
       
     }
     catch (error){
@@ -582,9 +620,9 @@ class AzureMap extends TSMap {
   colorMapRect(o, color) {
     try{
       // Create a fill color with opacity
-      // let fillColor = `rgba(${parseInt(o.color.slice(1, 3), 16)}, ${parseInt(o.color.slice(3, 5), 16)}, ${parseInt(o.color.slice(5), 16)}, ${o.opacity})`;
+      let fillColor = `rgba(${parseInt(o.color.slice(1, 3), 16)}, ${parseInt(o.color.slice(3, 5), 16)}, ${parseInt(o.color.slice(5), 16)}, ${o.opacity})`;
 
-      let fcolor = Microsoft.Maps.Color.fromHex(color);
+      let fcolor = Microsoft.Maps.Color.fromHex(fillColor);
       fcolor.a = o.opacity;
       o.mapRect.fillColor = fcolor;
       o.mapRect.color = color;
@@ -616,7 +654,13 @@ class AzureMap extends TSMap {
 
     }
     }
-
+  // Function to get a layer by its id
+  getLayerById(layerId) {
+  var layers = this.map.layers.getLayers(); // Get all layers in the map
+  return layers.find(function (layer) {
+      return layer.id === layerId; // Compare the id of each layer
+  });
+}
 }
 
 
