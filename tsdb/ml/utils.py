@@ -1,10 +1,6 @@
 from collections import namedtuple
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field
 from typing import TypedDict
-
-from pyspark.sql import SparkSession, DataFrame, Column
-from pyspark.sql.types import Row
-import pyspark.sql.functions as F
 
 from enum import Enum
 
@@ -13,7 +9,6 @@ from torch import nn
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 from mlflow import MlflowClient
-from mlflow.entities.model_registry import ModelVersion
 
 from logging import Logger
 
@@ -149,12 +144,12 @@ def cut_square_detection(img, x1, y1, x2, y2):
 
     return img.crop((x1, y1, x2, y2))
 
-def get_model_tags(model_name: str, alias: str) -> dict[str, str]:
+def get_model_tags(model_name: str, alias: str) -> tuple[dict[str, str], str]:
     """
     Returns the tags for the model with the given model name and alias
+    along with the model version
     """
     client = MlflowClient()
-    catalog, schema, _ = model_name.split(".")
     model_version_info = client.get_model_version_by_alias(
         name=model_name, alias=alias
     )
@@ -164,4 +159,4 @@ def get_model_tags(model_name: str, alias: str) -> dict[str, str]:
     )
     model_tags = model_version_details.tags
 
-    return model_tags
+    return model_tags, model_version

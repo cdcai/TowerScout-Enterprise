@@ -50,13 +50,13 @@ yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model)
 
 # COMMAND ----------
 
-batch_size = 32
+batch_size = 2
 
 # seems like confusion matrix methods only work when the dataset is built with
 # mode="val" or else the minibatches wont have the key "ratio_pad" that is needed by some functions
-model.args.fraction = 0.00025 # fraction of dataset to use
+model.args.fraction = 1.0 # fraction of dataset to use when in train mode
 dataset = build_yolo_dataset(
-    cfg=model.args, data=data, img_path=data["val"], batch=batch_size, mode="val"
+    cfg=model.args, data=data, img_path=data["train"], batch=batch_size, mode="train"
 )
 
 # COMMAND ----------
@@ -75,62 +75,14 @@ for image_batch in loader:
 
 # COMMAND ----------
 
-from tsdb.ml.yolo_trainer import postprocess
-import torch
-
-for image_batch in loader:
-    print(len(image_batch['img'])) # batch of 4 imgs
-    proccessed = yolo_trainer.preprocess_val(image_batch)
-    model.eval()
-    preds = model(proccessed["img"]) # YOLOv8 model in validation model, output = (inference_out, loss_out)
-    preds = preds[0]
-    print("preds.shape:", preds.shape)
-    print("preds[0].shape:", preds[0].shape)
-    postprocessed = postprocess(preds, model.args, [])
-    print(postprocessed[3])
-    #test_input = (torch.tensor([1,2,3,4]), torch.tensor([1,2,3,4]))
-    #print(postprocess(test_input, model.args, []))
-
-# COMMAND ----------
-
-import torch
-#from ultralytics.utils.ops import non_max_suppression
-from ultralytics.utils import IterableSimpleNamespace
-from tsdb.ml.yolo_trainer import postprocess
-
-def sample_prediction():
-
-    # box format: (x1, y1, x2, y2, confidence, class)
-    prediction = torch.tensor([
-                [0.508, 0.141, 0.27, 0.4, 0.9, 0],  # Box 1 (keep)
-                [0.31, -0.42, 0.443, 0.5, 0.6, 0],  # Box 2 (keep)
-                [0.92, 0.442, -0.43, 0.5, 0.46, 0],  # Box 3 (filter)
-                [0.444, 0.2, 0.3, 0.5, 0.39, 0],  # Box 4 (filter)
-            ]).unsqueeze(0) # Adding batch dimension
-    
-    return prediction
+from tsdb.ml.yolo_trainer import _prepare_batch
+i = 0
+for si, image_batch in enumerate(loader):
+    print(f"{len(image_batch['img'])} images in this batch.") # batch of 4 imgs
+    print(image_batch)
+    #print(image_batch["batch_idx"] == si)
+    pbatch = _prepare_batch(si, image_batch, 'cpu')
+    #print(pbatch)
+    #preds = model(proccessed["img"]) # YOLOv8 model in validation model, output = (inference_out, loss_out)
 
 
-sample_prediction = sample_prediction()
-
-
-args = IterableSimpleNamespace(conf=0.5, iou=0.0, single_cls=True, max_det=300)
-lb = []
-# Test with default thresholds and no classes specified
-output = postprocess(sample_prediction, args, lb)
-
-assert isinstance(output, list), "Output should be a list"
-assert (
-    len(output) == sample_prediction.shape[0]
-), "Output list length should match batch size"
-
-for out in output:
-    assert isinstance(out, torch.Tensor), "Each output element should be a tensor"
-    if len(out) > 0:
-        assert (
-            out[:, 4] >= args.conf
-        ).all(), "All confidences should be above or equal to the threshold"
-
-        assert len(out) == 2, "Output should contain 50% of the original boxes (2)"
-
-print("Simple test passed.")
