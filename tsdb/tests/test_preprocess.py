@@ -54,7 +54,7 @@ def test_data_augmentation() -> None:
     assert isinstance(transforms, list), f"Expected a list of transforms got {type(transforms)}"
 
 
-def test_create_converter(spark, image_df):
+def test_create_converter():
     # Create a mock dataframe
     data = [(1,), (2,), (3,)]
     df = spark.createDataFrame(data, ["bytes_column"])
