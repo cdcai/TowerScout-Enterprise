@@ -413,6 +413,7 @@ class AzureMap extends TSMap {
   addBoundary(b) {
     return;
   }
+
   showBoundaries() {
     // Set map bounds to fit the union of all active boundaries
     if (this.boundaries.length > 0) {
@@ -620,9 +621,9 @@ class AzureMap extends TSMap {
   colorMapRect(o, color) {
     try{
       // Create a fill color with opacity
-      let fillColor = `rgba(${parseInt(o.color.slice(1, 3), 16)}, ${parseInt(o.color.slice(3, 5), 16)}, ${parseInt(o.color.slice(5), 16)}, ${o.opacity})`;
+      // let fillColor = `rgba(${parseInt(o.color.slice(1, 3), 16)}, ${parseInt(o.color.slice(3, 5), 16)}, ${parseInt(o.color.slice(5), 16)}, ${o.opacity})`;
 
-      let fcolor = Microsoft.Maps.Color.fromHex(fillColor);
+      let fcolor = Microsoft.Maps.Color.fromHex(color);
       fcolor.a = o.opacity;
       o.mapRect.fillColor = fcolor;
       o.mapRect.color = color;
@@ -1961,7 +1962,7 @@ function augmentDetections() {
     }
     let loc = det.getCenterUrl();
      // call Bing maps api instead at:
-
+    if (currentUI.value == "bing"){
      setTimeout((ix)=>{
       //console.log(ix+1);
       $.ajax({
@@ -1977,8 +1978,31 @@ function augmentDetections() {
         afterAugment();
       }
 
-    });
-     },1000*i,i)
+      });
+      },1000*i,i)
+    }
+    else if (currentUI.value == "azure")
+    {
+      reverseloc = loc.split(",")[1] + "," + loc.split(",")[0]
+      setTimeout((ix)=>{
+        //console.log(ix+1);
+        $.ajax({
+        url: "https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates="+ reverseloc + "&subscription-key=" + azure_api_key,
+        type: 'GET',  // GET request to fetch data
+        // GET https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates={coordinates}&resultTypes={resultTypes}&view={view}
+        // data: {
+        //   resultTypes: "address",
+        //   // output: "json",
+        // },
+        success: function (result) {
+          let addr = result.features[0].properties.address.formattedAddress; // Get formatted address
+          det.augment(addr);
+          afterAugment();
+        }
+  
+        });
+        },1000*i,i)
+    }
     // $.ajax({
     //   url: "https://maps.googleapis.com/maps/api/geocode/json",
     //   data: {
