@@ -48,16 +48,9 @@ const DEFAULT_CONFIDENCE = 0.35
 function initBingMap() {
   bingMap = new BingMap();
   currentMap = bingMap;
-
-  // also add change listeners for the UI providers
-  // add change listeners for radio buttons
-  currentUI = document.uis.uis[1];
-  // setMap(currentUI);
-  for (let rad of document.uis.uis) {
-    rad.addEventListener('change', function () {
-      setMap(this);
-    });
-  }
+  currentMap.clearAll();
+   // add change listeners for radio buttons
+  
 }
 
 // Initialize and add the map
@@ -188,7 +181,8 @@ class AzureMap extends TSMap {
     super();
     this.map = new atlas.Map('azureMap', {
       center: [nyc[0], nyc[1]], // [longitude, latitude]
-      zoom: 19,
+      zoom: 18,
+      scale: 2,
       view: 'Auto',
       language: 'en-US',
       authOptions: {
@@ -353,15 +347,25 @@ class AzureMap extends TSMap {
   }
 
   clearAll() {
-    this.clearShapes();
+    if (this.hasShapes){
+      this.clearShapes();
+    }
     Detection.resetAll();
     this.drawingManager?.getSource()?.clear();
-    this.drawingManager.getSource().clear();
-    this.map.sources.getById('tileDataSource')?.clear();
-    this.map.sources.getById('bBoxDataSource')?.clear();
-    this.removeLayerById("bBoxBoderLayer");
-    this.removeLayerById("bBoxFillLayer");
+    this.clearAllLayers();
+    this.map.sources.clear();
   }
+  hideAllDataSources() {
+    var layers = this.map.layers.getLayers();  // Get all layers on the map
+
+    layers.forEach(function (layer) {
+        // Check if the layer is associated with any DataSource
+        
+        layer.setOptions({ visible: false });  // Hide the layer
+        
+    });
+    // console.log('All DataSource layers have been hidden');
+}
 // Function to clear all layers from the map
   clearAllLayers() {
     var layers = this.map.layers.getLayers(); // Get all layers in the map
@@ -413,7 +417,6 @@ class AzureMap extends TSMap {
   addBoundary(b) {
     return;
   }
-
   showBoundaries() {
     // Set map bounds to fit the union of all active boundaries
     if (this.boundaries.length > 0) {
@@ -427,18 +430,7 @@ class AzureMap extends TSMap {
       this.map.setCamera({ bounds, padding: 5 });
     }
   }
-  // showBoundaries() {
-  //   // Set map bounds to fit the union of all active boundaries
-  //   if (this.boundaries.length > 0) {
-  //     const bounds = this.boundaries.reduce((acc, b) => {
-  //       const polygonBounds = new atlas.data.BoundingBox(b.points);
-  //       return acc.union(polygonBounds);
-  //     }, new atlas.data.BoundingBox());
-
-  //     this.map.setCamera({ bounds: bounds, padding: 0 });
-  //   }
-  // }
-
+ 
   resetBoundaries() {
     this.boundaries = [];
     this.drawingManager?.getSource()?.clear();
@@ -513,7 +505,9 @@ class AzureMap extends TSMap {
     }
 
   }
+  
   //Draw bounding boxes
+  
   makeMapRect(o, listener) {
     try {
       let locs = [
@@ -535,58 +529,50 @@ class AzureMap extends TSMap {
         
     // });
     // Create a polygon (bounding box) from the coordinates
-    var boundingBoxPolygon = new atlas.data.Polygon([boundingBoxCoordinates ]);
+    var boundingBoxPolygon = new atlas.data.Polygon([boundingBoxCoordinates]);
     // Create a data source and add the bounding box (polygon) to it
     
-    var existingTileDataSource = currentMap.map.sources.getById('tileDataSource');
-    var dataSource = existingTileDataSource ?? new atlas.source.DataSource('tileDataSource');
-    if(!existingTileDataSource){
-        currentMap.map.sources.add(dataSource);
-        dataSource.add(boundingBoxPolygon);
-        
-    }
     
+    //Create dummy layer to avoid the obj ref error due to the click event handler
     var fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
       fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
     });
     
     if (o.classname == "tile"){
-    // Create a layer for just the border of the bounding box/tile (without fill)
+    
+      var existingTileDataSource = currentMap.map.sources.getById('tileDataSource');
+      var tiledataSource = existingTileDataSource ?? new atlas.source.DataSource('tileDataSource');
+      if(!existingTileDataSource){
+        currentMap.map.sources.add(tiledataSource);
+        tiledataSource.add(boundingBoxPolygon);
+        
+      }
       const tileborderLayer = new atlas.layer.LineLayer(dataSource, null, {
         strokeColor: 'blue',
         strokeWidth: 2                   // Border width
       });
-      tileborderLayer.name = 'tileBorderLayer';
       this.map.layers.add(tileborderLayer);
     }
     else {
-      var existingBBOXDataSource = currentMap.map.sources.getById('bBoxDataSource');
-      var dataSource = existingBBOXDataSource ?? new atlas.source.DataSource('bBoxDataSource');
-      if(!existingBBOXDataSource){
-        currentMap.map.sources.add(dataSource);
-      }
+      var dataSource = new atlas.source.DataSource(null);
+      currentMap.map.sources.add(dataSource);
       dataSource.add(boundingBoxPolygon);
-      const existingBBOXLineLayer = currentMap.getLayerById('bBoxBoderLayer');
+      o.dataSourceID = dataSource.id;
+      console.log("dataSourceID:" + o.dataSourceID);
       // Create a layer for just the border of the bounding box/tile (without fill)
-      var borderLayer = existingBBOXLineLayer ?? new atlas.layer.LineLayer(dataSource, null, {
+      var borderLayer = new atlas.layer.LineLayer(dataSource, null, {
         strokeColor: 'red',
         strokeWidth: 2                   // Border width
       });
-      if(!existingBBOXLineLayer){
-        borderLayer.id = "bBoxBoderLayer";
-        this.map.layers.add(borderLayer);
-      }
-      const existingBBOXFillLayer = currentMap.getLayerById('bBoxFillLayer');
-      var fillLayer = existingBBOXFillLayer ?? new atlas.layer.PolygonLayer(dataSource, null, {
+      this.map.layers.add(borderLayer);
+      o.borderLayerID = borderLayer.id;
+      var fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
         strokeColor: 'red',
-        fillColor: 'rgba(255, 0, 0, 0.5)', // Semi-transparent red fill
+        fillColor: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red fill
         strokeWidth: 2                   // Border width
       });
-      if(!existingBBOXFillLayer){
-        fillLayer.id = "bBoxFillLayer",
-        this.map.layers.add(fillLayer);
-      }
-            
+      this.map.layers.add(fillLayer);
+      o.fillLayerID = fillLayer.id;;
       
     }
    
@@ -602,12 +588,7 @@ class AzureMap extends TSMap {
       });
       
   }
-    // if (o.classname == "tile"){
       return boundingBoxPolygon;
-    // }
-    // else {
-    //   return fillLayer;
-    // }
       
     }
     catch (error){
@@ -620,14 +601,12 @@ class AzureMap extends TSMap {
   
   colorMapRect(o, color) {
     try{
-      // Create a fill color with opacity
-      // let fillColor = `rgba(${parseInt(o.color.slice(1, 3), 16)}, ${parseInt(o.color.slice(3, 5), 16)}, ${parseInt(o.color.slice(5), 16)}, ${o.opacity})`;
-
-      let fcolor = Microsoft.Maps.Color.fromHex(color);
-      fcolor.a = o.opacity;
-      o.mapRect.fillColor = fcolor;
-      o.mapRect.color = color;
-      // o.mapRect.setOptions({ strokeColor: o.color, fillColor: fcolor });
+      let FilllayertoHighlight = currentMap.getLayerById(o.fillLayerID);
+      FilllayertoHighlight.setOptions({
+          strokeColor: 'green',
+          fillColor: 'rgba(0, 255, 0, 0.3)', // Semi-transparent red fill
+          strokeWidth: 2 
+        });
     }
     catch (error){
       console.log('An error occurred colorMapRect: ' + error);  // This won't execute
@@ -636,16 +615,40 @@ class AzureMap extends TSMap {
 
     }
     }
-  
+
   updateMapRect(o, onoff) {
     try{
       if (onoff)
       {
         o.opacity = 1
+        let FilllayertoHide = currentMap.getLayerById(o.fillLayerID);
+          FilllayertoHide.setOptions({
+          visible: true
+        });
+        let BorderLayertoHide = currentMap.getLayerById(o.borderLayerID);
+        BorderLayertoHide.setOptions({
+          visible: true
+        });
+        // console.log("o.dataSourceID:" + o.dataSourceID);
+        this.map.sources.getById(o.dataSourceID)?.setOptions({
+          visible: true
+        });
       }
       else{
-        o.opacity = 0
-      }
+        // console.log("o.fillLayerID:" + o.fillLayerID);
+        let FilllayertoHide = currentMap.getLayerById(o.fillLayerID);
+          FilllayertoHide.setOptions({
+          visible: false
+        });
+        let BorderLayertoHide = currentMap.getLayerById(o.borderLayerID);
+        BorderLayertoHide.setOptions({
+          visible: false
+        });
+        // console.log("o.dataSourceID:" + o.dataSourceID);
+        this.map.sources.getById(o.dataSourceID)?.setOptions({
+          visible: false
+        });
+        }
       
     }
     catch (error){
@@ -1027,7 +1030,6 @@ class BingMap extends TSMap {
         augmentDetections();
       }
       this.drawingManager.clear();
-      // this.map.entities.clear();
     } else {
       console.log('No shapes in the drawing manager.');
     }
@@ -1039,18 +1041,10 @@ class BingMap extends TSMap {
   }
 
   clearAll() {
-    this.clearShapes();
-    // now, also go through Detection_detections and take out the blue ones
-    // let dets = [];
-    // for (let det of Detection_detections) {
-    //   if (det.conf !== 1.0) {
-    //     det.id = dets.length;
-    //     dets.push(det);
-    //   }
-    // }
-
-    // Detection_detections = dets;
-    // Detection.generateList();
+    if (this.hasShapes){
+      this.clearShapes();
+    }
+    
     Detection.resetAll();
   }
 
@@ -1570,7 +1564,7 @@ function getObjects(estimate) {
   if (Detection_detections.length > 0) {
     if (!window.confirm("This will erase current detections. Proceed?")) {
        // erase the previous set of towers and tiles
-       this.clearAll();
+       currentMap.clearAll();
   return;
 }
   }
@@ -1811,29 +1805,20 @@ function fillProviders() {
       let rad = document.providers.provider;
       currentProvider = 'azure';//rad; //Bing Maps is the defacto provider for now
 
-      // for (let r of rad) {
-      //   r.addEventListener('change', function () {
-      //     // no action right now
-      //   });
-      // }
-
       // and one for the file input box
       let fileBox = document.getElementById("upload_file");
       fileBox.addEventListener('change', () => {
         uploadImage();
       });
 
-      // and one for the model upload box
-      // let modelBox = document.getElementById("upload_model");
-      // modelBox.addEventListener('change', () => {
-      //   uploadModel();
-      // });
-
-      // and one for the dataset upload box
-      // let datasetBox = document.getElementById("upload_dataset");
-      // datasetBox.addEventListener('change', () => {
-      //   uploadDataset();
-      // });
+       // also add change listeners for the UI providers
+      currentUI = document.uis.uis[0];
+       // setMap(currentUI);
+      for (let rad of document.uis.uis) {
+        rad.addEventListener('change', function () {
+           setMap(currentUI);
+             });
+           }
 
     }
   });
@@ -1852,10 +1837,7 @@ function setMap(newMap) {
   // let lastMap = currentMap;
   let zoom;
   let center;
-  // if (lastmap) {
-  //   zoom = currentMap.getZoom();
-  //   center = currentMap.getCenter();
-  // }
+  
 
   if (currentUI.value === "upload") {
     document.getElementById("uploadsearchui").style.display = "block";
@@ -1888,10 +1870,6 @@ function setMap(newMap) {
     document.getElementById("azureSearchBoxContainer").style.display = "none";
     document.getElementById("bingSearchBoxContainer").style.display = "inline";
     initBingMap();
-    // recreate boundaries for bing
-    // let bs = currentMap.getBounds();
-    // bingMap.resetBoundaries();
-    // bs.map(b => bingMap.addBoundary(b));
     zoom = currentMap.getZoom();
     center = currentMap.getCenter();
   } else if (currentUI.value === "azure") {
@@ -1901,11 +1879,11 @@ function setMap(newMap) {
     document.getElementById("ftowers").style.display = null;
     document.getElementById("fsave").style.display = null;
     document.getElementById("freview").style.display = null;
-    // document.getElementById("ffilter").style.display = null;
     document.getElementById("fadd").style.display = null;
     document.getElementById("bingSearchBoxContainer").style.display = "none";
     document.getElementById("azureSearchBoxContainer").style.display = "inline";
     currentMap = azureMap;
+    currentMap.clearAll();
     // recreate boundaries for bing
     let bs = currentMap.boundaries;
     currentMap.resetBoundaries();
@@ -1962,7 +1940,7 @@ function augmentDetections() {
     }
     let loc = det.getCenterUrl();
      // call Bing maps api instead at:
-    if (currentUI.value == "bing"){
+
      setTimeout((ix)=>{
       //console.log(ix+1);
       $.ajax({
@@ -1978,31 +1956,8 @@ function augmentDetections() {
         afterAugment();
       }
 
-      });
-      },1000*i,i)
-    }
-    else if (currentUI.value == "azure")
-    {
-      reverseloc = loc.split(",")[1] + "," + loc.split(",")[0]
-      setTimeout((ix)=>{
-        //console.log(ix+1);
-        $.ajax({
-        url: "https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates="+ reverseloc + "&subscription-key=" + azure_api_key,
-        type: 'GET',  // GET request to fetch data
-        // GET https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates={coordinates}&resultTypes={resultTypes}&view={view}
-        // data: {
-        //   resultTypes: "address",
-        //   // output: "json",
-        // },
-        success: function (result) {
-          let addr = result.features[0].properties.address.formattedAddress; // Get formatted address
-          det.augment(addr);
-          afterAugment();
-        }
-  
-        });
-        },1000*i,i)
-    }
+    });
+     },1000*i,i)
     // $.ajax({
     //   url: "https://maps.googleapis.com/maps/api/geocode/json",
     //   data: {
