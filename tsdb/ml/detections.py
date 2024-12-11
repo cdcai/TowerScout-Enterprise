@@ -28,10 +28,10 @@ from pyspark.sql.types import (
 
 
 class YOLOv5_Detector:
-    def __init__(self, model: nn.Module, batch_size: int):
+    def __init__(self, model: nn.Module, batch_size: int, uc_version: str):
         self.model = model
-        self.batch_size = batch_size
-
+        self.batch_size = batch_size    
+        self.uc_version = uc_version
         # follows the InferenceModelType protocol
         self.return_type = StructType(
             [
@@ -53,7 +53,7 @@ class YOLOv5_Detector:
         """
         # IMPORTANT: when loading the model you must append the path to this directory to the system path so
         # Python looks there for the files/modules needed to load the yolov5 module
-        model_tags = get_model_tags(model_name, alias)
+        model_tags, uc_version = get_model_tags(model_name, alias)
         catalog, schema, _ = model_name.split(".")
 
         try:
@@ -68,7 +68,7 @@ class YOLOv5_Detector:
             model_uri=f"models:/{model_name}@{alias}"
         )
 
-        return cls(registered_model, batch_size)
+        return cls(registered_model, batch_size, uc_version)
 
     def predict(
         self,
