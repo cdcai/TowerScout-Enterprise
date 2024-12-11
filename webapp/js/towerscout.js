@@ -558,7 +558,7 @@ class AzureMap extends TSMap {
       currentMap.map.sources.add(dataSource);
       dataSource.add(boundingBoxPolygon);
       o.dataSourceID = dataSource.id;
-      console.log("dataSourceID:" + o.dataSourceID);
+      // console.log("dataSourceID:" + o.dataSourceID);
       // Create a layer for just the border of the bounding box/tile (without fill)
       var borderLayer = new atlas.layer.LineLayer(dataSource, null, {
         strokeColor: 'red',

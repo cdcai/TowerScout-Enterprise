@@ -487,7 +487,7 @@ def get_objects():
         print(" polygons:", polygons)
 
         # cropping
-        crop_tiles = True
+        crop_tiles = False
 
         # make the polygons
         polygons = json.loads(polygons)
