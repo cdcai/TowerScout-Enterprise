@@ -48,7 +48,7 @@ const DEFAULT_CONFIDENCE = 0.35
 function initBingMap() {
   bingMap = new BingMap();
   currentMap = bingMap;
-  currentMap.clearAll();
+  // currentMap.clearAll();
    // add change listeners for radio buttons
   
 }
@@ -1883,7 +1883,7 @@ function setMap(newMap) {
     document.getElementById("bingSearchBoxContainer").style.display = "none";
     document.getElementById("azureSearchBoxContainer").style.display = "inline";
     currentMap = azureMap;
-    currentMap.clearAll();
+    // currentMap.clearAll();
     // recreate boundaries for bing
     let bs = currentMap.boundaries;
     currentMap.resetBoundaries();
