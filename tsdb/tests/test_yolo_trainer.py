@@ -16,8 +16,13 @@ def lb() -> list[Tensor]:
 
 @pytest.fixture()
 def args() -> list[str]:
+    """
+    A mock args object for the following tests.
+    We specidify the threshold confidence score of 0.5 here 
+    for testing the filtering feature of the postprocess function
+    """
     return IterableSimpleNamespace(
-        conf=0.5, iou=0.0, single_cls=True, max_det=300, save_hybrid=False
+        conf=0.5, iou=0.3, single_cls=True, max_det=300, save_hybrid=False
     )
 
 
@@ -101,7 +106,8 @@ def pred_unprepared(pred_prepared: Tensor, sample_batch: Tensor, si: int):
 @pytest.fixture()
 def si() -> int:
     """
-    This is used to selected the bounding boxes that correspond to image 0 in the sample_batch dict.
+    This is used to selected the bounding boxes and their associated labels 
+    that correspond to image 0 in the sample_batch dict.
     """
     return 0
 
@@ -188,13 +194,15 @@ def test_score(
 
     This test case should return {'accuracy_VAL': 0.75, 'f1_VAL': 0.8571428571428571}
     because the confusion matrix should be:
-    [[3,0]
-    [1,0]]
+                      true ct,    true background
+    predicted ct:        [[3,         0]
+    predicted background: [1,         0]]
 
-    this is because the first 3 predicted bounding box classes are correct and while the 4th one is also right
+    This is because the first 3 predicted bounding box classes are correct and while the 4th one is also right
     it's confidence does not meet the required threshold of 0.5 (unlike the other 3 boxes) so it gets filtered out in the postprocess()
-    step leading to a false negative for the fourth bounding box [0.4127, 0.5856, 0.1139, 0.1259].
-    Note that there are 5 bounding boxes in the batch but we onl
+    step leading to a false negative for the fourth bounding box [0.4127, 0.5856, 0.1139, 0.1259] (undetected ct).
+    Note that there are 5 bounding boxes in the batch but we only use 4 of them in this test case because
+    we are testing a prediction for just image 0 not image 1 and the 1st bounding box in the batch is for image 1.
     """
 
     scores = score(
@@ -204,6 +212,7 @@ def test_score(
         device=device,
         args=args,
     )
+
     f1 = scores["f1_VAL"]
     acc = scores["accuracy_VAL"]
     absolute_tolerance = 0.0001
