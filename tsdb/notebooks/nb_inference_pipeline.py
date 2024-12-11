@@ -5,18 +5,11 @@
 # MAGIC ## Purpose
 # MAGIC This notebook is designed to perform inference on image data using a pre-trained model. The process involves reading image metadata from a specified table, processing the images in batches, and applying the model to generate predictions.
 # MAGIC
-# MAGIC ## Widgets
-# MAGIC - **source_schema**: The schema from which to read the image metadata (default: `towerscout_test_schema`).
-# MAGIC - **source_table**: The table containing the image metadata (default: `image_metadata`).
-# MAGIC - **batch_size**: The number of examples to perform inference on per batch (default: `5`).
-# MAGIC - **mlflow_alias**: This will be used to select the appropriate model (default: production)
-# MAGIC - **model**: This is the model that will be used for inference pruposes (default: towerscout_model)
-# MAGIC
 # MAGIC ## Inputs
-# MAGIC - Image metadata from the specified schema and table.
+# MAGIC - Images with exif metadata from the TowerScout front end
 # MAGIC
 # MAGIC ## Processes
-# MAGIC 1. Read image metadata from the specified table.
+# MAGIC 1. Read images as a binary and metadata from the specified table.
 # MAGIC 2. Load and preprocess images in batches.
 # MAGIC 3. Apply a pre-trained model to perform inference on the images.
 # MAGIC 4. Store or display the inference results.
@@ -62,32 +55,15 @@ else:
 
 # COMMAND ----------
 
-# # set schema and table to read from, set batch size for number of examples to perform inference on per batch
-# dbutils.widgets.text("source_schema", defaultValue="towerscout")
-# dbutils.widgets.text("source_table", defaultValue="image_metadata")
-# dbutils.widgets.text("batch_size", defaultValue="5") # Randomly picked a number
-# dbutils.widgets.dropdown("mlflow-alias", "production", ["production", "staging"])
-
-# COMMAND ----------
-
-# Purpose: Retrieve images from a specified Delta table using catalog and schema information from Spark configuration and widgets.
-# debug_mode = False
-
-# Retrieve catalog information from Spark configuration
-# catalog_info = CatalogInfo.from_spark_config(spark)
-
-# Get schema and source table from widgets
-# catalog = catalog_info.name
-# schema = "towerscout" # delete
-
 # table stuff
-image_directory_path = bronze_path + "/*/*"
+image_directory_path = f"{bronze_path}/*/*"
 sink_table = f"{catalog}.{schema}.{silver_table_name}"
 
 # Create our UDFs
 # Batch size is a very important parameter, since we iterate through images to process them
 towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, batch_size=100)
 image_metadata_udf = make_image_metadata_udf(spark)
+debug_mode = True
 
 # COMMAND ----------
 
@@ -103,17 +79,13 @@ struct_literal = F.struct(
 # COMMAND ----------
 
 # Read Images
-# image_config = {
-#     "cloudFiles.format": "binaryFile",
-#     "pathGlobFilter": "*.jpeg"
-# }
-
 image_df = (
     spark
     .readStream
     .format("cloudFiles")
     .options(**image_config)
     .load(image_directory_path) # parameterize
+    .repartition(8)
 )
 
 transformed_df = (
@@ -132,6 +104,7 @@ transformed_df = (
         "bboxes",
         "image_hash",
         "path as image_path",
+        "image_id",
         "model_version",
         "image_metadata",
         "map_provider"
@@ -163,7 +136,11 @@ else:
 
         # Option 3
         # Trigger workflow on file arrival, but it only works on directories with less than 10,000 files
-        .trigger(**writestream_trigger_args) 
+        .trigger(availableNow=True) 
         .option("checkpointLocation", checkpoint_path) # parameterized
         .table(sink_table)
     )
+
+# COMMAND ----------
+
+
