@@ -135,48 +135,6 @@ class SilverTable:
                 exc_info=e,
             )
 
-    # def add_bboxestotiles(self, tiles, events, id, request_id, user_id):
-
-    #     tile_results = self.fetchbboxes(request_id, user_id)
-    #     results = []
-    #     for i in range(0, len(tile_results), self.batch_size):
-    #         # make a batch of detection results
-    #         tile_resultsbatch = tile_results[i:i+self.batch_size]
-
-    #     # record the detections in the tile
-    #         boxes = []
-    #         for tr in tile_resultsbatch:
-    #          print(f"tr: {tr}")
-    #         #  get bbox column for each row from the results
-    #         # tr[0] is bboxes, tr[1] is tile id
-    #          bboxarray = tr[0]
-    #          for item in bboxarray:
-    #           tile_results = [{
-    #                 'x1': item['x1'],
-    #                 'y1':item['y1'],
-    #                 'x2':item['x2'],
-    #                 'y2':item['y2'],
-    #                 'conf':item['conf'],
-    #                 'class':int(item['class']),
-    #                 'class_name':item['class_name'],
-    #                 'secondary':item['secondary']
-    #                 }]
-    #           results.append(tile_results)
-    #          # record the detections in the tile
-
-    #          for bbox in tile_results:
-    #             box = "0 " + \
-    #                     str((bbox['x1']+bbox['x2'])/2) + \
-    #                     " "+str((bbox['y1']+bbox['y2'])/2) + \
-    #                     " "+str(bbox['x2']-bbox['x1']) +\
-    #                     " "+str(bbox['y2']-bbox['y1'])+"\n"
-    #             boxes.append(box)
-    #          # tr[1] is tile
-    #          tiles[tr[1]]['detections'] = boxes
-    #         print(f" batch of {len(tile_resultsbatch)} processed")
-    #     print(f"tile results: {tile_results}")
-    #     return results
-
     def get_bboxesfortiles(self, tiles, events, id, request_id, user_id):
         tile_count = len(tiles)
         results_raw = self.fetchbboxes(request_id, user_id, tile_count)
@@ -194,17 +152,7 @@ class SilverTable:
                 #  get bbox column for each row from the results
                 # result[0] is bboxes, result[1] is tile id
                 bboxarray = result[0]
-                # for item in bboxarray:
-                #     tile_results = [{
-                #     'x1': item['x1'],
-                #     'y1':item['y1'],
-                #     'x2':item['x2'],
-                #     'y2':item['y2'],
-                #     'conf':item['conf'],
-                #     'class':int(item['class']),
-                #     'class_name':item['class_name'],
-                #     'secondary':item['secondary']
-                #     }]
+                
                 tile_results = [
                     {
                         "x1": item["x1"],
