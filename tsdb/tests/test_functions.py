@@ -1,20 +1,19 @@
 import pytest
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame, Row
 from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, BinaryType, ArrayType
 import pyspark.sql.functions as F
-
 from tsdb.preprocessing.functions import sum_column, sum_bytes, image_statistics_udf, compute_image_statistics
 from PIL import Image
 import io
-from pyspark.sql.types import Row
 from pyspark.sql.utils import AnalysisException
+from tsdb.schema_tests.schemas import statistics_schema
 
 @pytest.fixture(scope="module")
 def spark_session() -> SparkSession:
     """
     Provides a SparkSession for testing.
     """
-    spark = (
+    spark: SparkSession = (
         SparkSession.builder.master("local")
         .appName("test_preprocessing_functions")
         .getOrCreate()
@@ -28,20 +27,16 @@ def spark_session() -> SparkSession:
         ([(0,), (0,), (0,)], "numbers", 0),         # All zeros
         ([(None,), (2,), (3,)], "numbers", 5),       # Contains nulls
         ([(1.5,), (2.5,), (3.5,)], "numbers", 7.5), # Floats
-       
-                           
     ],
 )
-def test_sum_column(spark_session, data, column, expected_sum):
+def test_sum_column(spark_session: SparkSession, data: list[tuple], column: str, expected_sum: int | float) -> None:
     """
     Test the sum_column function for various scenarios.
     """
-    schema = [column]
-    df = spark_session.createDataFrame(data, schema)
-    result = sum_column(df, column)
+    schema: list[str] = [column]
+    df: DataFrame = spark_session.createDataFrame(data, schema)
+    result: int | float = sum_column(df, column)
     assert result == expected_sum, f"Expected sum {expected_sum}, but got {result}"
-
-
 
 @pytest.mark.parametrize(
     "data, column, expected_sum",
@@ -50,41 +45,37 @@ def test_sum_column(spark_session, data, column, expected_sum):
         ([(0,), (0,), (0,)], "bytes", 0),         # All zeros
         ([(None,), (200,), (300,)], "bytes", 500), # Contains nulls
         ([(1.5,), (2.5,), (3.5,)], "bytes", 7.5), # Floats
-      
-                  
     ],
 )
-def test_sum_bytes(spark_session, data, column, expected_sum):
+def test_sum_bytes(spark_session: SparkSession, data: list[tuple], column: str, expected_sum: int | float) -> None:
     """
     Test the sum_bytes function for various scenarios.
     """
-    schema = [column]
-    df = spark_session.createDataFrame(data, schema)
-    result = sum_bytes(df, column)
+    schema: list[str] = [column]
+    df: DataFrame = spark_session.createDataFrame(data, schema)
+    result: int | float = sum_bytes(df, column)
     assert result == expected_sum, f"Expected sum {expected_sum}, but got {result}"
 
-
-def test_sum_column_with_invalid_column(spark_session):
+def test_sum_column_with_invalid_column(spark_session: SparkSession) -> None:
     """
     Test sum_column with an invalid column name using direct assertions.
     """
-    data = [(1,), (2,), (3,)]
-    schema = ["valid_column"]
-    df = spark_session.createDataFrame(data, schema)
-    invalid_column = "invalid_column"
+    data: list[tuple[int]] = [(1,), (2,), (3,)]
+    schema: list[str] = ["valid_column"]
+    df: DataFrame = spark_session.createDataFrame(data, schema)
+    invalid_column: str = "invalid_column"
 
     with pytest.raises(AnalysisException, match="UNRESOLVED_COLUMN"):
         sum_column(df, invalid_column)
 
-
-def test_sum_bytes_with_invalid_column(spark_session):
+def test_sum_bytes_with_invalid_column(spark_session: SparkSession) -> None:
     """
     Test sum_bytes with an invalid column name using direct assertions.
     """
-    data = [(100,), (200,), (300,)]
-    schema = ["valid_column"]
-    df = spark_session.createDataFrame(data, schema)
-    invalid_column = "invalid_column"
+    data: list[tuple[int]] = [(100,), (200,), (300,)]
+    schema: list[str] = ["valid_column"]
+    df: DataFrame = spark_session.createDataFrame(data, schema)
+    invalid_column: str = "invalid_column"
 
     with pytest.raises(AnalysisException, match="UNRESOLVED_COLUMN"):
         sum_bytes(df, invalid_column)
@@ -94,17 +85,16 @@ def image_data() -> bytes:
     """
     Creates a small image for testing.
     """
-    img = Image.new("RGB", (10, 10), color="blue")
-    img_bytes = io.BytesIO()
+    img: Image.Image = Image.new("RGB", (10, 10), color="blue")
+    img_bytes: io.BytesIO = io.BytesIO()
     img.save(img_bytes, format="PNG")
     return img_bytes.getvalue()
 
-
-def test_image_statistics_udf(image_data):
+def test_image_statistics_udf(image_data: bytes) -> None:
     """
     Test the `image_statistics_udf` function with a valid image binary.
     """
-    result = image_statistics_udf(image_data)
+    result: dict = image_statistics_udf(image_data)
     assert isinstance(result, dict), "Expected the result to be a dictionary."
     assert "mean" in result, "The result should contain 'mean'."
     assert "median" in result, "The result should contain 'median'."
@@ -117,44 +107,34 @@ def test_image_statistics_udf(image_data):
     assert len(result["extrema"]) == 3, "Expected RGB extrema values."
 
 @pytest.fixture(scope="module")
-def image_dataframe(spark_session, image_data):
+def image_dataframe(spark_session: SparkSession, image_data: bytes) -> DataFrame:
     """
     Creates a DataFrame with binary image data for testing.
     """
-    data = [(image_data,)]
-    schema = StructType([StructField("image_column", BinaryType(), True)])
+    data: list[tuple[bytes]] = [(image_data,)]
+    schema: StructType = StructType([StructField("image_column", BinaryType(), True)])
     return spark_session.createDataFrame(data, schema)
-statistics_schema = StructType([
-    StructField("mean", ArrayType(FloatType())),
-    StructField("median", ArrayType(IntegerType())),
-    StructField("stddev", ArrayType(FloatType())),
-    StructField("extrema", ArrayType(ArrayType(IntegerType()))),
-])
-def test_compute_image_statistics(spark_session, image_dataframe):
+
+
+def test_compute_image_statistics(spark_session: SparkSession, image_dataframe: DataFrame) -> None:
     """
     Test the compute_image_statistics function.
     """
-    # Register the UDF with the correct schema
     spark_session.udf.register("image_statistics_udf", image_statistics_udf, statistics_schema)
 
-    # Apply the function
-    result_df = compute_image_statistics(image_dataframe, "image_column")
-    result = result_df.select("statistics").collect()
+    result_df: DataFrame = compute_image_statistics(image_dataframe, "image_column")
+    result: list[Row] = result_df.select("statistics").collect()
 
-    # Validate the structure of the result
     assert len(result) == 1, "Expected one row in the result."
 
-    # Extract the statistics field from the Row object
-    statistics = result[0]["statistics"]
+    statistics: Row = result[0]["statistics"]
 
-    # Ensure statistics is a Row object and has the expected fields
     assert isinstance(statistics, Row), f"Expected a Row, got {type(statistics)}"
     assert hasattr(statistics, "mean"), "Statistics should include 'mean'."
     assert hasattr(statistics, "median"), "Statistics should include 'median'."
     assert hasattr(statistics, "stddev"), "Statistics should include 'stddev'."
     assert hasattr(statistics, "extrema"), "Statistics should include 'extrema'."
 
-    # Validate the values
     assert len(statistics.mean) == 3, "Expected mean to have 3 values for RGB."
     assert len(statistics.median) == 3, "Expected median to have 3 values for RGB."
     assert len(statistics.stddev) == 3, "Expected stddev to have 3 values for RGB."
