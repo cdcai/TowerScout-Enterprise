@@ -1,10 +1,4 @@
 # Databricks notebook source
-# MAGIC %pip install pytest
-# MAGIC %pip install ultralytics
-# MAGIC %pip install efficientnet_pytorch
-
-# COMMAND ----------
-
 import pytest
 import sys
 
