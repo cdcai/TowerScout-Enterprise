@@ -163,7 +163,7 @@ def test_prepare_batch(si: int, sample_batch: Tensor, device: str) -> None:
     ), "Only 4/5 labels should be returned"
     assert (
         pbatch["ratio_pad"] == sample_batch["ratio_pad"][si]
-    ), "Only 4/5 ratio_pad's should be returned"
+    ), "Only ratio_pad's that have the correct batch_idx should be returned"
 
 
 def test_prepare_pred(
