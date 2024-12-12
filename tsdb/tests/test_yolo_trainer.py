@@ -30,7 +30,7 @@ def args() -> list[str]:
 def sample_batch():
     """
     A mock batch of data for the following tests.
-    batch_idx corresponds to index of the image the box is from in the im_file section of this dict.
+    batch_idx corresponds to index of the image the bounding box is for in the im_file section of this dict.
     For example if batch_idx is 0 then the box is from the first image 'path/img1.jpg' in the im_file section.
     """
     shape = (2, 3, 1500, 1500)  # To create a random tensor (image) with the given shape
@@ -53,7 +53,7 @@ def sample_batch():
                 [0.3695, 0.7020, 0.0239, 0.0671],
             ]
         ),
-        "batch_idx": tensor([1.0, 0.0, 0.0, 0.0, 0.0]),
+        "batch_idx": tensor([1.0, 0.0, 0.0, 0.0, 0.0])
     }
 
     return batch
@@ -66,6 +66,8 @@ def pred_prepared():
     returned by the _prepare_pred function when you feed it the pred_unprepared tensor.
     The confidence score is the 5th element in the box format and will be used in the postprocess
     function test to test the filtering functionality of the postprocess function.
+    Note that these are also the true bounding boxes that are in the batch defined above
+    *after* they have been scaled and padded by the _prepare_batch function. 
     """
     # box format: (x1, y1, x2, y2, confidence, class)
     pred = tensor(
@@ -73,7 +75,7 @@ def pred_prepared():
             [211.1375, 366.8750, 336.7625, 604.1750, 0.9, 0.0],  # Box 1 (should be kept)
             [393.7625, 390.0875, 492.3875, 499.6625, 0.77, 0.0],  # Box 2 (should be kept)
             [266.2625, 391.4375, 351.6875, 485.8625, 0.6, 0.0],  # Box 3 (should be kept)
-            [267.6125, 500.7875, 285.5375, 551.112, 0.39, 0.05], # Box 4 (should be filtered out)
+            [267.6125, 500.7875, 285.5375, 551.112, 0.39, 0.0], # Box 4 (should be filtered out)
         ]  
     ).unsqueeze(0)  # Adding batch dimension
 
@@ -85,12 +87,12 @@ def pred_unprepared(pred_prepared: Tensor, sample_batch: Tensor, si: int):
     """
     A mock prediction tensor for the following tests. This is the "unprepared" version. To create
     the unprepared version I simply perform the inverse of the operations that the _prepare_pred
-    function performs on the pred_prepared tensor. These operations are determined by the
+    function performs on the input tensor it is given. These operations are determined by the
     ratio_pad element of the sample_batch dict. The ratio_pad element is a tuple of two elements.
     The first tuple gives you the gain which is used in the _prepare_batch function
     (the scale_boxes function that it calls divides all boxes by this value) and the second element gives you
     you the two numbers to pad the boxes by (the scale_boxes function that it calls subtracts pad[0] and
-    pad[1] from the respetvice corners of the bounding boxes)
+    pad[1] from the respective corners of the bounding boxes)
     """
 
     pred = pred_prepared.clone()
