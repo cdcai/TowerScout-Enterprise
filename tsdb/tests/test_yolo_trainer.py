@@ -4,13 +4,13 @@ import pytest
 import torch
 
 from ultralytics.utils import IterableSimpleNamespace
-from torch import Tensor, tensor
+from torch import tensor
 
 from tsdb.ml.yolo_trainer import _prepare_batch, _prepare_pred, postprocess, score
 
 
 @pytest.fixture()
-def lb() -> list[Tensor]:
+def lb() -> list[torch.Tensor]:
     return []
 
 
@@ -18,7 +18,7 @@ def lb() -> list[Tensor]:
 def args() -> list[str]:
     """
     A mock args object for the following tests.
-    We specidify the threshold confidence score of 0.5 here 
+    We specify the threshold confidence score of 0.5 here 
     for testing the filtering feature of the postprocess function
     """
     return IterableSimpleNamespace(
@@ -83,7 +83,7 @@ def pred_prepared():
 
 
 @pytest.fixture()
-def pred_unprepared(pred_prepared: Tensor, sample_batch: Tensor, si: int):
+def pred_unprepared(pred_prepared: torch.Tensor, sample_batch: torch.Tensor, si: int):
     """
     A mock prediction tensor for the following tests. This is the "unprepared" version. To create
     the unprepared version I simply perform the inverse of the operations that the _prepare_pred
@@ -120,7 +120,7 @@ def device() -> str:
 
 
 def test_postprocess(
-    pred_unprepared: Tensor, args: IterableSimpleNamespace, lb: list[Tensor]
+    pred_unprepared: torch.Tensor, args: IterableSimpleNamespace, lb: list[torch.Tensor]
 ) -> None:
     """
     Tests the postprocess function from Ultralytics whose primary
@@ -137,7 +137,7 @@ def test_postprocess(
     ), "Output list length should match batch size"
 
     for out in output:
-        assert isinstance(out, Tensor), "Each output element should be a tensor"
+        assert isinstance(out, torch.Tensor), "Each output element should be a tensor"
         if len(out) > 0:
             assert (
                 out[:, 4] >= args.conf
@@ -146,7 +146,7 @@ def test_postprocess(
             assert len(out) == 3, "Output should contain 75% of the original boxes (3)"
 
 
-def test_prepare_batch(si: int, sample_batch: Tensor, device: str) -> None:
+def test_prepare_batch(si: int, sample_batch: torch.Tensor, device: str) -> None:
     """
     Tests the _prepare_batch function from Ultralytics whose primary
     purpose is to prepare a batch of images and labels given batch from the YOLO dataloader based on the
@@ -167,8 +167,8 @@ def test_prepare_batch(si: int, sample_batch: Tensor, device: str) -> None:
 
 
 def test_prepare_pred(
-    pred_unprepared: Tensor,
-    pred_prepared: Tensor,
+    pred_unprepared: torch.Tensor,
+    pred_prepared: torch.Tensor,
     sample_batch: dict[str, Any],
     si: int,
     device: str,
@@ -187,7 +187,7 @@ def test_prepare_pred(
 
 def test_score(
     sample_batch: dict[str, Any],
-    pred_unprepared: Tensor,
+    pred_unprepared: torch.Tensor,
     args: IterableSimpleNamespace,
     device: str,
 ):
