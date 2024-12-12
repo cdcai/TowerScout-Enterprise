@@ -1,13 +1,4 @@
 # Databricks notebook source
-# MAGIC %pip install pytest
-
-# COMMAND ----------
-
-# MAGIC %pip install efficientnet_pytorch
-# MAGIC
-
-# COMMAND ----------
-
 import pytest
 import sys
 
@@ -41,3 +32,7 @@ def run_pytest_main(flags: list[str]):
 # COMMAND ----------
 
 run_pytest_main([".", "-v", "-p", "no:cacheprovider"])
+
+# COMMAND ----------
+
+
