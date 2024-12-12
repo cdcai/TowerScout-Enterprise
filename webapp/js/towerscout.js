@@ -48,7 +48,7 @@ const DEFAULT_CONFIDENCE = 0.35
 function initBingMap() {
   bingMap = new BingMap();
   currentMap = bingMap;
-  // currentMap.clearAll();
+  
    // add change listeners for radio buttons
   
 }
@@ -341,7 +341,6 @@ class AzureMap extends TSMap {
 
   clearShapes() {
     this.drawingManager?.getSource()?.clear();
-    this.drawingManager.getSource().clear();
     this.map.sources.getById('circleDataSource')?.clear();
     this.removeLayerById("circleShapeLayer");
   }
@@ -352,25 +351,29 @@ class AzureMap extends TSMap {
     }
     Detection.resetAll();
     this.drawingManager?.getSource()?.clear();
-    this.clearAllLayers();
-    this.map.sources.clear();
+    
+    currentMap.clearAllCustomLayers();
+    
   }
   hideAllDataSources() {
     var layers = this.map.layers.getLayers();  // Get all layers on the map
 
     layers.forEach(function (layer) {
         // Check if the layer is associated with any DataSource
-        
+        // if (layer.getSource()) {
         layer.setOptions({ visible: false });  // Hide the layer
-        
+        // }
     });
     // console.log('All DataSource layers have been hidden');
 }
 // Function to clear all layers from the map
-  clearAllLayers() {
-    var layers = this.map.layers.getLayers(); // Get all layers in the map
+  clearAllCustomLayers() {
+    var layers = currentMap.map.layers.getLayers(); // Get all layers in the map
     layers.forEach(function(layer) {
-      this.map.layers.remove(layer); // Remove each layer from the map
+      if (layer['type'] != 'traffic'){
+        currentMap.map.layers.remove(layer); // Remove each layer from the map
+      }
+      
     });
   }
   // Function to remove a layer by its id
@@ -430,7 +433,7 @@ class AzureMap extends TSMap {
       this.map.setCamera({ bounds, padding: 5 });
     }
   }
- 
+
   resetBoundaries() {
     this.boundaries = [];
     this.drawingManager?.getSource()?.clear();
@@ -534,24 +537,26 @@ class AzureMap extends TSMap {
     
     
     //Create dummy layer to avoid the obj ref error due to the click event handler
-    var fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
-      fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
-    });
+    var fillLayer;
     
     if (o.classname == "tile"){
     
-      var existingTileDataSource = currentMap.map.sources.getById('tileDataSource');
-      var tiledataSource = existingTileDataSource ?? new atlas.source.DataSource('tileDataSource');
-      if(!existingTileDataSource){
-        currentMap.map.sources.add(tiledataSource);
-        tiledataSource.add(boundingBoxPolygon);
-        
-      }
-      const tileborderLayer = new atlas.layer.LineLayer(dataSource, null, {
+      var tiledataSource = new atlas.source.DataSource(null);
+      tiledataSource.add(boundingBoxPolygon);
+      currentMap.map.sources.add(tiledataSource);
+      o.dataSourceID = tiledataSource.id;        
+      var tileborderLayer = new atlas.layer.LineLayer(tiledataSource, null, {
         strokeColor: 'blue',
         strokeWidth: 2                   // Border width
       });
-      this.map.layers.add(tileborderLayer);
+      currentMap.map.layers.add(tileborderLayer);
+      o.borderLayerID = tileborderLayer.id;
+
+      fillLayer = new atlas.layer.PolygonLayer(tiledataSource, null, {
+        fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
+      });
+      currentMap.map.layers.add(fillLayer);
+      o.fillLayerID = fillLayer.id;
     }
     else {
       var dataSource = new atlas.source.DataSource(null);
@@ -564,14 +569,14 @@ class AzureMap extends TSMap {
         strokeColor: 'red',
         strokeWidth: 2                   // Border width
       });
-      this.map.layers.add(borderLayer);
+      currentMap.map.layers.add(borderLayer);
       o.borderLayerID = borderLayer.id;
-      var fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
+      fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
         strokeColor: 'red',
         fillColor: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red fill
         strokeWidth: 2                   // Border width
       });
-      this.map.layers.add(fillLayer);
+      currentMap.map.layers.add(fillLayer);
       o.fillLayerID = fillLayer.id;;
       
     }
@@ -601,12 +606,19 @@ class AzureMap extends TSMap {
   
   colorMapRect(o, color) {
     try{
+      // Create a fill color with opacity
+      
+      let fcolor = Microsoft.Maps.Color.fromHex(color);
+      let alpha = o.opacity;
+      // // Convert to RGB string format
+      let fillcolor = this.colorToRGBA(fcolor,alpha);
       let FilllayertoHighlight = currentMap.getLayerById(o.fillLayerID);
       FilllayertoHighlight.setOptions({
-          strokeColor: 'green',
-          fillColor: 'rgba(0, 255, 0, 0.3)', // Semi-transparent red fill
+          strokeColor: color,
+          fillColor: fillcolor, // Semi-transparent fill
           strokeWidth: 2 
         });
+      
     }
     catch (error){
       console.log('An error occurred colorMapRect: ' + error);  // This won't execute
@@ -615,12 +627,17 @@ class AzureMap extends TSMap {
 
     }
     }
-
+  // Convert Microsoft.Maps.Color to an RGBA string
+  colorToRGBA(color,alpha) {
+    return 'rgba(' + color.r + ', ' + color.g + ', ' + color.b + ', ' + alpha + ')';
+  }  
+  
   updateMapRect(o, onoff) {
     try{
       if (onoff)
       {
         o.opacity = 1
+        // console.log("o.fillLayerID:" + o.fillLayerID);
         let FilllayertoHide = currentMap.getLayerById(o.fillLayerID);
           FilllayertoHide.setOptions({
           visible: true
@@ -1030,21 +1047,26 @@ class BingMap extends TSMap {
         augmentDetections();
       }
       this.drawingManager.clear();
+      // this.map.entities.clear();
     } else {
       console.log('No shapes in the drawing manager.');
     }
   }
 
   clearShapes() {
-    this.drawingManager.clear();
-    this.map.entities.clear();
+    if(this.drawingManager) {
+      this.drawingManager.clear();
+    }
+    if(this.entities) {
+      this.entities.clear();
+    }
   }
 
   clearAll() {
     if (this.hasShapes){
       this.clearShapes();
     }
-    
+
     Detection.resetAll();
   }
 
@@ -1467,7 +1489,7 @@ class Detection extends PlaceRect {
     if (Detection_current !== null) {
       Detection_current.resetHighlight();
     }
-    super.highlight("green");
+    super.highlight("#00ff00"); //green
     Detection_current = this;
   }
 
@@ -1816,7 +1838,7 @@ function fillProviders() {
        // setMap(currentUI);
       for (let rad of document.uis.uis) {
         rad.addEventListener('change', function () {
-           setMap(currentUI);
+           setMap;
              });
            }
 
@@ -1824,7 +1846,8 @@ function fillProviders() {
   });
 }
 
-function setMap(newMap) {
+function setMap(newMap = currentMap) {
+  currentMap.clearAll();
   if (currentUI !== null) {
     document.getElementById(currentUI.value + "Map").style.display = "none";
   }
@@ -1883,7 +1906,7 @@ function setMap(newMap) {
     document.getElementById("bingSearchBoxContainer").style.display = "none";
     document.getElementById("azureSearchBoxContainer").style.display = "inline";
     currentMap = azureMap;
-    // currentMap.clearAll();
+    
     // recreate boundaries for bing
     let bs = currentMap.boundaries;
     currentMap.resetBoundaries();
@@ -1902,9 +1925,9 @@ function setMap(newMap) {
     currentMap.setCenter(center);
   }
 
-  // move all rectangles over to the new map
-  Tile_tiles.forEach(t => t.update(currentMap));
-  Detection_detections.forEach(d => d.update(currentMap))
+  // // move all rectangles over to the new map
+  // Tile_tiles.forEach(t => t.update(currentMap));
+  // Detection_detections.forEach(d => d.update(currentMap))
 }
 
 function adjustConfidence() {
