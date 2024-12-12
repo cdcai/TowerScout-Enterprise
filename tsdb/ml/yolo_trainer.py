@@ -13,7 +13,12 @@ from tsdb.ml.utils import OptimizerArgs
 from tsdb.ml.model_trainer import Steps
 
 class YOLOLoss(Enum):
-    box_loss = auto()
+    """
+    Enum for the different loss types for the YOLO model. BL corresponds to box loss, BCE correspnds to 
+    binary cross entropy, and DLF corresponds to Distribution Focal loss.
+    For more info see: https://docs.ultralytics.com/reference/utils/loss/
+    """
+    BL = auto()
     BCE = auto()
     DLF = auto()
 
