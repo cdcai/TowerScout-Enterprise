@@ -10,6 +10,9 @@ from typing import Protocol
 from tsdb.ml.efficientnet import EN_Classifier
 from tsdb.ml.data_processing import transform_row, get_transform_spec, get_converter
 
+"""
+TODO: Adapt this file to be the EN model trainer
+"""
 
 class Metrics(Enum):
     MSE = nn.MSELoss()

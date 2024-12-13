@@ -12,13 +12,17 @@
 // TowerScout.js
 // client-side logic
 
+
+
 // maps
 
 // The location of a spot in central NYC
 const nyc = [-74.00820558171071, 40.71083794970947];
 
 // main state
+let azureMap = null;
 let bingMap = null;
+let vaAzureMap = null;
 let googleMap = null;
 let currentMap;
 let engines = {};
@@ -28,7 +32,6 @@ let xhr = null;
 let currentElement = null;
 let currentAddrElement = null;
 
-const input = document.getElementById("search");
 const upload = document.getElementById("upload_file");
 const detectionsList = document.getElementById("checkBoxes");
 const confSlider = document.getElementById("conf");
@@ -39,58 +42,21 @@ reviewCheckBox.onchange = changeReviewMode;
 const DEFAULT_CONFIDENCE = 0.35
 
 
-let aboutOp = 0;
-let aboutInterval = 20;
-let aboutIncrement = 20;
-let aboutTimer = null;
-let aboutCurrentTotal = 0;
 
-function about(aboutTotal) {
-  if (typeof aboutTotal === "undefined") {
-    aboutTotal = 6;
-  }
-
-  // if cancelled, hurry up a bit
-  if (aboutTotal === 0 && aboutTimer !== null) {
-    aboutInterval /= Math.abs(aboutCurrentTotal - aboutSecs) / 3;
-    //console.log("new increment is "+aboutIncrement);
-    return;
-  }
-
-  aboutOp = 1;
-  aboutSecs = 0;
-  aboutIncrement = 20;
-  aboutInterval = 20;
-  aboutCurrentTotal = aboutTotal;
-
-  aboutTimer = setTimeout(aboutTimerFunc, aboutInterval, aboutTotal);
-}
-
-function aboutTimerFunc(aboutTotal) {
-  let adiv = document.getElementById("about_div");
-
-  let op = aboutOpacity(aboutSecs, aboutTotal)
-  //console.log(op, aboutSecs, aboutTotal)
-  if (op <= 0 || aboutSecs >= aboutTotal) {
-    adiv.style.display = "none";
-    return;
-  }
-
-  adiv.style.display = "flex";
-  adiv.style.opacity = op;
-  aboutSecs += aboutIncrement / 1000;
-  setTimeout(aboutTimerFunc, aboutInterval, aboutTotal);
-}
-
-function aboutOpacity(secs, total) {
-  //return Math.max(0, (total + 1) / total * (1 + 1 / (secs - total)))
-  return -1 / Math.pow(secs - (total + 1), 4) + 1;
-}
 
 // Initialize and add the map
 function initBingMap() {
   bingMap = new BingMap();
   currentMap = bingMap;
+  
+   // add change listeners for radio buttons
+  
+}
+
+// Initialize and add the map
+function initAzureMap() {
+  azureMap = new AzureMap();
+  currentMap = azureMap;
 
   // also add change listeners for the UI providers
   // add change listeners for radio buttons
@@ -101,6 +67,7 @@ function initBingMap() {
       setMap(this);
     });
   }
+  getazmapTransactioncountjs(2);
 }
 
 
@@ -158,6 +125,567 @@ class TSMap {
 
 
 
+/**
+* This is a reusable function that sets the Azure Maps platform domain,
+* signs the request, and makes use of any transformRequest set on the map.
+* Use like this: `const data = await processRequest(url);`
+*/
+async function processRequest(url, map) {
+  // Replace the domain placeholder to ensure the same Azure Maps is used throughout the app.
+  url = url.replace('{azMapsDomain}', atlas.getDomain());
+
+  // Get the authentication details from the map for use in the request.
+  var requestParams = map.authentication.signRequest({ url: url });
+
+  // Transform the request.
+  var transform = map.getServiceOptions().transformRequest;
+  if (transform) requestParams = transform(url);
+
+  const response = await fetch(requestParams.url, {
+      method: 'GET',
+      mode: 'cors',
+      headers: new Headers(requestParams.headers)
+  });
+
+  if (!response.ok) {
+      throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Azure Maps
+ */
+
+function fetchGeometry(geometryId) {
+  const url = `https://atlas.microsoft.com/search/polygon/json?api-version=1.0&geometries=${geometryId}&subscription-key=${azure_api_key}`;
+
+  return fetch(url)
+      .then(response => {
+          if (!response.ok) {
+              throw new Error('Network response was not ok');
+          }
+          return response.json();
+      })
+      .then(data => {
+          return data; // Return the geometry data
+      })
+      .catch(error => {
+          console.error('Error fetching geometry:', error);
+      });
+}
+
+class AzureMap extends TSMap {
+  constructor() {
+    super();
+    this.map = new atlas.Map('azureMap', {
+      center: [nyc[0], nyc[1]], // [longitude, latitude]
+      zoom: 18,
+      scale: 2,
+      view: 'Auto',
+      language: 'en-US',
+      authOptions: {
+        authType: 'subscriptionKey',
+        subscriptionKey: azure_api_key
+      },
+      style: 'satellite'
+    });
+
+    /*Add the Style Control to the map*/
+    this.map.controls.add(new atlas.control.StyleControl({
+      mapStyles: ['road', 'satellite'],
+      layout: 'list'
+    }), {
+      position: 'top-right'
+    });
+
+    this.boundaries = [];
+    this.drawingManager = null;
+
+    // Listen for the map's ready event
+    this.map.events.add('ready', () => {
+      // Now it's safe to load drawing tools and add sources/layers
+      this.loadDrawingTools();
+      let datasource = new atlas.source.DataSource('searchResultDataSource');
+      this.map.sources.add(datasource);
+      //Add a layer for rendering point data.
+      // this.map.layers.add(new atlas.layer.SymbolLayer(datasource));
+
+      //Create a jQuery autocomplete UI widget.
+      var geocodeServiceUrlTemplate = 'https://{azMapsDomain}/search/fuzzy/json?typeahead=true&api-version=1.0&query={query}&language=en-US&lon={lon}&lat={lat}&countrySet=US&view=Auto';
+      $("#azureSearch").autocomplete({
+          minLength: 4,   //Don't ask for suggestions until atleast 3 characters have been typed. This will reduce costs by not making requests that will likely not have much relevance.
+          source: (request, response) => {
+              var center = this.map.getCamera().center;
+
+              //Create a URL to the Azure Maps search service to perform the search.
+              var requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(request.term))
+                  .replace('{lon}', center[0])    //Use a lat and lon value of the center the map to bais the results to the current map view.
+                  .replace('{lat}', center[1])
+
+              processRequest(requestUrl, this.map).then(data => {
+                  response(data.results);
+              });
+          },
+          select: (event, ui) => {
+              event.preventDefault();
+              document.getElementById("azureSearch").value = ui.item.address.freeformAddress
+              //Remove any previous added data from the map.
+              datasource.clear();
+
+              const geometryId = ui.item?.dataSources?.geometry?.id;
+              if(geometryId) {
+                fetchGeometry(geometryId).then(geometryData => {
+                  if (geometryData) {
+                      // Assuming geometryData contains the boundary coordinates
+                      const coordinates = geometryData.additionalData[0].geometryData.features[0].geometry.coordinates; // Adjust based on the actual response structure
+
+                      // Create a polygon feature to shade the area
+                      const polygon = new atlas.data.Polygon(coordinates);
+                      datasource.add(new atlas.data.Feature(polygon));
+
+                      // Optionally, you can set the fill color for the polygon
+                      const polygonStyle = {
+                          fillColor: 'rgba(0, 0, 255, 0.5)', // Semi-transparent blue
+                          strokeColor: 'blue',
+                          strokeWidth: 2
+                      };
+
+                      // Add the polygon to the map with the specified style
+                      const polygonLayer = new atlas.layer.PolygonLayer(datasource, 'searchResultPolygon', {
+                          fillColor: polygonStyle.fillColor,
+                          strokeColor: polygonStyle.strokeColor,
+                          strokeWidth: polygonStyle.strokeWidth
+                      });
+                      this.map.layers.add(polygonLayer);
+                      const polys = [];
+                      const points = polygon.coordinates[0].map(coord => [coord[0], coord[1]]);
+                      polys.push(new PolygonBoundary(points));
+                      this.boundaries = polys;
+                  }
+                });
+              }
+
+              //Zoom the map into the selected location.
+              this.map.setCamera({
+                  bounds: [
+                      ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
+                      ui.item.viewport.btmRightPoint.lon, ui.item.viewport.topLeftPoint.lat
+                  ],
+                  padding: 30
+              });
+          }
+      }).autocomplete("instance")._renderItem = function (ul, item) {
+          //Format the displayed suggestion to show the formatted suggestion string.
+          var suggestionLabel = item.address.freeformAddress;
+
+          if (item.poi && item.poi.name) {
+              suggestionLabel = item.poi.name + ' (' + suggestionLabel + ')';
+          }
+
+          return $("<li>")
+              .append("<a>" + suggestionLabel + "</a>")
+              .appendTo(ul);
+      };
+    });
+  }
+
+  loadDrawingTools() {
+    // Load the DrawingTools module
+    this.drawingManager = new atlas.drawing.DrawingManager(this.map,
+      {
+        mode: "draw-polygon",
+        toolbar: new atlas.control.DrawingToolbar({
+          position: 'top-left',
+          style: 'light'
+      })
+    });
+    var layers = this.drawingManager.getLayers();
+    layers.lineLayer.setOptions({
+      strokeColor: 'blue',
+      strokeWidth: 3
+    });
+    layers.polygonOutlineLayer.setOptions({
+      strokeColor: 'blue'
+    });
+    this.map.events.add('drawingchanging', this.drawingManager, (shape) => { this.measureShape(shape) });
+    this.map.events.add('drawingchanged', this.drawingManager, (shape) => { this.measureShape(shape) });
+    this.map.events.add('drawingcomplete', this.drawingManager, () => { this.retrieveDrawnBoundaries() });
+  }
+
+  retrieveDrawnBoundaries() {
+    const shapes = this.drawingManager.getSource().shapes;
+    const polys = [];
+
+    if (shapes && shapes.length > 0) {
+      console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
+      for (let shape of shapes) {
+        let coordinates = [];
+        if("circlePolygon" in shape) {
+          coordinates = shape.circlePolygon.geometry.coordinates[0];
+        } else {
+          coordinates = shape.data.geometry.coordinates[0];
+        }
+        const points = coordinates.map(coord => [coord[0], coord[1]]);
+        polys.push(new PolygonBoundary(points));
+      }
+    } else {
+      console.log('No shapes in the drawing manager.');
+    }
+    console.log(`Polys: ${polys}`);
+    this.boundaries = polys;
+    this.showBoundaries()
+    return polys;
+  }
+
+  clearShapes() {
+    this.drawingManager?.getSource()?.clear();
+    this.map.sources.getById('circleDataSource')?.clear();
+    this.removeLayerById("circleShapeLayer");
+  }
+
+  clearAll() {
+    if (this.hasShapes){
+      this.clearShapes();
+    }
+    Detection.resetAll();
+    this.drawingManager?.getSource()?.clear();
+    
+    currentMap.clearAllCustomLayers();
+    
+  }
+  hideAllDataSources() {
+    var layers = this.map.layers.getLayers();  // Get all layers on the map
+
+    layers.forEach(function (layer) {
+        // Check if the layer is associated with any DataSource
+        // if (layer.getSource()) {
+        layer.setOptions({ visible: false });  // Hide the layer
+        // }
+    });
+    // console.log('All DataSource layers have been hidden');
+}
+// Function to clear all layers from the map
+  clearAllCustomLayers() {
+    var layers = currentMap.map.layers.getLayers(); // Get all layers in the map
+    layers.forEach(function(layer) {
+      if (layer['type'] != 'traffic'){
+        currentMap.map.layers.remove(layer); // Remove each layer from the map
+      }
+      
+    });
+  }
+  // Function to remove a layer by its id
+  removeLayerById(layerId) {
+    var layers = this.map.layers.getLayers(); // Get all layers in the map
+    layers.forEach(function (layer) {
+      if (layer.id === layerId) {
+          currentMap.map.layers.remove(layer); // Remove the layer with the matching id
+      }
+    });
+  }
+  getBounds() {
+    return this.map.getCamera().bounds;
+  }
+
+  getCenter() {
+    let b = this.getBounds();
+    return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+  }
+
+  fitBounds(b) {
+    this.map.setCamera({
+      bounds: [
+        [b[0], b[1]], // Southwest
+        [b[2], b[3]]  // Northeast
+      ],
+      padding: 0,
+      zoom: 19
+    });
+  }
+
+  setCenter(c) {
+    this.map.setCamera({
+      center: [c[0], c[1]]
+    });
+  }
+
+  setZoom(z) {
+    this.map.setCamera({
+      zoom: z
+    });
+  }
+
+  addBoundary(b) {
+    return;
+  }
+  showBoundaries() {
+    // Set map bounds to fit the union of all active boundaries
+    if (this.boundaries.length > 0) {
+      var polygon = this.boundaries[0].points;
+      var minX = Math.min(...polygon.map(p => p[0]));
+      var minY = Math.min(...polygon.map(p => p[1]));
+      var maxX = Math.max(...polygon.map(p => p[0]));
+      var maxY = Math.max(...polygon.map(p => p[1]));
+
+      var bounds = atlas.data.BoundingBox.fromEdges(minX, minY, maxX, maxY);
+      this.map.setCamera({ bounds, padding: 5 });
+    }
+  }
+
+  resetBoundaries() {
+    this.boundaries = [];
+    this.drawingManager?.getSource()?.clear();
+    this.map.sources.getById('circleDataSource')?.clear();
+    this.map.sources.getById('searchResultDataSource')?.clear();
+  }
+
+  hasShapes() {
+    const shapes = this.drawingManager.getSource().shapes;
+    return shapes && shapes.length > 0;
+  }
+
+  addShapes() {
+    let shapes = this.drawingManager.getPrimitives();
+
+    if (shapes && shapes.length > 0) {
+      console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
+      for (let s of shapes) {
+        console.log("Adding " + s.geometry.bounds.toString());
+        let x1 = s.geometry.boundingBox.getWest();
+        let y1 = s.geometry.boundingBox.getNorth();
+        let x2 = s.geometry.boundingBox.getEast();
+        let y2 = s.geometry.boundingBox.getSouth();
+
+        let tileIds = Tile.getTileIds(x1, y1, x2, y2);
+        for (let tileId of tileIds) {
+          let tile = Tile_tiles[tileId]
+          x1 = Math.max(x1, tile.x1);
+          x1 = Math.min(x1, tile.x2);
+          x2 = Math.max(x2, tile.x1);
+          x2 = Math.min(x2, tile.x2);
+          y1 = Math.max(y1, tile.y2);
+          y1 = Math.min(y1, tile.y1);
+          y2 = Math.max(y2, tile.y2);
+          y2 = Math.min(y2, tile.y1);
+          let det = new Detection(x1, y1, x2, y2,
+            'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
+          det.update();
+        }
+
+        augmentDetections();
+      }
+      this.drawingManager.clear();
+      // this.map.entities.clear();
+    } else {
+      console.log('No shapes in the drawing manager.');
+    }
+  }
+  
+  getBoundariesStr() {
+    let result = [];
+    for (let b of this.boundaries) {
+      result.push(b.toString())
+    }
+    return "[" + result.join(",") + "]";
+  }
+
+  getZoom() {
+    return this.map.getCamera().zoom;
+  }
+
+  getBoundsUrl() {
+    const bounds = this.map.getCamera().bounds;
+    return [bounds[1], bounds[0], bounds[3], bounds[2]];
+  }
+
+  measureShape(shape) {
+    var msg = '';
+
+    if (shape.isCircle()) {
+        document.getElementById("radius").value = shape.getProperties().radius;
+    }
+
+  }
+  
+  //Draw bounding boxes
+  
+  makeMapRect(o, listener) {
+    try {
+      let locs = [
+        new atlas.data.Point(o.y1, o.x1),
+        new atlas.data.Point(o.y1, o.x2),
+        new atlas.data.Point(o.y2, o.x2),
+        new atlas.data.Point(o.y2, o.x1),
+        new atlas.data.Point(o.y1, o.x1)
+      ];
+      // Create the four corners of the polygon
+      const boundingBoxCoordinates = [
+        [o.x1, o.y1],  // Top-left corner
+        [o.x2, o.y1],  // Top-right corner
+        [o.x2, o.y2],  // Bottom-right corner
+        [o.x1, o.y2],  // Bottom-left corner
+        [o.x1, o.y1]   // Closing the polygon (back to top-left)
+      ];
+     
+        
+    // });
+    // Create a polygon (bounding box) from the coordinates
+    var boundingBoxPolygon = new atlas.data.Polygon([boundingBoxCoordinates]);
+    // Create a data source and add the bounding box (polygon) to it
+    
+    
+    //Create dummy layer to avoid the obj ref error due to the click event handler
+    var fillLayer;
+    
+    if (o.classname == "tile"){
+    
+      var tiledataSource = new atlas.source.DataSource(null);
+      tiledataSource.add(boundingBoxPolygon);
+      currentMap.map.sources.add(tiledataSource);
+      o.dataSourceID = tiledataSource.id;        
+      var tileborderLayer = new atlas.layer.LineLayer(tiledataSource, null, {
+        strokeColor: 'blue',
+        strokeWidth: 2                   // Border width
+      });
+      currentMap.map.layers.add(tileborderLayer);
+      o.borderLayerID = tileborderLayer.id;
+
+      fillLayer = new atlas.layer.PolygonLayer(tiledataSource, null, {
+        fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
+      });
+      currentMap.map.layers.add(fillLayer);
+      o.fillLayerID = fillLayer.id;
+    }
+    else {
+      var dataSource = new atlas.source.DataSource(null);
+      currentMap.map.sources.add(dataSource);
+      dataSource.add(boundingBoxPolygon);
+      o.dataSourceID = dataSource.id;
+      // console.log("dataSourceID:" + o.dataSourceID);
+      // Create a layer for just the border of the bounding box/tile (without fill)
+      var borderLayer = new atlas.layer.LineLayer(dataSource, null, {
+        strokeColor: 'red',
+        strokeWidth: 2                   // Border width
+      });
+      currentMap.map.layers.add(borderLayer);
+      o.borderLayerID = borderLayer.id;
+      fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
+        strokeColor: 'red',
+        fillColor: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red fill
+        strokeWidth: 2                   // Border width
+      });
+      currentMap.map.layers.add(fillLayer);
+      o.fillLayerID = fillLayer.id;;
+      
+    }
+   
+   
+    if ((typeof listener !== 'undefined') && (o.classname != 'tile')) {
+      // Add click event to the layer using the 'addEventListener' method on the map
+      this.map.events.add('click', fillLayer , function(e) {
+          // Check if the click happened inside the polygon
+          const clickedEntity = e.shapes[0];
+          if (clickedEntity) {
+              listener(clickedEntity);  // Call the listener function
+          }
+      });
+      
+  }
+      return boundingBoxPolygon;
+      
+    }
+    catch (error){
+      console.log('An error occurred makeMapRect: ' + error);  // This won't execute
+    }
+    finally{
+
+    }
+    }
+  
+  colorMapRect(o, color) {
+    try{
+      // Create a fill color with opacity
+      
+      let fcolor = Microsoft.Maps.Color.fromHex(color);
+      let alpha = o.opacity;
+      // // Convert to RGB string format
+      let fillcolor = this.colorToRGBA(fcolor,alpha);
+      let FilllayertoHighlight = currentMap.getLayerById(o.fillLayerID);
+      FilllayertoHighlight.setOptions({
+          strokeColor: color,
+          fillColor: fillcolor, // Semi-transparent fill
+          strokeWidth: 2 
+        });
+      
+    }
+    catch (error){
+      console.log('An error occurred colorMapRect: ' + error);  // This won't execute
+    }
+    finally{
+
+    }
+    }
+  // Convert Microsoft.Maps.Color to an RGBA string
+  colorToRGBA(color,alpha) {
+    return 'rgba(' + color.r + ', ' + color.g + ', ' + color.b + ', ' + alpha + ')';
+  }  
+  
+  updateMapRect(o, onoff) {
+    try{
+      if (onoff)
+      {
+        o.opacity = 1
+        // console.log("o.fillLayerID:" + o.fillLayerID);
+        let FilllayertoHide = currentMap.getLayerById(o.fillLayerID);
+          FilllayertoHide.setOptions({
+          visible: true
+        });
+        let BorderLayertoHide = currentMap.getLayerById(o.borderLayerID);
+        BorderLayertoHide.setOptions({
+          visible: true
+        });
+        // console.log("o.dataSourceID:" + o.dataSourceID);
+        this.map.sources.getById(o.dataSourceID)?.setOptions({
+          visible: true
+        });
+      }
+      else{
+        // console.log("o.fillLayerID:" + o.fillLayerID);
+        let FilllayertoHide = currentMap.getLayerById(o.fillLayerID);
+          FilllayertoHide.setOptions({
+          visible: false
+        });
+        let BorderLayertoHide = currentMap.getLayerById(o.borderLayerID);
+        BorderLayertoHide.setOptions({
+          visible: false
+        });
+        // console.log("o.dataSourceID:" + o.dataSourceID);
+        this.map.sources.getById(o.dataSourceID)?.setOptions({
+          visible: false
+        });
+        }
+      
+    }
+    catch (error){
+      console.log('An error occurred updateMapRect: ' + error);  // This won't execute
+    }
+    finally{
+
+    }
+    }
+  // Function to get a layer by its id
+  getLayerById(layerId) {
+  var layers = this.map.layers.getLayers(); // Get all layers in the map
+  return layers.find(function (layer) {
+      return layer.id === layerId; // Compare the id of each layer
+  });
+}
+}
+
+
+
 //
 // Bing Maps
 //
@@ -172,6 +700,7 @@ function drawBoundary(map, results) {
     });
     map.entities.push(polygon);
   })
+
 }
 
 class BingMap extends TSMap {
@@ -192,10 +721,10 @@ class BingMap extends TSMap {
           map: bingMap
       };
       var manager = new Microsoft.Maps.AutosuggestManager(options);
-      manager.attachAutosuggest('#search', '#searchBoxContainer', selectedSuggestion);
+      manager.attachAutosuggest('#bingSearch', '#bingSearchBoxContainer', selectedSuggestion);
     });
 
-    document.getElementById('search').addEventListener('change', Search);
+    document.getElementById('bingSearch').addEventListener('change', Search);
 
     let searchManager;
     Microsoft.Maps.loadModule(['Microsoft.Maps.SpatialDataService',
@@ -209,20 +738,20 @@ class BingMap extends TSMap {
 
       //Create the geocode request.
       var geocodeRequest = {
-          where: document.getElementById('search').value,
+          where: document.getElementById('bingSearch').value,
           callback: getBoundary,
           errorCallback: function (e) {
               //If there is an error, alert the user about it.
-             // alert("No results found.");
+              //alert("No results found.");
           }
       };
       searchManager.geocode(geocodeRequest);
     }
-
       function getBoundary(geocodeResult){
         //Add the first result to the map and zoom into it.
         if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
             //Zoom into the location.
+
             bingMap.setView({ bounds: geocodeResult.results[0].bestView });
 
             //Create the request options for the GeoData API.
@@ -260,14 +789,14 @@ class BingMap extends TSMap {
                   if (data.results && data.results.length > 0) {
                     bingMap.entities.push(data.results[0].Polygons);
                   } else {
-                      console.log(`Could not find boundary for ${document.getElementById('search').value}`)
+                      console.log(`Could not find boundary for ${document.getElementById('bingSearch').value}`)
                   }
               }
             );
         }
       }
 
-function selectedSuggestion(result) {
+    function selectedSuggestion(result) {
       bingMap.entities.clear;
       var geocodeRequest;
       if ((result.entitySubType == "Address") || (result.entityType == "PostalAddress")){
@@ -290,14 +819,14 @@ function selectedSuggestion(result) {
     }
       else{
         geocodeRequest = {
-        where: result.title,
-        callback: getBoundary,
-        errorCallback: function (e) {
-            //If there is an error, alert the user about it.
-            alert("No results found.");
-        }
-    };
-      
+          where: result.title,
+          callback: getBoundary,
+          errorCallback: function (e) {
+              //If there is an error, alert the user about it.
+              alert("No results found.");
+          }
+        };
+
       }
       searchManager.geocode(geocodeRequest);
     }
@@ -342,7 +871,7 @@ function selectedSuggestion(result) {
     if(locations.length > 0) {
       var bounds = Microsoft.Maps.LocationRect.fromLocations(locations);
       this.map.setView({ bounds: bounds });
-    } 
+    }
 
     let rect = this.map.getBounds();
     return [
@@ -416,6 +945,9 @@ function selectedSuggestion(result) {
   }
 
   resetBoundaries() {
+    if(this.drawingManager) {
+      this.drawingManager.clear();
+    }
     for (let b of this.boundaries) {
       for (let i = this.map.entities.getLength() - 1; i >= 0; i--) {
         let obj = this.map.entities.get(i);
@@ -453,7 +985,7 @@ function selectedSuggestion(result) {
     // set map bounds to fit union of all active boundaries
     let bobjs = this.boundaries.map(x => x.bingObject);
     let bounds = Microsoft.Maps.LocationRect.fromShapes(bobjs);
-    this.map.setView({ bounds: bounds, padding: 0 });
+    this.map.setView({ bounds, padding: 0 });
   }
 
   retrieveDrawnBoundaries() {
@@ -522,23 +1054,19 @@ function selectedSuggestion(result) {
   }
 
   clearShapes() {
-    this.drawingManager.clear();
-    this.map.entities.clear();
+    if(this.drawingManager) {
+      this.drawingManager.clear();
+    }
+    if(this.entities) {
+      this.entities.clear();
+    }
   }
 
   clearAll() {
-    this.clearShapes();
-    // now, also go through Detection_detections and take out the blue ones
-    // let dets = [];
-    // for (let det of Detection_detections) {
-    //   if (det.conf !== 1.0) {
-    //     det.id = dets.length;
-    //     dets.push(det);
-    //   }
-    // }
-    
-    // Detection_detections = dets;
-    // Detection.generateList();
+    if (this.hasShapes){
+      this.clearShapes();
+    }
+
     Detection.resetAll();
   }
 
@@ -551,7 +1079,6 @@ function selectedSuggestion(result) {
   }
 
 }
-
 
 //
 // boundaries: simple, circle, polygon
@@ -593,12 +1120,36 @@ class SimpleBoundary extends PolygonBoundary {
 class CircleBoundary extends PolygonBoundary {
   constructor(center, radius) {
     super("circle: " + center + ", " + radius + " m");
-    // use MSFT stuff to compute the circle
-    let locs = Microsoft.Maps.SpatialMath.getRegularPolygon(
+    let locs = [];
+    if (currentUI.value === 'azure') {
+      var circleShape = new atlas.Shape(new atlas.data.Point(center), 'circleShape', {
+        subType: "Circle",
+        radius
+      });
+      const existingCircleDataSource = currentMap.map.sources.getById('circleDataSource');
+      var dataSource = existingCircleDataSource ?? new atlas.source.DataSource('circleDataSource');
+      if(!existingCircleDataSource){
+        currentMap.map.sources.add(dataSource);
+      }
+      dataSource.add(circleShape);
+      currentMap.map.layers.add(new atlas.layer.LineLayer(dataSource, 'circleShapeLayer', {
+          strokeColor: 'blue',
+          strokeWidth: 3
+      }));
+      this.points = circleShape.circlePolygon.geometry.coordinates;
+      currentMap.boundaries.push(new PolygonBoundary(this.points[0]));
+      return;
+    }
+
+    if(currentUI.value === 'bing') {
+
+    locs = Microsoft.Maps.SpatialMath.getRegularPolygon(
       new Microsoft.Maps.Location(center[1], center[0]),
       radius,
       256,
       Microsoft.Maps.SpatialMath.DistanceUnits.Meters);
+    }
+
     this.points = locs.map(l => [l.longitude, l.latitude]);
   }
 }
@@ -632,8 +1183,15 @@ class PlaceRect {
     // currentMap.setZoom(19);
     // googleMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
     // googleMap.setZoom(19);
-    bingMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
-    bingMap.setZoom(19);
+    if(currentUI.value === 'bing'){
+      bingMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
+      bingMap.setZoom(19);
+    }
+    else if(currentUI.value === 'azure'){
+      azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
+      azureMap.setZoom(19);
+    }
+    
   }
 
   getCenter() {
@@ -790,7 +1348,6 @@ class Detection extends PlaceRect {
       det.id = i;
     }
   }
-
   static generateList() {
     let currentAddr = "";
     let firstDet = null;
@@ -806,7 +1363,8 @@ class Detection extends PlaceRect {
         boxes += "this.parentElement.querySelector(\".nested\").classList.toggle(\"active\"),";
         boxes += "this.classList.toggle(\"caret-down\")';"
         boxes += "'></span>";
-        boxes += "<input type='checkbox' id='addrcb" + det.id + "' name='addrcb" + det.id;
+        boxes += "<label id='lbladdrcb" + det.id + "' style='display:none' for='addrcb" + det.id + "'>addrcb"+det.id + "</label>"
+        boxes += "<input aria-labelledby = 'lbladdrcb" + det.id + "' type='checkbox' id='addrcb" + det.id + "' name='addrcb" + det.id;
         boxes + "' value='";
         boxes += det.id + "' checked style='display:inline;vertical-align:-10%;'"
         boxes += " onclick='Detection_detections[" + det.id + "].selectAddr(this.checked)'>";
@@ -828,13 +1386,16 @@ class Detection extends PlaceRect {
     }
     boxes += "</li></ul>";
     detectionsList.innerHTML = boxes;
+    // Call the function
+    assignAriaLabels();
   }
 
   generateCheckBox() {
     let meta = Tile_tiles[this.tile].metadata;
     let p2 = (this.secondary > 0 && this.secondary < 1.0 ? ",&nbsp;P2(" + this.secondary.toFixed(2) + ")" : "")
     let box = "<li><div style='display:block' id='detdiv" + this.id + "'>";
-    box += "<input type='checkbox' id='detcb" + this.id + "' name='detcb" + this.id + "'";
+    box += "<label id ='lbldetcb" + this.id + "' style='display:none' for='detcb" + this.id + "'>lbl" + this.id + "</label>"
+    box += "<input aria-labelledby = 'lbldetcb" + this.id + "' type='checkbox' id='detcb" + this.id + "' name='detcb" + this.id + "'";
     box += " value='" + this.id + "' " + (this.selected ? "checked" : "");
     box += " style='display:inline;vertical-align:-10%;'"
     box += " onclick='Detection_detections[" + this.id + "].select(undefined)'>";
@@ -928,7 +1489,7 @@ class Detection extends PlaceRect {
     if (Detection_current !== null) {
       Detection_current.resetHighlight();
     }
-    super.highlight("green");
+    super.highlight("#00ff00"); //green
     Detection_current = this;
   }
 
@@ -1018,24 +1579,6 @@ function createElementFromHTML(htmlString) {
   return div.firstChild;
 }
 
-async function getObjectsResults(processId) {
-  try {
-    const response = await fetch(`/getobjects/${processId}`);
-    if(!response.ok) {
-      throw new Error('Network response was not ok ' + response.statusText);
-    }
-    const data = await response.json();
-    if(data.status === 'Completed') {
-      processObjects(JSON.parse(data.results), performance.now());
-    } else {
-      setTimeout(() => getObjectsResults(processId), 2000);
-
-    }
-  } catch (error) {
-    console.error('There has been a problem with fetching results: ', error);
-  }
-}
-
 // retrieve satellite image and detect objects
 function getObjects(estimate) {
   //let center = currentMap.getCenterUrl();
@@ -1043,7 +1586,7 @@ function getObjects(estimate) {
   if (Detection_detections.length > 0) {
     if (!window.confirm("This will erase current detections. Proceed?")) {
        // erase the previous set of towers and tiles
-  this.clearAll();
+       currentMap.clearAll();
   return;
 }
   }
@@ -1051,13 +1594,7 @@ function getObjects(estimate) {
   let engine = $('input[name=model]:checked', '#engines').val()
   let provider = $('input[name=provider]:checked', '#providers').val()
   provider = provider.substring(0, provider.length - 9);
-  // let boundaries = googleMap.getBoundariesStr();
-  // if (boundaries === "[]" && radius == "") {
-  //   console.log("No boundary selected, instead using viewport: " + googleMap.getBounds())
-  //   googleMap.addBoundary(new SimpleBoundary(googleMap.getBounds()));
-  //   bingMap.addBoundary(new SimpleBoundary(googleMap.getBounds()));
-  // }
-
+ 
 
   // now get the boundaries ready to ship
   let bounds = currentMap.getBoundsUrl();
@@ -1088,8 +1625,8 @@ function getObjects(estimate) {
   formData.append('polygons', boundaries);
   formData.append('estimate', "yes");
 
-  fetch("/getobjects",  { method: "POST", body: formData })
-    .then(result => result.text()) 
+  fetch("/getobjects",  { method: "POST", body: formData, })
+    .then(result => result.text())
     .then(result => {
       if (Number(result) === -1) {
         fatalError("Tile limit for this session exceeded. Please close browser to continue.")
@@ -1097,6 +1634,8 @@ function getObjects(estimate) {
       }
       console.log("Number of tiles: " + result + ", estimated time: "
         + (Math.round(Number(result) * secsPerTile * 10) / 10) + " s");
+        // Get from Dev  Key Vault by default. Need to create secrets in the Prod Key Vault
+
       // let nt = estimateNumTiles(currentMap.getZoom());
       // console.log("  Estimated tiles:" + nt);
       if (estimate) {
@@ -1115,14 +1654,40 @@ function getObjects(estimate) {
       formData.delete("estimate");
       fetch("/getobjects", { method: "POST", body: formData })
         .then(response => response.json())
-        .then(data => {
-          console.log(data.status);
-          getObjectsResults(data.process_id);
+        .then(result => {
+          // // Need to add code to process the results from EDAV
+          // disableProgress(0, 0);
+          // return;
+          processObjects(result, startTime);
         })
         .catch(e => {
           console.log(e + ": "); disableProgress(0, 0);
         });
     });
+
+    getazmapTransactioncountjs(2);
+}
+
+//get Azure map transaction count for the current month
+function getazmapTransactioncountjs(intEnv)
+{
+  param = intEnv
+  // fetch('/getazmaptransactions', { method: "POST", body:  JSON.stringify({ param: param }) })
+  fetch('/getazmaptransactions')
+    .then(response => {
+
+      return response.text();
+    })
+    .then(data => {
+      // Assign the response value to a variable
+      const message = data;
+      // console.log(message); // Log the value to the console
+      document.getElementById('lblazmaptransactions').innerText = message; // Display the string in the div
+  })
+    .catch(error => {
+      console.log(error);
+    });
+
 }
 
 function processObjects(result, startTime) {
@@ -1174,16 +1739,16 @@ function circleBoundary() {
     clearBoundaries();
     // make circle
     let centerCoords = currentMap.getCenter();
-  
+
     // convert to m
     radius = Number(radius);
 
     // googleMap.addBoundary(new CircleBoundary(centerCoords, radius));
-    bingMap.addBoundary(new CircleBoundary(centerCoords, radius));
+    currentMap.addBoundary(new CircleBoundary(centerCoords, radius));
 
     // googleMap.showBoundaries();
-    
-    bingMap.showBoundaries();
+
+    currentMap.showBoundaries();
   }
 }
 
@@ -1192,14 +1757,12 @@ function drawnBoundary() {
   let boundaries = currentMap.retrieveDrawnBoundaries();
   for (let b of boundaries) {
     // googleMap.addBoundary(b);
-    bingMap.addBoundary(b);
+    currentMap.addBoundary(b);
   }
 }
 
 function clearBoundaries() {
-  // googleMap.resetBoundaries();
   currentMap.resetBoundaries();
-  currentMap.drawingManager.clear()
 }
 
 
@@ -1262,13 +1825,7 @@ function fillProviders() {
 
       // add change listeners for the backend provider radio box
       let rad = document.providers.provider;
-      currentProvider = rad; //Bing Maps is the defacto provider for now
-
-      // for (let r of rad) {
-      //   r.addEventListener('change', function () {
-      //     // no action right now
-      //   });
-      // }
+      currentProvider = 'azure';//rad; //Bing Maps is the defacto provider for now
 
       // and one for the file input box
       let fileBox = document.getElementById("upload_file");
@@ -1276,23 +1833,21 @@ function fillProviders() {
         uploadImage();
       });
 
-      // and one for the model upload box
-      // let modelBox = document.getElementById("upload_model");
-      // modelBox.addEventListener('change', () => {
-      //   uploadModel();
-      // });
-
-      // and one for the dataset upload box
-      // let datasetBox = document.getElementById("upload_dataset");
-      // datasetBox.addEventListener('change', () => {
-      //   uploadDataset();
-      // });
+       // also add change listeners for the UI providers
+      currentUI = document.uis.uis[0];
+       // setMap(currentUI);
+      for (let rad of document.uis.uis) {
+        rad.addEventListener('change', function () {
+           setMap;
+             });
+           }
 
     }
   });
 }
 
-function setMap(newMap) {
+function setMap(newMap = currentMap) {
+  currentMap.clearAll();
   if (currentUI !== null) {
     document.getElementById(currentUI.value + "Map").style.display = "none";
   }
@@ -1305,10 +1860,7 @@ function setMap(newMap) {
   // let lastMap = currentMap;
   let zoom;
   let center;
-  // if (lastmap) {
-  //   zoom = currentMap.getZoom();
-  //   center = currentMap.getCenter();
-  // }
+  
 
   if (currentUI.value === "upload") {
     document.getElementById("uploadsearchui").style.display = "block";
@@ -1338,11 +1890,27 @@ function setMap(newMap) {
     document.getElementById("freview").style.display = null;
     // document.getElementById("ffilter").style.display = null;
     document.getElementById("fadd").style.display = null;
-    currentMap = bingMap;
+    document.getElementById("azureSearchBoxContainer").style.display = "none";
+    document.getElementById("bingSearchBoxContainer").style.display = "inline";
+    initBingMap();
+    zoom = currentMap.getZoom();
+    center = currentMap.getCenter();
+  } else if (currentUI.value === "azure") {
+    document.getElementById("uploadsearchui").style.display = "none";
+    document.getElementById("mapsearchui").style.display = null;
+    document.getElementById("fdetect").style.display = null;
+    document.getElementById("ftowers").style.display = null;
+    document.getElementById("fsave").style.display = null;
+    document.getElementById("freview").style.display = null;
+    document.getElementById("fadd").style.display = null;
+    document.getElementById("bingSearchBoxContainer").style.display = "none";
+    document.getElementById("azureSearchBoxContainer").style.display = "inline";
+    currentMap = azureMap;
+    
     // recreate boundaries for bing
-    let bs = bingMap.boundaries;
-    bingMap.resetBoundaries();
-    bs.map(b => bingMap.addBoundary(b));
+    let bs = currentMap.boundaries;
+    currentMap.resetBoundaries();
+    bs.map(b => currentMap.addBoundary(b));
     zoom = currentMap.getZoom();
     center = currentMap.getCenter();
   }
@@ -1357,9 +1925,9 @@ function setMap(newMap) {
     currentMap.setCenter(center);
   }
 
-  // move all rectangles over to the new map
-  Tile_tiles.forEach(t => t.update(currentMap));
-  Detection_detections.forEach(d => d.update(currentMap))
+  // // move all rectangles over to the new map
+  // Tile_tiles.forEach(t => t.update(currentMap));
+  // Detection_detections.forEach(d => d.update(currentMap))
 }
 
 function adjustConfidence() {
@@ -1386,7 +1954,7 @@ function changeReviewMode() {
 
 function augmentDetections() {
   Detection_detectionsAugmented = 0;
- //for (let det of Detection_detections) {
+  //for (let det of Detection_detections) {
     for (let i = 0; i < Detection_detections.length; i++) {
       let det = Detection_detections[i];
     if (det.address !== "") {
@@ -1395,9 +1963,9 @@ function augmentDetections() {
     }
     let loc = det.getCenterUrl();
      // call Bing maps api instead at:
-     
+
      setTimeout((ix)=>{
-     // console.log(ix+1);
+      //console.log(ix+1);
       $.ajax({
       url: "https://dev.virtualearth.net/REST/v1/locationrecog/" + loc,
       data: {
@@ -1410,9 +1978,9 @@ function augmentDetections() {
         det.augment(addr);
         afterAugment();
       }
-      
+
     });
-     },200*i,i)
+     },1000*i,i)
     // $.ajax({
     //   url: "https://maps.googleapis.com/maps/api/geocode/json",
     //   data: {
@@ -1430,7 +1998,7 @@ function augmentDetections() {
     //     } else {
     //       addr = "(unable to determine address)";
     //       // console.log("Cannot parse address result for tower "+i+": "+JSON.stringify(result));
-         
+
     //     }
     //     //det.augment(addr);
     //   }
@@ -1479,7 +2047,7 @@ function download(filename, data) {
   // create blob object with our data
   let blob = new Blob([data], { type: 'text/csv' });
 
-  // create a temp anchor element
+  // create a  anchor element
   let elem = window.document.createElement('a');
 
   // direct it to the blob and filename
@@ -1612,7 +2180,7 @@ function download_kml() {
 
 //
 // model upload functionality
-// 
+//
 
 function uploadModel() {
   let model = document.getElementById("upload_model").files[0];
@@ -1643,7 +2211,7 @@ function uploadImage() {
   let formData = new FormData();
 
   Detection.resetAll();
-  console.log("Custome image detection request in progress ...")
+  console.log("Custom image detection request in progress ...")
 
   formData.append("image", image);
   formData.append("engine", engine)
@@ -1679,7 +2247,7 @@ function removeCustomImage(url) {
 
 //
 // upload dataset functionality
-// 
+//
 
 function uploadDataset() {
   if (Detection_detections.length > 0) {
@@ -1843,15 +2411,82 @@ function parseZipcodeResult(result) {
 // init actions
 console = new myConsole();
 
-if (dev === 0) {
-  about(6)
-}
-fillEngines();
+// fillEngines();
 fillProviders();
 confSlider.value = Math.round(Detection_minConfidence * 100);
 
-about(0);
+// Function to assign aria-labels to elements that need them
+function assignAriaLabels() {
+  // Select specific elements that typically need aria-labels
+  const elementsNeedingAriaLabel = document.querySelectorAll('button, a, input, textarea, select, checkbox');
 
+
+  // Loop through each element
+  elementsNeedingAriaLabel.forEach(element => {
+      const id = element.id; // Get the element's ID
+      if (!element.hasAttribute('aria-label')) {
+
+              element.setAttribute('aria-label', element.id);
+              // console.log(`Assigned aria-label to ${id}: ${element.id}`);
+
+      }
+  });
+  const mapelementsNeedingAriaLabel=document.getElementById("bingMap").querySelectorAll('*');
+   // Loop through each element
+   mapelementsNeedingAriaLabel.forEach(element => {
+    const id = element.id; // Get the element's ID
+    if (!element.hasAttribute('aria-label')) {
+
+            element.setAttribute('aria-label', element.id);
+            // console.log(`Assigned aria-label to ${id}: ${element.id}`);
+
+    }
+});
+}
+function assignAriaLabelsToMapControl() {
+  // // Example: Accessing zoom buttons
+  // const zoomInButton = document.querySelector('.zoom-in-button-class'); // Use the correct class
+  // const zoomOutButton = document.querySelector('.zoom-out-button-class'); // Use the correct class
+  const rotateLeft = document.getElementById("bingMap").querySelector('#RotateLeftButton'); // Use the correct class
+  const rotateRight = document.getElementById("bingMap").querySelector('#RotateRightButton'); // Use the correct class
+  const rotate = document.getElementById("bingMap").querySelector('#RotateButton'); // Use the correct class
+  const birdseye = document.getElementById("bingMap").querySelector('#BirdseyeV2ExitButton'); // Use the correct class
+  const labelStyleSwitch = document.getElementById("bingMap").querySelector('.labelStyleSwitch'); // Use the correct class
+  const labelTogglelabel = document.getElementById("bingMap").querySelector('.labelToggle_label'); // Use the correct class
+  const chkToggle = document.getElementById("bingMap").querySelector('#navbarLabelToggleInput'); // Use the correct class
+  const chkToggle1 = document.getElementById("bingMap").querySelector('#be2ToggleInput'); // Use the correct class
+  if (labelStyleSwitch) {
+    labelStyleSwitch.setAttribute('ID', 'lbllabelStyleSwitch');
+  }
+
+  if (chkToggle) {
+    chkToggle.setAttribute('aria-label', 'lbllabelStyleSwitch');
+  }
+  if (labelTogglelabel) {
+    labelTogglelabel.setAttribute('ID', 'lbllabelTogglelabel');
+  }
+  if (chkToggle1) {
+    chkToggle1.setAttribute('aria-label', 'lbllabelStyleSwitch');
+  }
+  if (rotateLeft) {
+    rotateLeft.setAttribute('aria-label', 'Rotate Left');
+  }
+
+  if (rotateRight) {
+    rotateRight.setAttribute('aria-label', 'Rotate Right');
+  }
+
+  if (rotate) {
+    rotate.setAttribute('aria-label', 'Rotate');
+  }
+  if (birdseye) {
+    birdseye.setAttribute('aria-label', 'Birds Eye View');
+  }
+}
+
+window.addEventListener('load', () => {
+  assignAriaLabelsToMapControl();
+});
 
 
 console.log("TowerScout initialized.");
