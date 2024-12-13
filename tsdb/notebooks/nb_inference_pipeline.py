@@ -63,7 +63,6 @@ sink_table = f"{catalog}.{schema}.{silver_table_name}"
 # Batch size is a very important parameter, since we iterate through images to process them
 towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, batch_size=100)
 image_metadata_udf = make_image_metadata_udf(spark)
-debug_mode = True
 
 # COMMAND ----------
 
