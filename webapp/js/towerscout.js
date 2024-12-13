@@ -180,16 +180,15 @@ class AzureMap extends TSMap {
   constructor() {
     super();
     this.map = new atlas.Map('azureMap', {
-      center: [nyc[0], nyc[1]], // [longitude, latitude]
+      center: [nyc[0], nyc[1]], // Reverse Bing
       zoom: 18,
-      scale: 2,
-      view: 'Auto',
-      language: 'en-US',
+      maxZoom: 19,
+      disableStreetside: true,
       authOptions: {
         authType: 'subscriptionKey',
         subscriptionKey: azure_api_key
       },
-      style: 'satellite'
+      style: "atlas://styles/azure/road" // Ensure you're using vector tiles for clarity
     });
 
     /*Add the Style Control to the map*/
@@ -249,7 +248,7 @@ class AzureMap extends TSMap {
                       const polygonStyle = {
                           fillColor: 'rgba(0, 0, 255, 0.5)', // Semi-transparent blue
                           strokeColor: 'blue',
-                          strokeWidth: 2
+                          strokeWidth: 1
                       };
 
                       // Add the polygon to the map with the specified style
@@ -304,7 +303,7 @@ class AzureMap extends TSMap {
     var layers = this.drawingManager.getLayers();
     layers.lineLayer.setOptions({
       strokeColor: 'blue',
-      strokeWidth: 3
+      strokeWidth: 1
     });
     layers.polygonOutlineLayer.setOptions({
       strokeColor: 'blue'
@@ -352,7 +351,7 @@ class AzureMap extends TSMap {
     Detection.resetAll();
     this.drawingManager?.getSource()?.clear();
     
-    currentMap.clearAllCustomLayers();
+    currentMap.clearAllCustomLayers();     
     
   }
   hideAllDataSources() {
@@ -370,9 +369,9 @@ class AzureMap extends TSMap {
   clearAllCustomLayers() {
     var layers = currentMap.map.layers.getLayers(); // Get all layers in the map
     layers.forEach(function(layer) {
-      if (layer['type'] != 'traffic'){
-        currentMap.map.layers.remove(layer); // Remove each layer from the map
-      }
+      // if (layer['type'] != 'traffic'){
+      currentMap.map.layers.remove(layer); // Remove each layer from the map
+      // }
       
     });
   }
@@ -400,8 +399,8 @@ class AzureMap extends TSMap {
         [b[0], b[1]], // Southwest
         [b[2], b[3]]  // Northeast
       ],
-      padding: 0,
-      zoom: 19
+      padding: 30,
+      zoom: 18
     });
   }
 
@@ -473,7 +472,7 @@ class AzureMap extends TSMap {
             'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
           det.update();
         }
-
+        console.log("Getting Address(s) for the detection(s)....")
         augmentDetections();
       }
       this.drawingManager.clear();
@@ -547,7 +546,7 @@ class AzureMap extends TSMap {
       o.dataSourceID = tiledataSource.id;        
       var tileborderLayer = new atlas.layer.LineLayer(tiledataSource, null, {
         strokeColor: 'blue',
-        strokeWidth: 2                   // Border width
+        strokeWidth: 1                 // Border width
       });
       currentMap.map.layers.add(tileborderLayer);
       o.borderLayerID = tileborderLayer.id;
@@ -567,14 +566,14 @@ class AzureMap extends TSMap {
       // Create a layer for just the border of the bounding box/tile (without fill)
       var borderLayer = new atlas.layer.LineLayer(dataSource, null, {
         strokeColor: 'red',
-        strokeWidth: 2                   // Border width
+        strokeWidth: 1                // Border width
       });
       currentMap.map.layers.add(borderLayer);
       o.borderLayerID = borderLayer.id;
       fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
         strokeColor: 'red',
         fillColor: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red fill
-        strokeWidth: 2                   // Border width
+        strokeWidth: 1                  // Border width
       });
       currentMap.map.layers.add(fillLayer);
       o.fillLayerID = fillLayer.id;;
@@ -616,7 +615,7 @@ class AzureMap extends TSMap {
       FilllayertoHighlight.setOptions({
           strokeColor: color,
           fillColor: fillcolor, // Semi-transparent fill
-          strokeWidth: 2 
+          strokeWidth: 1 
         });
       
     }
@@ -1188,8 +1187,8 @@ class PlaceRect {
       bingMap.setZoom(19);
     }
     else if(currentUI.value === 'azure'){
-      azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
-      azureMap.setZoom(19);
+      azureMap.setCenter([(this.y1 + this.y2) / 2, (this.x1 + this.x2) / 2]);
+      azureMap.setZoom(18);
     }
     
   }
@@ -1608,9 +1607,9 @@ function getObjects(estimate) {
   let boundaries = currentMap.getBoundariesStr();
   let kinds = ["None", "Polygon", "Multiple polygons"]
   if (estimate) {
-    console.log("Estimate request in progress");
+    console.log("Estimate request in progress ....");
   } else {
-    console.log("Detection request in progress");
+    console.log("Detection request in progress ....");
   }
 
   // erase the previous set of towers and tiles
@@ -1649,7 +1648,7 @@ function getObjects(estimate) {
       let startTime = performance.now();
 
       // now, the actual request
-
+      console.log("Detecting Cooling Towers ....");
       Detection.resetAll();
       formData.delete("estimate");
       fetch("/getobjects", { method: "POST", body: formData })
@@ -1658,6 +1657,7 @@ function getObjects(estimate) {
           // // Need to add code to process the results from EDAV
           // disableProgress(0, 0);
           // return;
+          console.log("Processing ....");
           processObjects(result, startTime);
         })
         .catch(e => {
@@ -1847,8 +1847,9 @@ function fillProviders() {
 }
 
 function setMap(newMap = currentMap) {
-  currentMap.clearAll();
+  
   if (currentUI !== null) {
+    currentMap.clearAll();
     document.getElementById(currentUI.value + "Map").style.display = "none";
   }
   currentUI = newMap;
@@ -1906,8 +1907,7 @@ function setMap(newMap = currentMap) {
     document.getElementById("bingSearchBoxContainer").style.display = "none";
     document.getElementById("azureSearchBoxContainer").style.display = "inline";
     currentMap = azureMap;
-    
-    // recreate boundaries for bing
+    // recreate boundaries for azure
     let bs = currentMap.boundaries;
     currentMap.resetBoundaries();
     bs.map(b => currentMap.addBoundary(b));
@@ -2016,10 +2016,15 @@ function afterAugment() {
   }
 
   Detection.sort();
+  console.log("Generating List of detections ..... ")
   Detection.generateList();
 
   // now hide low confidence values, sort the list and do the rest
+  
+  console.log("Adjusting Confidence ....");
   adjustConfidence();
+  
+  console.log("Done ....");
 }
 
 
