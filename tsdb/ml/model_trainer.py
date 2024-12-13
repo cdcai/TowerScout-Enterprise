@@ -7,7 +7,7 @@ from enum import Enum, auto
 from collections import namedtuple
 from typing import Protocol
 
-from tsdb.ml.models import TowerScoutModel
+# from tsdb.ml.models import TowerScoutModel
 from tsdb.ml.data_processing import transform_row, get_transform_spec, get_converter
 
 """
@@ -88,42 +88,42 @@ def inference_step(minibatch, model, metrics, step) -> dict:
     return score(logits, labels, step, metrics)
 
 
-class TowerScoutModelTrainer:
-    def __init__(self, optimizer_args, metrics=None, criterion: str = "MSE"):
-        self.model = TowerScoutModel()
+# class TowerScoutModelTrainer:
+#     def __init__(self, optimizer_args, metrics=None, criterion: str = "MSE"):
+#         self.model = TowerScoutModel()
 
-        if metrics is None:
-            metrics = [Metrics.MSE]
-        self.metrics = metrics
+#         if metrics is None:
+#             metrics = [Metrics.MSE]
+#         self.metrics = metrics
 
-        optimizer = self.get_optimizer()
-        self.optimizer = optimizer(self.model.parameters(), **optimizer_args)
+#         optimizer = self.get_optimizer()
+#         self.optimizer = optimizer(self.model.parameters(), **optimizer_args)
 
-        self.criterion = nn.BCEWithLogitsLoss()
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, 0.95)
-        self.loss = 0
-        self.val_loss = 0
-        self.threshold = 0.5
+#         self.criterion = nn.BCEWithLogitsLoss()
+#         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, 0.95)
+#         self.loss = 0
+#         self.val_loss = 0
+#         self.threshold = 0.5
 
-    @staticmethod
-    def get_optimizer():
-        return torch.optim.Adam
+#     @staticmethod
+#     def get_optimizer():
+#         return torch.optim.Adam
 
-    def training_step(self, minibatch, **kwargs) -> dict:
-        self.model.train()
+#     def training_step(self, minibatch, **kwargs) -> dict:
+#         self.model.train()
 
-        logits, images, labels = forward_func(self.model, minibatch)
-        loss = self.criterion(logits, images)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        return score(logits, labels, Steps["TRAIN"].name, self.metrics)
+#         logits, images, labels = forward_func(self.model, minibatch)
+#         loss = self.criterion(logits, images)
+#         self.optimizer.zero_grad()
+#         loss.backward()
+#         self.optimizer.step()
+#         return score(logits, labels, Steps["TRAIN"].name, self.metrics)
 
-    @torch.no_grad()
-    def validation_step(self, minibatch, **kwargs) -> dict:
-        return inference_step(minibatch, self.model, self.metrics, Steps["VAL"].name)
+#     @torch.no_grad()
+#     def validation_step(self, minibatch, **kwargs) -> dict:
+#         return inference_step(minibatch, self.model, self.metrics, Steps["VAL"].name)
 
-    def save_model(self):
-        pass
+#     def save_model(self):
+#         pass
 
 
