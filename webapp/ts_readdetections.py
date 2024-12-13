@@ -74,7 +74,7 @@ class SilverTable:
                 )
 
     def poll_SilverTableJobDone(
-        self, request_id, user_id, tile_count, max_retries, delay=60
+        self, request_id, user_id, tile_count, max_retries, delay=30
     ):
         connection = sql.connect(
             server_hostname="adb-1881246389460182.2.azuredatabricks.net",
