@@ -6,7 +6,7 @@ from tsdb.preprocessing.functions import sum_column, sum_bytes, image_statistics
 from PIL import Image
 import io
 from pyspark.sql.utils import AnalysisException
-from tsdb.schema_tests.schemas import statistics_schema
+from tsdb.preprocessing.functions import statistics_schema
 
 @pytest.fixture(scope="module")
 def spark_session() -> SparkSession:
