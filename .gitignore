@@ -18,6 +18,9 @@ train/*
 yolov5/*
 hosting/connect-tc.sh
 .DS_Store
+webapp/tests/config.py
+webapp/config.development.json
+flask_session/*
 # Distribution / packaging
 .Python
 build/
