@@ -60,6 +60,8 @@ def image_statistics_udf(image_binary: pst.BinaryType) -> statistics_schema:
         "extrema": image_statistics.extrema,
     }
 
+
+
 def compute_image_statistics(dataframe: DataFrame, image_column: str) -> DataFrame:
     """
     Returns a dataframe with column of computed image statistics
