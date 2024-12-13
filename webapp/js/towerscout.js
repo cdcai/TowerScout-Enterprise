@@ -1067,6 +1067,7 @@ class BingMap extends TSMap {
     }
 
     Detection.resetAll();
+    Tile.resetAll();
   }
 
   getBoundariesStr() {
@@ -1614,7 +1615,7 @@ function getObjects(estimate) {
 
   // erase the previous set of towers and tiles
   Detection.resetAll();
-  Tile.resetAll();
+  // Tile.resetAll();
 
   // first, play the request, but get an estimate of the number of tiles
   const formData = new FormData();
