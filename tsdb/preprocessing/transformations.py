@@ -22,6 +22,6 @@ def compute_bytes(
     base_bytes = 4
     binary_column = utils.cast_to_column(binary_column)
     num_bytes = F.lit(base_bytes) + F.length(binary_column)
-    #num_bytes = F.lit(base_bytes) + F.coalesce(F.length(binary_column), F.lit(0))
+    
 
     return dataframe.withColumn(col_name, num_bytes)
