@@ -1187,7 +1187,7 @@ class PlaceRect {
       bingMap.setZoom(19);
     }
     else if(currentUI.value === 'azure'){
-      azureMap.setCenter([(this.y1 + this.y2) / 2, (this.x1 + this.x2) / 2]);
+      azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
       azureMap.setZoom(18);
     }
     
