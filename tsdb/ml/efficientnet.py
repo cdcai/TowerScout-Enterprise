@@ -14,7 +14,6 @@
 # Looks at detections between x% and y% confidence, rechecks
 #
 
-
 import torch
 import torch.nn as nn
 import mlflow 
