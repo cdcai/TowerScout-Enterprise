@@ -194,7 +194,14 @@ async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
 async def rate_limited_fetch(
     session, url, dir, fname, i, index, mapType, unique_directory, tile
 ):
-    await asyncio.sleep(index * (1 / 3))
+    if (map == 'azure'):
+        #Azure has more payload. Instead of increasing the sleep time exponentially, by changing it to 1 second per tile 
+        # has avoided the error aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed. This change will not have
+        # much impact on the time factor, especially with large number of tiles, when compared with exponentially increasing the time based on the
+        # number of tiles
+        await asyncio.sleep(index * (1))
+    else:
+        await asyncio.sleep(index * (1 / 3))
     await fetch(session, url, dir, fname, i, mapType, unique_directory, tile)
 
 
