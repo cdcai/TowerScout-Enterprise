@@ -29,11 +29,11 @@ def mock_img_corner() -> Image.Image:
     return Image.fromarray(img_arr, mode='L')
 
 
-def test_cut_square_detection(mock_img: Image.Image,
-                              mock_img_corner: Image.Image) -> None:
-    ##################################################################
-    # test for perfectly square output when cropping near the center #
-    ##################################################################
+def test_perfect_squareness(mock_img: Image.Image) -> None:
+    '''
+    If the cropped region is close enough to the center of the image,
+    the resulting Image should be perfectly square
+    '''
     x1 = 0.4
     y1 = 0.4
     x2 = 0.6
@@ -45,17 +45,25 @@ def test_cut_square_detection(mock_img: Image.Image,
     assert w_res == h_res, \
         "Resulting width and height should match for perfect square test"
 
-    ####################################
-    # test for handling invalid inputs #
-    ####################################
+
+def test_invalid_inputs(mock_img: Image.Image) -> None:
+    '''
+    cut_square_detection() should raise an error if the input coordinates
+    are invalid
+    '''
     with pytest.raises(ValueError) as e:
         res = cut_square_detection(mock_img, x1=0.9, y1=0.8, x2=0.3, y2=0.5)
         assert str(e.value) == "Coordinate 'right' is less than 'left'"
 
-    ##############################################
-    # test that full black rectangle is captured #
-    ##############################################
-    # calculate proper floats based on mock_img values
+
+def test_full_region_capture(mock_img: Image.Image) -> None:
+    '''
+    The mock_img contains a black filled rectangle. If the input
+    coordinates outline this rectangle, the resulting Image should
+    contain the full original rectangle, plus a bordering buffer.
+    '''
+    # calculate proper floats based on mock_img values,
+    # these should perfectly outline the black rectangle
     x1 = 80/640
     x2 = 320/640
     y1 = 120/640
@@ -76,9 +84,16 @@ def test_cut_square_detection(mock_img: Image.Image,
     assert total_pixels > orig_black, \
         "Output Image should have more pixels than input due to addition of buffer"
 
-    ##################################################################
-    # test for corner case where x1, y1 are on the edge of the image #
-    ##################################################################
+
+def test_target_on_border(mock_img_corner: Image.Image) -> None:
+    '''
+    If the target crop section is on touching at least one edge of
+    the image, the output Image should contain the full original
+    contents, plus a bordering buffer.
+
+    mock_img_corner contains a black filled rectangle originating
+    at coordinates (0, 0)
+    '''
     x1 = 0
     x2 = 120/640
     y1 = 0
