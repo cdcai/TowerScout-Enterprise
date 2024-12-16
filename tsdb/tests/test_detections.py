@@ -33,15 +33,16 @@ def sample_raw_detections():
     A mock batch of data for the following tests.
     """
     raw_detections = [
-    RawDetection(
-        torch.tensor([[[0.3, 0.3, 0.5, 0.5, 0.5, 0], [0.1, 0.1, 0.2, 0.2, 0.8, 0]]])
-    ),  # mock model output for first image
-    RawDetection(
-        torch.tensor([[[0.2, 0.2, 0.4, 0.4, 0.2, 0]]])
-    ),  # mock model output for second image
+        RawDetection(
+            torch.tensor([[[0.3, 0.3, 0.5, 0.5, 0.5, 0], [0.1, 0.1, 0.2, 0.2, 0.8, 0]]])
+        ),  # mock model output for first image
+        RawDetection(
+            torch.tensor([[[0.2, 0.2, 0.4, 0.4, 0.2, 0]]])
+        ),  # mock model output for second image
     ]
 
     return raw_detections
+
 
 def test_predict(sample_images: list[Image], sample_raw_detections: list[RawDetection]):
     # Mock EfficientNet model output
@@ -55,6 +56,8 @@ def test_predict(sample_images: list[Image], sample_raw_detections: list[RawDete
 
     detections = detector.predict(sample_images, secondary=None)
 
+    assert len(detections) == 2, "Should contain detections for 2 images"
+
     for detection in detections:
         assert type(detection) == list, "Each detection should be a list"
         for box in detection:
@@ -65,4 +68,6 @@ def test_predict(sample_images: list[Image], sample_raw_detections: list[RawDete
             assert type(box["conf"]) == float, "Confidence should be floats"
             assert type(box["class"]) == int, "Class label should be ints"
             assert box["class_name"] == "ct", "Class names should be strings"
-            assert type(box["secondary"]) == int, "Class labels from secondary model should be ints"
+            assert (
+                type(box["secondary"]) == int
+            ), "Class labels from secondary model should be ints"
