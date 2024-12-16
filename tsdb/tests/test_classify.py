@@ -19,7 +19,7 @@ def test_classify() -> None:
     ]
 
     # Instantiate EN_Classifier with the mock model
-    classifier: EN_Classifier = EN_Classifier(mock_model)
+    classifier: EN_Classifier = EN_Classifier(mock_model, "v1")
 
     # Create a dummy image (e.g., 512x512 white image)
     img: Image.Image = Image.new("RGB", (512, 512), color=(255, 255, 255))
