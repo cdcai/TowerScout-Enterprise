@@ -1,8 +1,4 @@
 # Databricks notebook source
-# MAGIC %pip install pytest
-
-# COMMAND ----------
-
 import pytest
 import sys
 
