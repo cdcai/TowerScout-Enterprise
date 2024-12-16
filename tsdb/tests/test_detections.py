@@ -18,9 +18,7 @@ class RawDetection:
 @pytest.fixture()
 def sample_images():
     """
-    A mock batch of data for the following tests.
-    batch_idx corresponds to index of the image the bounding box is for in the im_file section of this dict.
-    For example if batch_idx is 0 then the box is from the first image 'path/img1.jpg' in the im_file section.
+    A mock batch of images for the following tests.
     """
     images = [Image.new("RGB", (512, 512), color=(255, 255, 255)) for i in range(2)]
 
@@ -30,7 +28,7 @@ def sample_images():
 @pytest.fixture()
 def sample_raw_detections():
     """
-    A mock batch of data for the following tests.
+    A mock batch of detections for the following tests.
     """
     raw_detections = [
         RawDetection(
@@ -45,13 +43,13 @@ def sample_raw_detections():
 
 
 def test_predict(sample_images: list[Image], sample_raw_detections: list[RawDetection]):
-    # Mock EfficientNet model output
-    mock_model: Mock = Mock()
+    # Mock YOLOv5 model output
+    mock_model = Mock()
 
     # Mock YOLOv5 model outputs (detections): [x1, y1, x2, y2, conf, label]
     mock_model.side_effect = sample_raw_detections
 
-    # Instantiate EN_Classifier with the mock model
+    # Instantiate YOLOv5_Detector with the mock model
     detector = YOLOv5_Detector(model=mock_model, batch_size=1, uc_version="v1")
 
     detections = detector.predict(sample_images, secondary=None)
