@@ -8,58 +8,93 @@ from tsdb.ml.utils import cut_square_detection, get_model_tags
 @pytest.fixture
 def mock_img() -> Image.Image:
     # create a blank image array
-    img_arr = np.zeros((640, 640), dtype=int)
+    img_arr = np.zeros((640, 640), dtype=np.uint8)
 
     # add a black filled rectangle to the image array
     img_arr[80:320, 120:200] = 255
 
+    # mode 'L' is used for grayscale, nxn array each containing val 0-255
     return Image.fromarray(img_arr, mode='L')
 
 
-def test_cut_square_detection(img: Image.Image) -> None:
-    # test for correct width and height
-    # test pixel contents
-    # test edge cases, like invalid coordinates
+@pytest.fixture
+def mock_img_corner() -> Image.Image:
+    # create a blank image array
+    img_arr = np.zeros((640, 640), dtype=np.uint8)
 
-    # calculate correct final width and height based on values from mock
-    w_final = 320-80
-    h_final = 200-120
+    # add a black filled rectangle to the image array, place it in a corner
+    img_arr[0:120, 0:240] = 255
 
-    # calculate float values based on rectangle created in mock
-    x1 = 80/640
-    y1 = 120/640
-    x2 = 320/640
-    y2 = 200/640
+    # mode 'L' is used for grayscale, nxn array each containing val 0-255
+    return Image.fromarray(img_arr, mode='L')
 
-    res = cut_square_detection(img, x1=x1, y1=y1, x2=x2, y2=y2)
+
+def test_cut_square_detection(mock_img: Image.Image,
+                              mock_img_corner: Image.Image) -> None:
+    ##################################################################
+    # test for perfectly square output when cropping near the center #
+    ##################################################################
+    x1 = 0.4
+    y1 = 0.4
+    x2 = 0.6
+    y2 = 0.6
+
+    res = cut_square_detection(mock_img, x1=x1, y1=y1, x2=x2, y2=y2)
     w_res, h_res = res.size
 
-    assert w_res == w_final, "Resulting width should match calculated width"
-    assert h_res == h_final, "Resulting height should match calculated height"
+    assert w_res == h_res, \
+        "Resulting width and height should match for perfect square test"
 
-    res_array = np.array(res)
-    all_black = True
-    for i in range(len(res_array)):
-        for j in range(len(res_array[i])):
-            if res_array[i][j] != 256:
-                all_black = False
-                break
-        if not all_black:
-            break
-    
-    assert all_black, "Resulting image should be all black"
+    ####################################
+    # test for handling invalid inputs #
+    ####################################
+    with pytest.raises(ValueError) as e:
+        res = cut_square_detection(mock_img, x1=0.9, y1=0.8, x2=0.3, y2=0.5)
+        assert str(e.value) == "Coordinate 'right' is less than 'left'"
 
+    ##############################################
+    # test that full black rectangle is captured #
+    ##############################################
+    # calculate proper floats based on mock_img values
+    x1 = 80/640
+    x2 = 320/640
+    y1 = 120/640
+    y2 = 200/640
 
-# def test_get_model_tags() -> None:
-#     pass
+    res = cut_square_detection(mock_img, x1=x1, y1=y1, x2=x2, y2=y2)
 
+    # calculate expected number of black pixels
+    orig_black = int(np.sum(mock_img.getdata())/255)
+    res_black = int(np.sum(res.getdata())/255)
 
-# if __name__ == '__main__':
-#     # create a blank image array
-#     img_arr = np.zeros((640, 640), dtype=int)
+    assert orig_black == res_black, \
+        "Output Image should capture all black pixels from input"
 
-#     # add a black filled rectangle to the image array
-#     img_arr[80:320, 120:200] = 255
+    # and confirm that at least some buffer was added after the crop
+    w, h = res.size
+    total_pixels = w * h
+    assert total_pixels > orig_black, \
+        "Output Image should have more pixels than input due to addition of buffer"
 
-#     img = Image.fromarray(img_arr, mode='L')
-#     print(cut_square_detection(img, 0.1, 0.2, 0.5, 0.8).size)
+    ##################################################################
+    # test for corner case where x1, y1 are on the edge of the image #
+    ##################################################################
+    x1 = 0
+    x2 = 120/640
+    y1 = 0
+    y2 = 240/640
+
+    res = cut_square_detection(mock_img_corner, x1=x1, y1=y1, x2=x2, y2=y2)
+
+    # calculate expected number of black pixels
+    orig_black = int(np.sum(mock_img_corner.getdata())/255)
+    res_black = int(np.sum(res.getdata())/255)
+
+    assert orig_black == res_black, \
+        "Output Image should capture all black pixels from input"
+
+    # and confirm that at least some buffer was added after the crop
+    w, h = res.size
+    total_pixels = w * h
+    assert total_pixels > orig_black, \
+        "Output Image should have more pixels than input due to addition of buffer"
