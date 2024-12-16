@@ -147,7 +147,13 @@ def cut_square_detection(img, x1, y1, x2, y2):
 def get_model_tags(model_name: str, alias: str) -> tuple[dict[str, str], str]:
     """
     Returns the tags for the model with the given model name and alias
-    along with the model version
+    along with the model version.
+    Note we do not unit test this function as `get_model_version_by_alias`
+    and `get_model_version` are unit tested in the MLflow git repo already at
+    https://github.com/mlflow/mlflow/blob/8c07dc0f604565bec29358526db461ca4f842bb5/tests/tracking/test_client.py#L1532
+    and 
+    https://github.com/mlflow/mlflow/blob/8c07dc0f604565bec29358526db461ca4f842bb5/tests/store/model_registry/test_rest_store.py#L306
+    respectively.
     """
     client = MlflowClient()
     model_version_info = client.get_model_version_by_alias(
