@@ -8,21 +8,6 @@
 
 # COMMAND ----------
 
-# MAGIC %sh
-# MAGIC
-# MAGIC cd ..
-# MAGIC pytest
-
-# COMMAND ----------
-
-!ls
-
-# COMMAND ----------
-
-# MAGIC %restart_python
-
-# COMMAND ----------
-
 import pytest
 import sys
 
@@ -65,10 +50,6 @@ run_pytest_main([
 # MAGIC | -p no:cacheprovider | -p specifies plugins, this full command prevents pytest from caching results (since we can't write) |
 # MAGIC
 # MAGIC This is a basic pytest call and you can have more complex setups by passing different flags.
-
-# COMMAND ----------
-
-run_pytest_main([".", "-v", "-p", "no:cacheprovider"])
 
 # COMMAND ----------
 
