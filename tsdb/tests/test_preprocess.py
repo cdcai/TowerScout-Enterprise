@@ -11,6 +11,7 @@ from petastorm.spark import make_spark_converter
 from tsdb.preprocessing.functions import sum_bytes  
 from tsdb.preprocessing.preprocess import create_converter
 
+
 @pytest.fixture(scope="module")
 def spark():
     """Create a Spark session for testing."""
@@ -20,6 +21,7 @@ def spark():
         .getOrCreate()
     )
     return spark
+
 
 def test_create_converter(spark):
     """Test the create_converter function."""
@@ -86,7 +88,3 @@ def test_create_converter(spark):
             print(f"Assertion failed: {e}")
             print(f"Called with: {mock_make_spark_converter.call_args}")
             print(f"Expected: (images_df, parquet_row_group_size_bytes={parquet_row_group_size_bytes}, spark_session=spark, cache_dir={cache_dir})")
-
-
-
-
