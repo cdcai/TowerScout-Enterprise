@@ -39,7 +39,7 @@ from flask import request
 
 current_directory = os.getcwd()
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
-
+timeout = aiohttp.ClientTimeout(total=60)  # Set the timeout to 60 seconds
 
 class Map:
 
@@ -178,7 +178,7 @@ def convert_to_data_uri(image_content):
 async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
     # execute
     unique_directory = generate_unique_directory_name(self)
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         await fetch_all(
             session,
             urls,
@@ -194,14 +194,14 @@ async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
 async def rate_limited_fetch(
     session, url, dir, fname, i, index, mapType, unique_directory, tile
 ):
-    if ( mapType == 'azure'):
+    # if ( mapType == 'azure'):
         #Azure has more payload. Instead of increasing the sleep time exponentially, by changing it to 1 second per tile 
         # has avoided the error aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed. This change will not have
         # much impact on the time factor, especially with large number of tiles, when compared with exponentially increasing the time based on the
         # number of tiles
-        await asyncio.sleep(index * (1))
-    else:
-        await asyncio.sleep(index * (1 / 3))
+    await asyncio.sleep(index * (1))
+    # else:
+    #     await asyncio.sleep(index * (1 / 3))
     await fetch(session, url, dir, fname, i, mapType, unique_directory, tile)
 
 
