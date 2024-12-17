@@ -1,13 +1,4 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC coverage==7.6.9
-
-# COMMAND ----------
-
-# MAGIC %pip install coverage pytest-cov
-
-# COMMAND ----------
-
 import pytest
 import sys
 
@@ -27,19 +18,6 @@ def run_pytest_main(flags: list[str]):
 
 # COMMAND ----------
 
-run_pytest_main([
-    ".", 
-    "-v", 
-    "-p", 
-    "no:cacheprovider",
-    "--cov=../ml",
-    "--cov=../preprocessing",
-    "--cov=../utils",
-    "--cov-report=term-missing"
-])
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC Pytest call meanings
 # MAGIC
@@ -48,8 +26,23 @@ run_pytest_main([
 # MAGIC | "." | Run all tests in cwd, this translates to tsdb/tests |
 # MAGIC | -v | Verbose |
 # MAGIC | -p no:cacheprovider | -p specifies plugins, this full command prevents pytest from caching results (since we can't write) |
+# MAGIC | --cov=../ml | run coverage report for code located in tsdb/ml directory (relative to this notebook) |
+# MAGIC | --cov-config=.coveragerc | Use coveragerc for parameters |
 # MAGIC
 # MAGIC This is a basic pytest call and you can have more complex setups by passing different flags.
+
+# COMMAND ----------
+
+run_pytest_main([
+    ".", 
+    "-v", 
+    "-p", 
+    "no:cacheprovider",
+    "--cov=../ml",
+    "--cov=../preprocessing",
+    "--cov-report=term-missing",
+    "--cov-config=.coveragerc"
+])
 
 # COMMAND ----------
 
