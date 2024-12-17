@@ -181,8 +181,8 @@ class AzureMap extends TSMap {
     super();
     this.map = new atlas.Map('azureMap', {
       center: [nyc[0], nyc[1]], // Reverse Bing
-      zoom: 18,
-      maxZoom: 19,
+      zoom: 19,
+      maxZoom: 20,
       disableStreetside: true,
       authOptions: {
         authType: 'subscriptionKey',
@@ -272,7 +272,7 @@ class AzureMap extends TSMap {
                       ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
                       ui.item.viewport.btmRightPoint.lon, ui.item.viewport.topLeftPoint.lat
                   ],
-                  padding: 30
+                  padding: 0
               });
           }
       }).autocomplete("instance")._renderItem = function (ul, item) {
@@ -351,7 +351,7 @@ class AzureMap extends TSMap {
     Detection.resetAll();
     this.drawingManager?.getSource()?.clear();
     
-    currentMap.clearAllCustomLayers();     
+    currentMap.clearAllCustomLayers();
     
   }
   hideAllDataSources() {
@@ -399,8 +399,8 @@ class AzureMap extends TSMap {
         [b[0], b[1]], // Southwest
         [b[2], b[3]]  // Northeast
       ],
-      padding: 30,
-      zoom: 18
+      padding: 0,
+      zoom: 19
     });
   }
 
@@ -429,7 +429,7 @@ class AzureMap extends TSMap {
       var maxY = Math.max(...polygon.map(p => p[1]));
 
       var bounds = atlas.data.BoundingBox.fromEdges(minX, minY, maxX, maxY);
-      this.map.setCamera({ bounds, padding: 5 });
+      this.map.setCamera({ bounds, padding: 0 });
     }
   }
 
@@ -649,6 +649,7 @@ class AzureMap extends TSMap {
         this.map.sources.getById(o.dataSourceID)?.setOptions({
           visible: true
         });
+        o.visibilitySetto = true
       }
       else{
         // console.log("o.fillLayerID:" + o.fillLayerID);
@@ -664,6 +665,7 @@ class AzureMap extends TSMap {
         this.map.sources.getById(o.dataSourceID)?.setOptions({
           visible: false
         });
+        o.visibilitySetto = false
         }
       
     }
@@ -1189,7 +1191,7 @@ class PlaceRect {
     }
     else if(currentUI.value === 'azure'){
       azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
-      azureMap.setZoom(18);
+      azureMap.setZoom(19);
     }
     
   }
@@ -1443,7 +1445,10 @@ class Detection extends PlaceRect {
   }
 
   showAddr(onoff) {
+    // Do not change the display to 'none' if the main addrli item is displaying as one of the firstdet is visible
+    if ((document.getElementById("addrli" + this.id).style.display == 'none') || (document.getElementById("addrli" + this.id).style.display == '')){
     document.getElementById("addrli" + this.id).style.display = onoff ? "block" : "none";
+    }
   }
 
   static showDetection(id, center) {
@@ -1964,7 +1969,7 @@ function augmentDetections() {
     }
     let loc = det.getCenterUrl();
      // call Bing maps api instead at:
-
+    if (currentUI.value == "bing"){
      setTimeout((ix)=>{
       //console.log(ix+1);
       $.ajax({
@@ -1980,8 +1985,33 @@ function augmentDetections() {
         afterAugment();
       }
 
-    });
-     },1000*i,i)
+      });
+      },1000*i,i)
+    }
+    else if (currentUI.value == "azure")
+    {
+      let reverseloc = loc.split(",")[1] + "," + loc.split(",")[0]
+      setTimeout((ix)=>{
+        //console.log(ix+1);
+        $.ajax({
+        // url: "https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query="+ loc + "&subscription-key=" + azure_api_key,
+        url: "https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates="+ reverseloc + "&subscription-key=" + azure_api_key,
+        type: 'GET',  // GET request to fetch data
+        // GET https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates={coordinates}&resultTypes={resultTypes}&view={view}
+        // data: {
+        //   resultTypes: "address",
+        //   // output: "json",
+        // },
+        success: function (result) {
+          let addr = result.features[0].properties.address.formattedAddress; // Get formatted address
+          // let addr = result['addresses'][0].address.freeformAddress; // Get freeform address
+          det.augment(addr);
+          afterAugment();
+        }
+  
+        });
+        },1000*i,i)
+    }
     // $.ajax({
     //   url: "https://maps.googleapis.com/maps/api/geocode/json",
     //   data: {
