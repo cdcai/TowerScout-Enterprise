@@ -202,6 +202,9 @@ async def rate_limited_fetch(
     await asyncio.sleep(index * (1))
     # else:
     #     await asyncio.sleep(index * (1 / 3))
+    await asyncio.sleep(index * (1))
+    # else:
+    #     await asyncio.sleep(index * (1 / 3))
     await fetch(session, url, dir, fname, i, mapType, unique_directory, tile)
 
 
