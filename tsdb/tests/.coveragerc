@@ -1,0 +1,9 @@
+[run]
+omit = 
+  */pyspark/*
+  */ultralytics/*
+  */dbutils/*
+  */site-packages/*
+  */spark/*
+  */venv/*
+  */databricks/*
