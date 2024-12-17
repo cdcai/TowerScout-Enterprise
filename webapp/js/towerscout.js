@@ -1963,7 +1963,7 @@ function augmentDetections() {
     }
     let loc = det.getCenterUrl();
      // call Bing maps api instead at:
-    if (currentUI.value == "bing"){
+
      setTimeout((ix)=>{
       //console.log(ix+1);
       $.ajax({
@@ -1979,31 +1979,8 @@ function augmentDetections() {
         afterAugment();
       }
 
-      });
-      },1000*i,i)
-    }
-    else if (currentUI.value == "azure")
-    {
-      reverseloc = loc.split(",")[1] + "," + loc.split(",")[0]
-      setTimeout((ix)=>{
-        //console.log(ix+1);
-        $.ajax({
-        url: "https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates="+ reverseloc + "&subscription-key=" + azure_api_key,
-        type: 'GET',  // GET request to fetch data
-        // GET https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates={coordinates}&resultTypes={resultTypes}&view={view}
-        // data: {
-        //   resultTypes: "address",
-        //   // output: "json",
-        // },
-        success: function (result) {
-          let addr = result.features[0].properties.address.formattedAddress; // Get formatted address
-          det.augment(addr);
-          afterAugment();
-        }
-  
-        });
-        },1000*i,i)
-    }
+    });
+     },1000*i,i)
     // $.ajax({
     //   url: "https://maps.googleapis.com/maps/api/geocode/json",
     //   data: {
