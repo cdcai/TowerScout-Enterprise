@@ -19,8 +19,26 @@ else:
 
 # COMMAND ----------
 
-# Install necessary tools
-%pip install wheel setuptools
+env = "dev"
+catalog = "edav_dev_csels"
+schema = "towerscout"
+debug_mode = False
+unit_test_mode = False
+
+# COMMAND ----------
+
+from tsdb.utils.fs import package_and_move_wheel
+
+# COMMAND ----------
+
+source_path = "/Volumes/edav_dev_csels/towerscout/misc/yolov5"
+target_path = "/Volumes/edav_dev_csels/towerscout/wheel/"
+package_and_move_wheel(source_path, target_path, dbutils, overwrite=False)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Old Version - Delete when done
 
 # COMMAND ----------
 
