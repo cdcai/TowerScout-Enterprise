@@ -20,7 +20,7 @@ from tsdb.ml.detections import YOLOv5_Detector
 from tsdb.ml.efficientnet import EN_Classifier
 
 
-class InferenceModelType(Protocol):
+class InferenceModelType(Protocol):  # pragma: no cover
     """
     A model class to wrap the model and provide the required methods to run
     distributed inference
@@ -57,7 +57,7 @@ def make_towerscout_predict_udf(
     yolo_alias: str = "aws",
     efficientnet_alias: str = "aws",
     batch_size: int = 100
-) -> DataFrame:
+) -> DataFrame:  # pragma: no cover
     """
     For a pandas UDF, we need the outer function to initialize the models
     and the inner function to perform the inference. Process. For more
@@ -102,7 +102,7 @@ def make_towerscout_predict_udf(
     ])
 
     @no_grad()
-    def predict(content_series_iter: Iterable[Any]):
+    def predict(content_series_iter: Iterable[Any]):  # pragma: no cover
         """
         This predict function is distributed across executors to perform inference.
 

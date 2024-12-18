@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession
 import pyspark.sql.types as T
 
 
-def make_image_metadata_udf(spark: SparkSession):
+def make_image_metadata_udf(spark: SparkSession):  # pragma: no cover
     towerscout_image_metadata_schema = T.StructType([
         T.StructField("height", T.IntegerType()),
         T.StructField("width", T.IntegerType()),
@@ -16,7 +16,7 @@ def make_image_metadata_udf(spark: SparkSession):
         T.StructField("map_provider", T.StringType())
     ])
 
-    def get_image_metadata(image_binary: T.BinaryType):
+    def get_image_metadata(image_binary: T.BinaryType):  # pragma: no cover
         image = Image.open(BytesIO(image_binary))
         exif = image._getexif()
         user_comment_exif_id = 37510

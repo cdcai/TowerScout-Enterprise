@@ -72,6 +72,7 @@ image_df = (
     .readStream
     .format("cloudFiles")
     .options(**image_config)
+    .option("clouldFiles.useNotifications", "true")
     .load(image_directory_path) # parameterize
     .repartition(8)
 )
