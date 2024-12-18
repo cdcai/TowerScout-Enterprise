@@ -23,15 +23,7 @@ class SilverTable:
             # # Testing existing data
             # user_id = 'cnu4'
             # request_id = '32c219ef' # azure 10 mtrs
-            # request_id = '7fe1cd27' #azure 50 mtrs
-            # request_id = "c71b863d" #bing 50 mtrs
-            # request_id = 'a1fb4d30' # azure 100mtrs
-            # request_id = 'cc617c59' # bing 100 mtrs
-            # request_id = '2427c809'
             try:
-                # user_id = "cnu4"
-                # request_id = "3d8d13dc" 
-                # # "cc896b8a" 10 mtrs
                 cursor = connection.cursor()
 
                 cursor.execute(
@@ -85,14 +77,6 @@ class SilverTable:
         # user_id = 'cnu4'
         # request_id = '7fe1cd27'
         try:
-            # user_id = "cnu4"
-            # request_id = '32c219ef' # azure 10 mtrs
-            # request_id = '7fe1cd27' #azure 50 mtrs
-            # request_id = "c71b863d" #bing 50 mtrs
-            # request_id = 'a1fb4d30' # azure 100mtrs
-            # request_id = 'cc617c59' # bing 100 mtrs
-            # # "cc896b8a" 10 mtrs
-            # request_id = '2427c809'
             cursor = connection.cursor()
             retries = 0
             print("retries", max_retries)
