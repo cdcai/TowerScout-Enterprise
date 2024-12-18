@@ -180,16 +180,15 @@ class AzureMap extends TSMap {
   constructor() {
     super();
     this.map = new atlas.Map('azureMap', {
-      center: [nyc[0], nyc[1]], // [longitude, latitude]
-      zoom: 18,
-      scale: 2,
-      view: 'Auto',
-      language: 'en-US',
+      center: [nyc[0], nyc[1]], // Reverse Bing
+      zoom: 19,
+      maxZoom: 20,
+      disableStreetside: true,
       authOptions: {
         authType: 'subscriptionKey',
         subscriptionKey: azure_api_key
       },
-      style: 'satellite'
+      style: "road" // Ensure you're using vector tiles for clarity
     });
 
     /*Add the Style Control to the map*/
@@ -249,7 +248,7 @@ class AzureMap extends TSMap {
                       const polygonStyle = {
                           fillColor: 'rgba(0, 0, 255, 0.5)', // Semi-transparent blue
                           strokeColor: 'blue',
-                          strokeWidth: 2
+                          strokeWidth: 1
                       };
 
                       // Add the polygon to the map with the specified style
@@ -273,7 +272,7 @@ class AzureMap extends TSMap {
                       ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
                       ui.item.viewport.btmRightPoint.lon, ui.item.viewport.topLeftPoint.lat
                   ],
-                  padding: 30
+                  padding: 0
               });
           }
       }).autocomplete("instance")._renderItem = function (ul, item) {
@@ -304,7 +303,7 @@ class AzureMap extends TSMap {
     var layers = this.drawingManager.getLayers();
     layers.lineLayer.setOptions({
       strokeColor: 'blue',
-      strokeWidth: 3
+      strokeWidth: 1
     });
     layers.polygonOutlineLayer.setOptions({
       strokeColor: 'blue'
@@ -370,9 +369,9 @@ class AzureMap extends TSMap {
   clearAllCustomLayers() {
     var layers = currentMap.map.layers.getLayers(); // Get all layers in the map
     layers.forEach(function(layer) {
-      if (layer['type'] != 'traffic'){
-        currentMap.map.layers.remove(layer); // Remove each layer from the map
-      }
+      // if (layer['type'] != 'traffic'){
+      currentMap.map.layers.remove(layer); // Remove each layer from the map
+      // }
       
     });
   }
@@ -430,7 +429,7 @@ class AzureMap extends TSMap {
       var maxY = Math.max(...polygon.map(p => p[1]));
 
       var bounds = atlas.data.BoundingBox.fromEdges(minX, minY, maxX, maxY);
-      this.map.setCamera({ bounds, padding: 5 });
+      this.map.setCamera({ bounds, padding: 30 });
     }
   }
 
@@ -473,7 +472,7 @@ class AzureMap extends TSMap {
             'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
           det.update();
         }
-
+        console.log("Getting Address(s) for the detection(s)....")
         augmentDetections();
       }
       this.drawingManager.clear();
@@ -547,7 +546,7 @@ class AzureMap extends TSMap {
       o.dataSourceID = tiledataSource.id;        
       var tileborderLayer = new atlas.layer.LineLayer(tiledataSource, null, {
         strokeColor: 'blue',
-        strokeWidth: 2                   // Border width
+        strokeWidth: 1                 // Border width
       });
       currentMap.map.layers.add(tileborderLayer);
       o.borderLayerID = tileborderLayer.id;
@@ -567,14 +566,14 @@ class AzureMap extends TSMap {
       // Create a layer for just the border of the bounding box/tile (without fill)
       var borderLayer = new atlas.layer.LineLayer(dataSource, null, {
         strokeColor: 'red',
-        strokeWidth: 2                   // Border width
+        strokeWidth: 1                // Border width
       });
       currentMap.map.layers.add(borderLayer);
       o.borderLayerID = borderLayer.id;
       fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
         strokeColor: 'red',
         fillColor: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red fill
-        strokeWidth: 2                   // Border width
+        strokeWidth: 1                  // Border width
       });
       currentMap.map.layers.add(fillLayer);
       o.fillLayerID = fillLayer.id;;
@@ -616,7 +615,7 @@ class AzureMap extends TSMap {
       FilllayertoHighlight.setOptions({
           strokeColor: color,
           fillColor: fillcolor, // Semi-transparent fill
-          strokeWidth: 2 
+          strokeWidth: 1 
         });
       
     }
@@ -650,6 +649,7 @@ class AzureMap extends TSMap {
         this.map.sources.getById(o.dataSourceID)?.setOptions({
           visible: true
         });
+        o.visibilitySetto = true
       }
       else{
         // console.log("o.fillLayerID:" + o.fillLayerID);
@@ -665,6 +665,7 @@ class AzureMap extends TSMap {
         this.map.sources.getById(o.dataSourceID)?.setOptions({
           visible: false
         });
+        o.visibilitySetto = false
         }
       
     }
@@ -1443,7 +1444,10 @@ class Detection extends PlaceRect {
   }
 
   showAddr(onoff) {
+    // Do not change the display to 'none' if the main addrli item is displaying as one of the firstdet is visible
+    if ((document.getElementById("addrli" + this.id).style.display == 'none') || (document.getElementById("addrli" + this.id).style.display == '')){
     document.getElementById("addrli" + this.id).style.display = onoff ? "block" : "none";
+    }
   }
 
   static showDetection(id, center) {
@@ -1608,14 +1612,14 @@ function getObjects(estimate) {
   let boundaries = currentMap.getBoundariesStr();
   let kinds = ["None", "Polygon", "Multiple polygons"]
   if (estimate) {
-    console.log("Estimate request in progress");
+    console.log("Estimate request in progress ....");
   } else {
-    console.log("Detection request in progress");
+    console.log("Detection request in progress ....");
   }
 
   // erase the previous set of towers and tiles
   Detection.resetAll();
-  Tile.resetAll();
+  // Tile.resetAll();
 
   // first, play the request, but get an estimate of the number of tiles
   const formData = new FormData();
@@ -1649,7 +1653,7 @@ function getObjects(estimate) {
       let startTime = performance.now();
 
       // now, the actual request
-
+      console.log("Detecting Cooling Towers ....");
       Detection.resetAll();
       formData.delete("estimate");
       fetch("/getobjects", { method: "POST", body: formData })
@@ -1658,6 +1662,7 @@ function getObjects(estimate) {
           // // Need to add code to process the results from EDAV
           // disableProgress(0, 0);
           // return;
+          console.log("Processing ....");
           processObjects(result, startTime);
         })
         .catch(e => {
@@ -1847,8 +1852,9 @@ function fillProviders() {
 }
 
 function setMap(newMap = currentMap) {
-  currentMap.clearAll();
+  
   if (currentUI !== null) {
+    currentMap.clearAll();
     document.getElementById(currentUI.value + "Map").style.display = "none";
   }
   currentUI = newMap;
@@ -1906,8 +1912,7 @@ function setMap(newMap = currentMap) {
     document.getElementById("bingSearchBoxContainer").style.display = "none";
     document.getElementById("azureSearchBoxContainer").style.display = "inline";
     currentMap = azureMap;
-    
-    // recreate boundaries for bing
+    // recreate boundaries for azure
     let bs = currentMap.boundaries;
     currentMap.resetBoundaries();
     bs.map(b => currentMap.addBoundary(b));
@@ -1963,7 +1968,7 @@ function augmentDetections() {
     }
     let loc = det.getCenterUrl();
      // call Bing maps api instead at:
-
+    if (currentUI.value == "bing"){
      setTimeout((ix)=>{
       //console.log(ix+1);
       $.ajax({
@@ -1979,8 +1984,33 @@ function augmentDetections() {
         afterAugment();
       }
 
-    });
-     },1000*i,i)
+      });
+      },1000*i,i)
+    }
+    else if (currentUI.value == "azure")
+    {
+      let reverseloc = loc.split(",")[1] + "," + loc.split(",")[0]
+      setTimeout((ix)=>{
+        //console.log(ix+1);
+        $.ajax({
+        // url: "https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query="+ loc + "&subscription-key=" + azure_api_key,
+        url: "https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates="+ reverseloc + "&subscription-key=" + azure_api_key,
+        type: 'GET',  // GET request to fetch data
+        // GET https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates={coordinates}&resultTypes={resultTypes}&view={view}
+        // data: {
+        //   resultTypes: "address",
+        //   // output: "json",
+        // },
+        success: function (result) {
+          let addr = result.features[0].properties.address.formattedAddress; // Get formatted address
+          // let addr = result['addresses'][0].address.freeformAddress; // Get freeform address
+          det.augment(addr);
+          afterAugment();
+        }
+  
+        });
+        },1000*i,i)
+    }
     // $.ajax({
     //   url: "https://maps.googleapis.com/maps/api/geocode/json",
     //   data: {
@@ -2016,10 +2046,15 @@ function afterAugment() {
   }
 
   Detection.sort();
+  console.log("Generating List of detections ..... ")
   Detection.generateList();
 
   // now hide low confidence values, sort the list and do the rest
+  
+  console.log("Adjusting Confidence ....");
   adjustConfidence();
+  
+  console.log("Done ....");
 }
 
 
