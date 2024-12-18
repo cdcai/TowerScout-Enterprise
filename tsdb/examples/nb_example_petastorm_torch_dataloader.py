@@ -54,6 +54,9 @@ petastorm_path = "file:///dbfs/tmp/petastorm/cache"
 
 # COMMAND ----------
 
+cat_name = "edav_dev_csels"
+sch_name = "towerscout" # hardcode these for now
+
 images = (
     spark
     .table(f"{cat_name}.{sch_name}.image_metadata")
