@@ -3,11 +3,12 @@ This module contains UDF's for inference for the TowerScout application
 """
 from io import BytesIO
 from json import loads
-from typing import Any, Iterable
+from typing import Any, Iterable, Protocol
 
 import pandas as pd
 from PIL import Image
-from torch import no_grad
+from torch import no_grad, Tensor
+from torch.nn import Module
 
 from mlflow import set_registry_uri
 
@@ -15,9 +16,39 @@ from pyspark.sql.functions import col, pandas_udf, PandasUDFType
 from pyspark.sql import DataFrame
 import pyspark.sql.types as T
 
-from tsdb.ml.models import InferenceModelType
 from tsdb.ml.detections import YOLOv5_Detector
-from tsdb.ml.efficientnet import ENClassifier
+from tsdb.ml.efficientnet import EN_Classifier
+
+
+class InferenceModelType(Protocol):
+    """
+    A model class to wrap the model and provide the required methods to run
+    distributed inference
+    TODO: model instantiation logic should be moved to the model class
+    """
+
+    @property
+    def model(self) -> Module:
+        raise NotImplementedError
+
+    @property
+    def return_type(self) -> T.StructType:
+        raise NotImplementedError
+
+    def __call__(self, input) -> Tensor:  # dunder methods
+        raise NotImplementedError
+
+    def preprocess_input(self, input) -> Tensor:
+        # torchvision.transforms
+        raise NotImplementedError
+
+
+MODEL_VERSION_STRUCT = T.StructType([
+    T.StructField("yolo_model", T.StringType()),
+    T.StructField("yolo_model_version", T.StringType()),
+    T.StructField("efficientnet_model", T.StringType()),
+    T.StructField("efficientnet_model_version", T.StringType())
+])
 
 
 def make_towerscout_predict_udf(
@@ -53,10 +84,22 @@ def make_towerscout_predict_udf(
     )
 
     # We nearly always use efficientnet for classification but you don't have to
-    en_classifier = ENClassifier.from_uc_registry(
+    en_classifier = EN_Classifier.from_uc_registry(
         model_name=en_model_name,
         alias=efficientnet_alias
     )
+
+    metadata = {
+        "yolo_model": "yolo_autoshape",
+        "yolo_model_version": yolo_detector.uc_version,
+        "efficientnet_model": "efficientnet",
+        "efficientnet_model_version": en_classifier.uc_version,
+    }
+
+    return_type = T.StructType([
+        T.StructField("bboxes", yolo_detector.return_type),
+        T.StructField("model_version", MODEL_VERSION_STRUCT)
+    ])
 
     @no_grad()
     def predict(content_series_iter: Iterable[Any]):
@@ -96,7 +139,15 @@ def make_towerscout_predict_udf(
             ]
 
             # Perform inference on batch
-            output = yolo_detector.predict(model_input=image_batch, secondary=en_classifier)
-            yield pd.Series(output)
+            outputs = yolo_detector.predict(
+                model_input=image_batch, 
+                secondary=en_classifier
+            )
 
-    return pandas_udf(yolo_detector.return_type, PandasUDFType.SCALAR_ITER)(predict)
+            outputs = [
+                {"bboxes": output, "model_version": metadata}
+                for output in outputs
+            ]
+            yield pd.DataFrame(outputs)
+
+    return pandas_udf(return_type, PandasUDFType.SCALAR_ITER)(predict)

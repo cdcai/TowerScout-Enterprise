@@ -7,9 +7,12 @@ from enum import Enum, auto
 from collections import namedtuple
 from typing import Protocol
 
-from tsdb.ml.models import TowerScoutModel
+from tsdb.ml.efficientnet import EN_Classifier
 from tsdb.ml.data_processing import transform_row, get_transform_spec, get_converter
 
+"""
+TODO: Adapt this file to be the EN model trainer
+"""
 
 class Metrics(Enum):
     MSE = nn.MSELoss()
@@ -87,7 +90,7 @@ def inference_step(minibatch, model, metrics, step) -> dict:
 
 class TowerScoutModelTrainer:
     def __init__(self, optimizer_args, metrics=None, criterion: str = "MSE"):
-        self.model = TowerScoutModel()
+        self.model = EN_Classifier()
 
         if metrics is None:
             metrics = [Metrics.MSE]

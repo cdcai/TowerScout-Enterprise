@@ -23,18 +23,19 @@ from torchvision import transforms
 
 import PIL
 from PIL import Image
-from tsdb.ml.utils import cut_square_detection, YOLOv5Detection
+from tsdb.ml.utils import cut_square_detection, YOLOv5Detection, get_model_tags
 
 
-class ENClassifier(nn.Module):
+class EN_Classifier(nn.Module):
 
-    def __init__(self, model: nn.Module):
-        super(ENClassifier, self).__init__()
+    def __init__(self, model: nn.Module, uc_version: str):
+        super(EN_Classifier, self).__init__()
         """
         If you intend to fine tune this model you may need a 
         proxy connection which may not be available in production.
         """
         self.model = model
+        self.uc_version = uc_version
         
         # switch to GPU memory if available
         if torch.cuda.is_available():
@@ -54,11 +55,13 @@ class ENClassifier(nn.Module):
         """
         Create EN_calssifer object using a registered model from UC Model Registry
         """
+        _, uc_version = get_model_tags(model_name, alias)
+
         registered_model = mlflow.pytorch.load_model(
             model_uri=f"models:/{model_name}@{alias}"
         )
 
-        return cls(registered_model)
+        return cls(registered_model, uc_version)
 
 
     def forward(self, x):

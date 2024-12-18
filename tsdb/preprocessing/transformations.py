@@ -26,12 +26,12 @@ def compute_bytes(
     return dataframe.withColumn(col_name, num_bytes)
 
 
-def perform_inference(dataframe, inference_udf):
-    return dataframe.withColumn("bboxes", inference_udf(F.col("content")))
+def perform_inference(dataframe, inference_udf, input_column: str="content"):
+    return dataframe.withColumn("results", inference_udf(F.col(input_column)))
 
 
-def extract_metadata(dataframe, metadata_udf):
-    all_metadata = metadata_udf(F.col("content"))
+def extract_metadata(dataframe, metadata_udf, input_column: str="content"):
+    all_metadata = metadata_udf(F.col(input_column))
 
     image_metadata_keys = (
         "lat",

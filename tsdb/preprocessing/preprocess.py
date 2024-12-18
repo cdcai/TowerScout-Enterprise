@@ -1,16 +1,15 @@
-
-"""
-This module contains higher level preprocessing workflows
-that use a combination of tsdb.preprocessing.functions
-"""
 from pyspark.context import SparkContext
 from petastorm.spark import SparkDatasetConverter, make_spark_converter
 from tsdb.preprocessing.functions import sum_bytes
 from torchvision.transforms import v2
 
+"""
+This module contains higher level preprocessing workflows
+that use a combination of tsdb.preprocessing.functions
+"""
 
 def create_converter(
-    dataframe, bytes_column, sc: SparkContext, parallelism: int = 0
+    dataframe, bytes_column: "ColumnOrName", sc: SparkContext, parallelism: int = 0
 ) -> SparkDatasetConverter:
     """
     Returns a PetaStorm converter created from dataframe.
@@ -38,7 +37,7 @@ def data_augmentation(
     rotation_angle: int = 15,
     prob_H_flip: float = 0.2,
     prob_V_flip: float = 0.2,
-    blur: [int, float] = tuple[1, 0.1],
+    blur: tuple[int, float] = (1, 0.1),
 ) -> list:
     """
     Data Augmentation function to add label invariant transforms to training pipeline
