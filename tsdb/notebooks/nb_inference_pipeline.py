@@ -66,17 +66,6 @@ image_metadata_udf = make_image_metadata_udf(spark)
 
 # COMMAND ----------
 
-import pyspark.sql.functions as F
-
-struct_literal = F.struct(
-    F.lit("yolo_autoshape").alias("yolo_model"),
-    F.lit("1").alias("yolo_model_version"),
-    F.lit("efficientnet").alias("efficientnet_model"),
-    F.lit("1").alias("efficientnet_model_version")
-)
-
-# COMMAND ----------
-
 # Read Images
 image_df = (
     spark
@@ -94,17 +83,16 @@ transformed_df = (
     .transform(trf.extract_metadata, image_metadata_udf)
     .transform(trf.current_time)
     .transform(trf.hash_image)
-    .withColumn("model_version", struct_literal)
     .selectExpr(
         "user_id",
         "request_id",
         "uuid",
         "processing_time",
-        "bboxes",
+        "results.bboxes as bboxes",
         "image_hash",
         "path as image_path",
         "image_id",
-        "model_version",
+        "results.model_version as model_version",
         "image_metadata",
         "map_provider"
     )

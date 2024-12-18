@@ -1,7 +1,5 @@
 import io
 from functools import partial
-from typing import Any, Iterable
-from dataclasses import dataclass
 
 import numpy as np
 
@@ -16,38 +14,12 @@ from pyspark.sql import DataFrame
 from pyspark.context import SparkContext
 import pyspark.sql.functions as F
 
-from torch.utils.data import Dataset
-
 from tsdb.preprocessing.utils import cast_to_column
 from tsdb.preprocessing.transformations import compute_bytes
 from tsdb.preprocessing.preprocess import create_converter
 
 
-@dataclass
-class TowerScoutDataset(Dataset):
-    """
-    Converts image contents into a PyTorch Dataset with preprocessing from nb_model_trainer_development transform_row method.
-    """
-    contents: Iterable[Any] = None
-
-    def __len__(self) -> int:
-        return len(self.contents)
-
-    def __getitem__(self, index) -> Image:
-        return self._preprocess(self.contents[index])
-
-    def _preprocess(self, content) -> Image:
-        """
-        Preprocesses the input image content
-
-        See transform_row method in nb_model_trainer_development nb
-        """
-        image = Image.open(io.BytesIO(content)).convert("RGB")
-
-        return image
-
-
-def transform_row(batch_pd):
+def transform_row(batch_pd): # pragma: nocover
     """
     Defines how to transform partition elements
     """
@@ -72,7 +44,7 @@ def transform_row(batch_pd):
     return batch_pd[["features"]]
 
 
-def get_transform_spec():
+def get_transform_spec(): # pragma: nocover
     """
     Applies transforms across partitions
     """
@@ -116,7 +88,7 @@ def get_converter(
     return converter
 
 
-def get_converter_df(dataframe: DataFrame, sc: SparkContext) -> callable:
+def get_converter_df(dataframe: DataFrame, sc: SparkContext) -> callable: # pragma: nocover
     """
     Creates a petastrom converter for a Spark dataframe
 
@@ -132,7 +104,7 @@ def get_converter_df(dataframe: DataFrame, sc: SparkContext) -> callable:
     return converter
 
 
-def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
+def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame): # pragma: nocover
     """
     Splits a Spark dataframe into train, test, and validation sets.
     Note that the input dataframe must have a column "label" with

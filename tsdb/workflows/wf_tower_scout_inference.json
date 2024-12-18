@@ -1,0 +1,78 @@
+{
+  "job_id": 11718277971941,
+  "creator_user_name": "ztm8@cdc.gov",
+  "run_as_user_name": "ztm8@cdc.gov",
+  "run_as_owner": true,
+  "settings": {
+    "name": "wf_tower_scout_inference",
+    "email_notifications": {
+      "no_alert_for_skipped_runs": false
+    },
+    "webhook_notifications": {},
+    "timeout_seconds": 0,
+    "max_concurrent_runs": 1,
+    "tasks": [
+      {
+        "task_key": "inference_pipeline",
+        "run_if": "ALL_SUCCESS",
+        "notebook_task": {
+          "notebook_path": "/Repos/DDPHSS-CSELS-PD-TOWERSCOUT/TowerScout/tsdb/development/nb_inference_pipeline_development",
+          "source": "WORKSPACE"
+        },
+        "job_cluster_key": "DDPHSS_CSELS_TowerScout_Job_Cluster_UC",
+        "timeout_seconds": 0,
+        "email_notifications": {},
+        "webhook_notifications": {}
+      }
+    ],
+    "job_clusters": [
+      {
+        "job_cluster_key": "DDPHSS_CSELS_TowerScout_Job_Cluster_UC",
+        "new_cluster": {
+          "cluster_name": "",
+          "spark_version": "15.4.x-gpu-ml-scala2.12",
+          "spark_conf": {
+            "spark.databricks.sql.initial.catalog.name": "edav_dev_csels"
+          },
+          "azure_attributes": {
+            "first_on_demand": 1,
+            "availability": "ON_DEMAND_AZURE",
+            "spot_bid_max_price": -1
+          },
+          "node_type_id": "Standard_NC4as_T4_v3",
+          "driver_node_type_id": "Standard_NC4as_T4_v3",
+          "custom_tags": {
+            "edav_center": "csels",
+            "OriginalCreator": "lml9@cdc.gov",
+            "edav_environment": "development",
+            "cluster_type": "project",
+            "edav_project": "towerscout",
+            "tower_scout_config_file_name": "cf_tower_scout_config.json",
+            "edav_vertical": "od"
+          },
+          "cluster_log_conf": {
+            "dbfs": {
+              "destination": "dbfs:/mnt/cluster-logs"
+            }
+          },
+          "enable_elastic_disk": true,
+          "policy_id": "001C6B2DE03BCE23",
+          "data_security_mode": "SINGLE_USER",
+          "runtime_engine": "STANDARD",
+          "autoscale": {
+            "min_workers": 2,
+            "max_workers": 6
+          }
+        }
+      }
+    ],
+    "tags": {
+      "project": "TowerScout"
+    },
+    "format": "MULTI_TASK",
+    "queue": {
+      "enabled": true
+    }
+  },
+  "created_time": 1730827518494
+}
