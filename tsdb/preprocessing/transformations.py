@@ -24,3 +24,53 @@ def compute_bytes(
     num_bytes = F.lit(base_bytes) + F.length(binary_column)
 
     return dataframe.withColumn(col_name, num_bytes)
+
+
+def perform_inference(dataframe, inference_udf, input_column: str="content"):
+    return dataframe.withColumn("results", inference_udf(F.col(input_column)))
+
+
+def extract_metadata(dataframe, metadata_udf, input_column: str="content"):
+    all_metadata = metadata_udf(F.col(input_column))
+
+    image_metadata_keys = (
+        "lat",
+        "long",
+        "width",
+        "height"
+    )
+    image_metadata = F.struct(*[
+        all_metadata.getItem(key).alias(key)
+        for key in image_metadata_keys
+    ])
+
+    return (
+        dataframe
+        .withColumn("image_metadata", image_metadata)
+        .withColumn("image_id", all_metadata.getItem("image_id"))
+        .withColumn("map_provider", all_metadata.getItem("map_provider"))
+    )
+
+def current_time(dataframe):
+    return dataframe.withColumn("processing_time", F.current_timestamp())
+
+def hash_image(dataframe):
+    return dataframe.withColumn("image_hash", F.hash(F.col("content")))
+
+def parse_file_path(dataframe):
+    split_col = F.split(F.col("path"), "/")
+
+    user_id = F.element_at(split_col,(-3))
+    request_id = F.element_at(split_col,(-2))
+    uuid = F.regexp_replace(
+        F.element_at(split_col,(-1)),
+        pattern=r"\.jpeg",
+        replacement=""
+    )
+
+    return (
+        dataframe
+        .withColumn("user_id", user_id)
+        .withColumn("request_id", request_id)
+        .withColumn("uuid", uuid)
+    )

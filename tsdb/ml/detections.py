@@ -18,13 +18,7 @@ from torch import nn
 from PIL import Image
 from tsdb.ml.efficientnet import EN_Classifier
 from tsdb.ml.utils import get_model_tags, YOLOv5Detection
-from pyspark.sql.types import (
-    StructType,
-    StructField,
-    StringType,
-    FloatType,
-    IntegerType,
-)
+import pyspark.sql.types as T
 
 
 class YOLOv5_Detector:
@@ -33,17 +27,17 @@ class YOLOv5_Detector:
         self.batch_size = batch_size    
         self.uc_version = uc_version
         # follows the InferenceModelType protocol
-        self.return_type = StructType(
-            [
-                StructField("x1", FloatType(), True),
-                StructField("y1", FloatType(), True),
-                StructField("x2", FloatType(), True),
-                StructField("y2", FloatType(), True),
-                StructField("conf", FloatType(), True),
-                StructField("class", IntegerType(), True),
-                StructField("class_name", StringType(), True),
-                StructField("secondary", FloatType(), True),
-            ]
+        self.return_type = T.ArrayType(
+            T.StructType([
+                T.StructField("x1", T.FloatType(), True),
+                T.StructField("y1", T.FloatType(), True),
+                T.StructField("x2", T.FloatType(), True),
+                T.StructField("y2", T.FloatType(), True),
+                T.StructField("conf", T.FloatType(), True),
+                T.StructField("class", T.IntegerType(), True),
+                T.StructField("class_name", T.StringType(), True),
+                T.StructField("secondary", T.FloatType(), True),
+            ])
         )
 
     @classmethod
