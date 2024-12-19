@@ -13,29 +13,7 @@ class azTransactions:
   try:  
    
      # Azure Maps account details
-  #  match intEnv:
-  #      case 1:
-  #       # Production
-  #       subscription_id = ts_secrets.prodSecrets.getSecret('TSAZMAPSUBSCRID')
-  #       resource_group_name = ts_secrets.prodSecrets.getSecret('TSAZMAPKEYRG')
-  #       account_name = ts_secrets.prodSecrets.getSecret('TSAZMAPACCOUNTNAME')
-  #       tenant_id = ts_secrets.prodSecrets.getSecret('TSAZMAPACCNTSPTENANTID')
-  #       client_id = ts_secrets.prodSecrets.getSecret('TSAZMAPACCNTSPCLIENTID')
-  #       client_secret = ts_secrets.prodSecrets.getSecret('TSAZMAPACCNTSPCLIENTSECRET')
-  #      case 2:
-  #       # Dev
-  #       subscription_id = ts_secrets.devSecrets.getSecret('TSAZMAPSUBSCRID')
-  #       resource_group_name = ts_secrets.devSecrets.getSecret('TSAZMAPKEYRG')
-  #       account_name = ts_secrets.devSecrets.getSecret('TSAZMAPACCOUNTNAME')
-  #       tenant_id = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPTENANTID')
-  #       client_id = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPCLIENTID')
-  #       client_secret = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPCLIENTSECRET')
-
-  #      case 3:
-  #       # Local 
-  #       subscription_id = ts_secrets.localSecrets.getSecret('azmapsubscrID-vssubscr')
-  #       resource_group_name = ts_secrets.localSecrets.getSecret('TSAZMAPKEYRG')
-  #       account_name = ts_secrets.localSecrets.getSecret('TSAZMAPACCOUNTNAME')
+  
    if intEnv == 1:
         # Production
      subscription_id = ts_secrets.prodSecrets.getSecret('TSAZMAPSUBSCRID')
@@ -46,13 +24,6 @@ class azTransactions:
      client_secret = ts_secrets.prodSecrets.getSecret('TSAZMAPACCNTSPCLIENTSECRET')
    elif intEnv == 2:
     # Dev
-     subscription_id = ts_secrets.devSecrets.getSecret('TSAZMAPSUBSCRID')
-     resource_group_name = ts_secrets.devSecrets.getSecret('TSAZMAPKEYRG')
-     account_name = ts_secrets.devSecrets.getSecret('TSAZMAPACCOUNTNAME')
-     tenant_id = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPTENANTID')
-     client_id = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPCLIENTID')
-     client_secret = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPCLIENTSECRET')
-
      subscription_id = ts_secrets.devSecrets.getSecret('TSAZMAPSUBSCRID')
      resource_group_name = ts_secrets.devSecrets.getSecret('TSAZMAPKEYRG')
      account_name = ts_secrets.devSecrets.getSecret('TSAZMAPACCOUNTNAME')
