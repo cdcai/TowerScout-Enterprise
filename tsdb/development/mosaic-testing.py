@@ -4,6 +4,7 @@
 # COMMAND ----------
 
 from functools import partial
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -29,13 +30,8 @@ from tsdb.ml.utils import OptimizerArgs
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Make these into funcitons
-
-# COMMAND ----------
-
 def get_proper_path(path: "ColumnOrName") -> Column:
-    # remove the dbfs: prefix as that causes errors when reading
+    # remove the dbfs: prefix as that causes errors when reading image with PIL
     file_with_extension = F.element_at(F.split(path, ":"), 2)
     return file_with_extension
 
@@ -45,7 +41,7 @@ df = (
     .format("delta")
     .table("edav_dev_csels.towerscout.test_image_silver")
     .selectExpr("image_path as im_file", "bboxes")
-    .where("processing_time > '2024-12-18'")
+    .where("processing_time > '2024-12-18'")  # to ignore rows whose images have been deleted from datalake due to pipeline errors
     .limit(1000)
 )
 
@@ -87,7 +83,19 @@ def convert_to_mds(
             out.write(sample)
 
 
-def collate_fn_img(data, transforms: callable):
+def collate_fn_img(data, transforms: callable) -> dict[str, Any]:
+    """
+    Function for collating data into batches. Some additional
+    processing of the data is done in this function as well
+    to get the batch into the format expected by the Ultralytics
+    DetectionModel class.
+
+    Args:
+        data: The data to be collated a batch
+        transforms: Torchvision transforms applied to the PIL images
+    Returns: A dictionary containing the collated data in the formated 
+            expected by the Ultralytics DetectionModel class
+    """
     result = defaultdict(list)
 
     for i, element in enumerate(data):
@@ -141,7 +149,7 @@ def get_dataloader(
 
     Args:
     local_dir: Local directory where dataset is cached during training
-    remote_dir: The local or remote directory where dataset .mds files are stored
+    remote_dir: The local or remote directory where dataset `.mds` files are stored
     batch_size: The batch size of the dataloader and dataset.
           See: https://docs.mosaicml.com/projects/streaming/en/stable/getting_started/faqs_and_tips.html
     """
@@ -173,7 +181,6 @@ def get_dataloader(
 
 out_root = '/tmp/ztm8/mosaicml/'
 
-
 columns = {
     'im_file': 'str',
     'img': 'jpeg',
@@ -188,17 +195,13 @@ convert_to_mds(df, columns, compression, out_root)
 
 # COMMAND ----------
 
-!rm -rf /local/cache/path6
-
-# COMMAND ----------
-
 remote_dir = out_root
 
-local_dir = '/local/cache/path6'
+local_dir = '/local/cache/path7'
 
-batch_size_dataset, batch_size_dataloader = 1, 64
+batch_size = 64
 
-dataloader = get_dataloader(local_dir, remote_dir, batch_size_dataset, batch_size_dataloader)
+dataloader = get_dataloader(local_dir, remote_dir, batch_size)
 
 # COMMAND ----------
 
@@ -208,8 +211,8 @@ for i, batch in enumerate(dataloader):
 
 # COMMAND ----------
 
-model_yaml = "yolov10n.yaml"
-model_pt = "yolov10n.pt"
+model_yaml = "yolov8n.yaml"
+model_pt = "yolov8n.pt"
 
 args = get_cfg()  # used to get hyperparams for model and other stuff from some config file
 model = DetectionModel(cfg=model_yaml, verbose=False)
@@ -218,8 +221,7 @@ model.load(weights)
 model.nc = 1
 model.names ='ct'
 model.args = args
-model.args.single_cls = True # set to False when using coco dataset since it has 80 classes
-
+model.args.single_cls = True
 
 optimizer_args = OptimizerArgs(optimizer_name="Adam", lr0=0.001, momentum=0.99)
 yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model)
