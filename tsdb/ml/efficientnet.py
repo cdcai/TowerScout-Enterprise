@@ -38,7 +38,7 @@ class EN_Classifier(nn.Module):
         self.uc_version = uc_version
         
         # switch to GPU memory if available
-        if torch.cuda.is_available():
+        if torch.cuda.is_available():  # pragma: no cover
             self.model.cuda()
 
         self.model.eval()
@@ -48,12 +48,14 @@ class EN_Classifier(nn.Module):
             transforms.Resize([456, 456]),
             transforms.ToTensor(),
             transforms.Normalize(mean=(0.5553, 0.5080, 0.4960), std=(0.1844, 0.1982, 0.2017))
-            ])
+        ])
     
     @classmethod
     def from_uc_registry(cls, model_name: str, alias: str):
         """
         Create EN_calssifer object using a registered model from UC Model Registry
+
+        TODO: test this
         """
         _, uc_version = get_model_tags(model_name, alias)
 
@@ -64,23 +66,25 @@ class EN_Classifier(nn.Module):
         return cls(registered_model, uc_version)
 
 
-    def forward(self, x):
+    def forward(self, x):  # pragma: no cover
         return x
 
-    #
     # classify:
     #
     # take batch of one img and multiple detections
     # returns filtered detections (class 0 only)
     #
-    def classify(self, 
-                img: Image, 
-                detections: list[YOLOv5Detection],
-                min_conf: float = 0.25, 
-                max_conf: float = 0.65, 
-                batch_id: int = 0
+    def classify(
+        self, 
+        img: Image, 
+        detections: list[YOLOv5Detection],
+        min_conf: float = 0.25, 
+        max_conf: float = 0.65, 
+        batch_id: int = 0
     ) -> None:
-        
+        """
+        TODO: Please fix this formatting
+        """
         count=0
         for det in detections:
             x1,y1,x2,y2,conf = det[0:5]
@@ -93,7 +97,7 @@ class EN_Classifier(nn.Module):
                 input = self.transform(det_img).unsqueeze(0)
 
                 # put on GPU if we have one
-                if torch.cuda.is_available():
+                if torch.cuda.is_available():  # pragma: no cover
                     input = input.cuda()
 
                 # and feed into model
@@ -117,6 +121,3 @@ class EN_Classifier(nn.Module):
 
             det.append(p2)
             count += 1
-
-
-
