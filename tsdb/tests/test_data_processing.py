@@ -43,6 +43,8 @@ def test_split_ratios(spark, image_df):
     Test the split ratio. Random Split seems to work approximately, so
     we use approx to check if the ratios are approximately equal. 
     """
+    # Force everything onto 1 partitation, may potentially resolve issue with wrong splits
+    image_df = image_df.repartition(1)
     train_df, test_df, val_df = processing.train_test_val_split(image_df, 0.6, 0.3, 0.1)
 
     # Check if the splits respect the ratios approximately
@@ -99,9 +101,10 @@ def test_single_image(spark):
     Test that a dataframe with a single row returns that element in the train set
     and empty splits for the remaining.
     """
+    # This test sometimes fails because the train_df is empty, hard to reproduce
     single_image_df = spark.createDataFrame([("img0", "bbox0")], ["str", "bbox"])
     train_df, test_df, val_df = processing.train_test_val_split(single_image_df, 0.6, 0.3, 0.1)
-
+        
     # Since there's only 1 image, all of it should go into train
     assert train_df.count() == 1
     assert test_df.count() == 0
