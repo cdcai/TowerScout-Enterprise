@@ -1,5 +1,8 @@
+from typing import Any
+
 import pytest
 import numpy as np
+import torchvision
 
 from PIL import Image
 from tsdb.ml.utils import cut_square_detection, get_model_tags
@@ -14,7 +17,7 @@ def mock_img() -> Image.Image:
     img_arr[80:320, 120:200] = 255
 
     # mode 'L' is used for grayscale, nxn array each containing val 0-255
-    return Image.fromarray(img_arr, mode='L')
+    return Image.fromarray(img_arr, mode="L")
 
 
 @pytest.fixture
@@ -26,14 +29,14 @@ def mock_img_corner() -> Image.Image:
     img_arr[0:120, 0:240] = 255
 
     # mode 'L' is used for grayscale, nxn array each containing val 0-255
-    return Image.fromarray(img_arr, mode='L')
+    return Image.fromarray(img_arr, mode="L")
 
 
 def test_perfect_squareness(mock_img: Image.Image) -> None:
-    '''
+    """
     If the cropped region is close enough to the center of the image,
     the resulting Image should be perfectly square
-    '''
+    """
     x1 = 0.4
     y1 = 0.4
     x2 = 0.6
@@ -42,74 +45,120 @@ def test_perfect_squareness(mock_img: Image.Image) -> None:
     res = cut_square_detection(mock_img, x1=x1, y1=y1, x2=x2, y2=y2)
     w_res, h_res = res.size
 
-    assert w_res == h_res, \
-        "Resulting width and height should match for perfect square test"
+    assert (
+        w_res == h_res
+    ), "Resulting width and height should match for perfect square test"
 
 
 def test_invalid_inputs(mock_img: Image.Image) -> None:
-    '''
+    """
     cut_square_detection() should raise an error if the input coordinates
     are invalid
-    '''
+    """
     with pytest.raises(ValueError) as e:
         res = cut_square_detection(mock_img, x1=0.9, y1=0.8, x2=0.3, y2=0.5)
         assert str(e.value) == "Coordinate 'right' is less than 'left'"
 
 
 def test_full_region_capture(mock_img: Image.Image) -> None:
-    '''
+    """
     The mock_img contains a black filled rectangle. If the input
     coordinates outline this rectangle, the resulting Image should
     contain the full original rectangle, plus a bordering buffer.
-    '''
+    """
     # calculate proper floats based on mock_img values,
     # these should perfectly outline the black rectangle
-    x1 = 80/640
-    x2 = 320/640
-    y1 = 120/640
-    y2 = 200/640
+    x1 = 80 / 640
+    x2 = 320 / 640
+    y1 = 120 / 640
+    y2 = 200 / 640
 
     res = cut_square_detection(mock_img, x1=x1, y1=y1, x2=x2, y2=y2)
 
     # calculate expected number of black pixels
-    orig_black = int(np.sum(mock_img.getdata())/255)
-    res_black = int(np.sum(res.getdata())/255)
+    orig_black = int(np.sum(mock_img.getdata()) / 255)
+    res_black = int(np.sum(res.getdata()) / 255)
 
-    assert orig_black == res_black, \
-        "Output Image should capture all black pixels from input"
+    assert (
+        orig_black == res_black
+    ), "Output Image should capture all black pixels from input"
 
     # and confirm that at least some buffer was added after the crop
     w, h = res.size
     total_pixels = w * h
-    assert total_pixels > orig_black, \
-        "Output Image should have more pixels than input due to addition of buffer"
+    assert (
+        total_pixels > orig_black
+    ), "Output Image should have more pixels than input due to addition of buffer"
 
 
 def test_target_on_border(mock_img_corner: Image.Image) -> None:
-    '''
+    """
     If the target crop section is on touching at least one edge of
     the image, the output Image should contain the full original
     contents, plus a bordering buffer.
 
     mock_img_corner contains a black filled rectangle originating
     at coordinates (0, 0)
-    '''
+    """
     x1 = 0
-    x2 = 120/640
+    x2 = 120 / 640
     y1 = 0
-    y2 = 240/640
+    y2 = 240 / 640
 
     res = cut_square_detection(mock_img_corner, x1=x1, y1=y1, x2=x2, y2=y2)
 
     # calculate expected number of black pixels
-    orig_black = int(np.sum(mock_img_corner.getdata())/255)
-    res_black = int(np.sum(res.getdata())/255)
+    orig_black = int(np.sum(mock_img_corner.getdata()) / 255)
+    res_black = int(np.sum(res.getdata()) / 255)
 
-    assert orig_black == res_black, \
-        "Output Image should capture all black pixels from input"
+    assert (
+        orig_black == res_black
+    ), "Output Image should capture all black pixels from input"
 
     # and confirm that at least some buffer was added after the crop
     w, h = res.size
     total_pixels = w * h
-    assert total_pixels > orig_black, \
-        "Output Image should have more pixels than input due to addition of buffer"
+    assert (
+        total_pixels > orig_black
+    ), "Output Image should have more pixels than input due to addition of buffer"
+
+
+@pytest.fixture
+def data() -> list[dict[str, Any]]:
+    # Create dummy images (640x640 white images)
+    img1 = Image.new("RGB", (640, 640), color=(255, 255, 255))
+    img2 = Image.new("RGB", (640, 640), color=(255, 255, 255))
+
+    data = [
+        {
+            "im_file": "path/to/img1.jpg",
+            "img": img1,
+            "bboxes": np.array([0.4, 0.4, 0.6, 0.6, 0.2, 0.33, 0.1, 0.55]),
+            "cls": np.array([0.0, 0.0]),
+            "ori_shape": np.array(img1.size, dtype=np.uint32),
+        },
+        {
+            "im_file": "path/to/img2.jpg",
+            "img": img2,
+            "bboxes": np.array(
+                [0.12, 0.55, 0.78, 0.97, 0.03, 0.8, 0.1, 0.77, 0.49, 0.21, 0.66, 0.99]
+            ),
+            "cls": np.array([0.0, 0.0, 0.0]),
+            "ori_shape": np.array(img2.size, dtype=np.uint32),
+        },
+    ]
+    return data
+
+
+@pytest.fixture
+def transforms() -> callable:
+    transforms = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.ToTensor(),
+        ]
+    )
+    return transforms
+
+
+def test_collate_fn_img(data, transforms):
+    pass

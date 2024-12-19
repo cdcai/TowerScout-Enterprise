@@ -76,6 +76,7 @@ def convert_to_mds(
         sample["ori_shape"] = np.array(sample["img"].size, dtype=np.uint32)
 
     # Use `MDSWriter` to iterate through the input data and write to a collection of `.mds` files.
+    # Note this has been unit tested here: https://github.com/mosaicml/streaming/blob/main/tests/test_writer.py
     with MDSWriter(
         out=out_root, columns=columns, compression=compression, **kwargs
     ) as out:
@@ -153,6 +154,8 @@ def get_dataloader(
     batch_size: The batch size of the dataloader and dataset.
           See: https://docs.mosaicml.com/projects/streaming/en/stable/getting_started/faqs_and_tips.html
     """
+
+    # Note that StreamingDataset is unit tested here: https://github.com/mosaicml/streaming/blob/main/tests/test_streaming.py
     dataset = StreamingDataset(
         local=local_dir,
         remote=remote_dir,
