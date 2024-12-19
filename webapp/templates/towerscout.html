@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <!--
 TowerScout
@@ -57,11 +57,11 @@ Licensed under CC-BY-NC-SA-4.0
       <div id="mapsearchui" style="display:block;height:auto">
         <span id="location">Location:&nbsp;</span>
         <div id="bingSearchBoxContainer" style="display:none;">
-        <input type="text" id="bingSearch" placeholder="Search ..."/> </div>
+        <input type="text" aria-labelledby="location" id="bingSearch" placeholder="Search ..."/> </div>
         <div id="azureSearchBoxContainer" style="display:inline;">
-          <input type="text" id="azureSearch" placeholder="Search ..."/> </div>
+          <input type="text" aria-labelledby="location" id="azureSearch" placeholder="Search ..."/> </div>
         <span style="float: right;" id="geometry">
-          <input type='text' id='radius' style='width:20%;vertical-align:10%'>&nbsp;
+          <input type='text' aria-labelledby="radiusbutton" id='radius' style='width:20%;vertical-align:10%'>&nbsp;
           <button onclick="circleBoundary()" id="radiusbutton" style="vertical-align:10%;">Circle</button>
           <span
             style="display: inline-block; width:1px; height:80%; vertical-align:-8%; background:white; margin: 0 2px;">&nbsp;</span>
@@ -72,14 +72,14 @@ Licensed under CC-BY-NC-SA-4.0
         </span>
       </div>
       <div id="uploadsearchui" style="display:none;">
-        File:
-        <input type="file" id="upload_file" style="width:80%;vertical-align:10%;" placeholder="Upload ...">
+        <lable id="lblUploadFile" for="upload_file">File:</lable>
+        <input aria-labelledby="lblUploadFile" type="file" id="upload_file" style="width:80%;vertical-align:10%;" placeholder="Upload ...">
       </div>
     </div>
 
     <div id="fversion" class="fversion" style="text-align: right;">
       <a class="hover" href="{{ url_for('about') }}" target="_blank">About TowerScout</a>
-      <label id="lblazmaptransactions" style="width: 100%; display: block;"></label>
+      <label id="lblazmaptransactions" style="width: 100%; display: block;">Azure map Transaction count</label>
     </div>
 
     <div class="fmodel" style="font-size:smaller; overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
@@ -117,10 +117,10 @@ Licensed under CC-BY-NC-SA-4.0
     <!--The div element for the map -->
     <div class="fmap" style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
       <!-- <div id="googleMap" style="display:block"></div> -->
-       <div id="azureMap" style="display:none"></div>
-       <div id="bingMap" style="display:none"></div>
+       <div id="azureMap" aria-label="Current map view: Road view showing main roads and routes." style="display:none"></div>
+       <div id="bingMap" aria-label="Current map view: Road view showing main roads and routes." style="display:none"></div>
       <div id="uploadMap" style="display:none; overflow-y:scroll">
-        <img id="canvas" style="width:100%;">
+        <img id="canvas" alt="Map Canvas" style="width:100%;">
       </div>
     </div>
 
@@ -130,28 +130,29 @@ Licensed under CC-BY-NC-SA-4.0
     </div>
 
     <div class="ffilter" id="ffilter" style="font-size: smaller;display:none">
-      Min. Confidence:&nbsp;<input type="range" min="0" max="100" value="35" class="slider" id="conf"
-        style="vertical-align:-25%; width:60%">
-      &nbsp;<span style="float:right">&nbsp;%</span><span id='confpercent' style="float:right">35</span><br>
-      <!-- <input type="checkbox" id="inside" checked style="vertical-align:-10%">&nbsp;Enforce boundary -->
-    </div>
+      <label id="lblConf" for="conf"> Min. Confidence:&nbsp;</label><input aria-labelledby="lblConf" type="range" min="0" max="100" value="35" class="slider" id="conf"
+         style="vertical-align:-25%; width:60%">
+       &nbsp;<span style="float:right">&nbsp;%</span><span id='confpercent' style="float:right">35</span><br>
+       <!-- <input type="checkbox" id="inside" checked style="vertical-align:-10%">&nbsp;Enforce boundary -->
+     </div>
 
-    <div class="freview" id="freview" style="font-size: smaller;">
+     <div class="freview" id="freview" style="font-size: smaller;">
       <span style="float: left;">
         <button onclick="Detection.prev()">&lt;</button>
-        Det. <input type="text" id="detection" style="width:30px;"
+       <label id="lblDet" for="detection"> Det. </label><input aria-labelledby="lblDet" type="text" id="detection" style="width:30px;"
           onkeydown="if (event.keyCode == 13) { Detection.number(); return false; }">&nbsp;
         <button onclick="Detection.next()">&gt;</button>
       </span>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Find&nbsp;
-      <label class="switch" style="vertical-align:-8%">
-        <input type="checkbox" id="review">
+      <lable id="lblFind">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Find&nbsp;</lable>
+      
+      <label class="switch" style="vertical-align:-8%">:
+        <input aria-labelledby="lblFind" type="checkbox" id="review">
         <span class="knob round"></span>
       </label>
-      &nbsp;Label
+      &nbsp;:Label
       <span style="float: right;">
         <button onclick="Tile.prev()">&lt;</button>
-        Tile <input type="text" id="tile" style="width:30px;"
+       <label id="lblTile" for="tile"> Tile </label><input aria-labelledby="lblTile" type="text" id="tile" style="width:30px;"
           onkeydown="if (event.keyCode == 13) { Tile.number(); return false; }">&nbsp;
         <button onclick="Tile.next()">&gt;</button></span>
     </div>
