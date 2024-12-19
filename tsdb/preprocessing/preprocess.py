@@ -42,6 +42,8 @@ def data_augmentation(
     """
     Data Augmentation function to add label invariant transforms to training pipeline
     Applies a series of transformations such as rotation, horizontal and vertical flips, and Gaussian blur to each image
+
+    TODO: test this
     """
     transforms = [
         v2.RandomRotation(rotation_angle),

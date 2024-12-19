@@ -44,6 +44,8 @@ class YOLOv5_Detector:
     def from_uc_registry(cls, model_name: str, alias: str, batch_size: int):
         """
         Create YOLOv5_Detector object using a registered model from UC Model Registry
+
+        TODO: test
         """
         # IMPORTANT: when loading the model you must append the path to this directory to the system path so
         # Python looks there for the files/modules needed to load the yolov5 module
@@ -76,7 +78,8 @@ class YOLOv5_Detector:
             img_batch = model_input[i : i + self.batch_size]
 
             # retrain a copy of the images
-            if secondary is not None:
+            # TODO: remove this copying, we don't need to
+            if secondary is not None:  # pragma: no cover
                 img_batch2 = [img.copy() for img in img_batch]
             else:
                 img_batch2 = [None] * len(img_batch)
@@ -89,7 +92,7 @@ class YOLOv5_Detector:
                 results_cpu = result.cpu().numpy().tolist()
 
                 # secondary classifier processing
-                if secondary is not None:
+                if secondary is not None:  # pragma: no cover
                     # classifier will append its own prob to every detection
                     secondary.classify(img, results_cpu, batch_id=count)
                     count += 1

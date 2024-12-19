@@ -7,3 +7,7 @@ omit =
   */spark/*
   */venv/*
   */databricks/*
+
+[report]
+exclude_lines =
+  pragma: no cover
