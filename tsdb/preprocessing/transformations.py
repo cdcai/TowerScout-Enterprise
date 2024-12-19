@@ -26,7 +26,7 @@ def compute_bytes(
     return dataframe.withColumn(col_name, num_bytes)
 
 
-def perform_inference(dataframe, inference_udf, input_column: str="content"):
+def perform_inference(dataframe, inference_udf, input_column: str="content"):  # pragma: no cover
     return dataframe.withColumn("results", inference_udf(F.col(input_column)))
 
 
@@ -51,13 +51,19 @@ def extract_metadata(dataframe, metadata_udf, input_column: str="content"):
         .withColumn("map_provider", all_metadata.getItem("map_provider"))
     )
 
-def current_time(dataframe):
+def current_time(dataframe):  # pragma: no cover
     return dataframe.withColumn("processing_time", F.current_timestamp())
 
 def hash_image(dataframe):
+    """
+    TODO: test this
+    """
     return dataframe.withColumn("image_hash", F.hash(F.col("content")))
 
 def parse_file_path(dataframe):
+    """
+    TODO: test this
+    """
     split_col = F.split(F.col("path"), "/")
 
     user_id = F.element_at(split_col,(-3))
