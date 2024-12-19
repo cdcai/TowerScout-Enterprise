@@ -3,6 +3,7 @@ This module tests code in tsdb.preprocessing.preprocess functions on image data.
 function docstrings can include examples of what is being tested.
 """
 from typing import Any
+import shutil
 
 import pytest
 from unittest.mock import MagicMock, patch, Mock
@@ -12,6 +13,7 @@ from pyspark.sql import functions as F
 from petastorm.spark import make_spark_converter
 
 import torch
+from torch.utils.data import DataLoader
 import torchvision
 import numpy as np
 from PIL import Image
@@ -176,5 +178,29 @@ def test_collate_fn_img_img(data, transforms):
     img = batch["img"]
     assert (2, 3, 640, 640) == tuple(img.shape), "Shape should be (batch_size, channels, height, width)"
 
-def test_get_dataloader():
-    pass
+
+@pytest.fixture
+def remote_dir() -> str:
+    return '/Volumes/edav_dev_csels/towerscout/misc/mosaic_streaming_unit_test/'
+
+
+@pytest.fixture
+def local_dir() -> str:
+    return '/Volumes/edav_dev_csels/towerscout/misc/mosaic_streaming_unit_test/cache'
+
+
+@pytest.fixture
+def  batch_size() -> int:
+    return 2
+
+
+def test_get_dataloader(remote_dir, local_dir, batch_size):
+    """Test the get_dataloader function."""
+    dataloader = get_dataloader(local_dir, remote_dir, batch_size)
+    
+    assert isinstance(dataloader, DataLoader)
+    
+    for batch in dataloader:
+        assert len(batch["im_file"]) == batch_size, "Batch size should be 2"
+    
+    shutil.rmtree(local_dir) 

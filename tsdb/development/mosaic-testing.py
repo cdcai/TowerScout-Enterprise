@@ -30,7 +30,7 @@ df = (
     .table("edav_dev_csels.towerscout.test_image_silver")
     .selectExpr("image_path as im_file", "bboxes")
     .where("processing_time > '2024-12-18'")  # to ignore rows whose images have been deleted from datalake due to pipeline errors
-    .limit(1000)
+    .limit(10)
 )
 
 
