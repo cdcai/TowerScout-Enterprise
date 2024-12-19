@@ -39,7 +39,7 @@ from flask import request
 
 current_directory = os.getcwd()
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
-
+timeout = aiohttp.ClientTimeout(total=60)  # Set the timeout to 60 seconds
 
 class Map:
 
@@ -178,7 +178,7 @@ def convert_to_data_uri(image_content):
 async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
     # execute
     unique_directory = generate_unique_directory_name(self)
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         await fetch_all(
             session,
             urls,
@@ -194,7 +194,17 @@ async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
 async def rate_limited_fetch(
     session, url, dir, fname, i, index, mapType, unique_directory, tile
 ):
-    await asyncio.sleep(index * (1 / 3))
+    # if ( mapType == 'azure'):
+        #Azure has more payload. Instead of increasing the sleep time exponentially, by changing it to 1 second per tile 
+        # has avoided the error aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed. This change will not have
+        # much impact on the time factor, especially with large number of tiles, when compared with exponentially increasing the time based on the
+        # number of tiles
+    await asyncio.sleep(index * (1))
+    # else:
+    #     await asyncio.sleep(index * (1 / 3))
+    await asyncio.sleep(index * (1))
+    # else:
+    #     await asyncio.sleep(index * (1 / 3))
     await fetch(session, url, dir, fname, i, mapType, unique_directory, tile)
 
 
@@ -297,11 +307,7 @@ async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile):
                             content, "ddphss-csels", directoryname, blobname
                         )
                     )
-                    # await f.write(content)
-                    # await f.close()
-                # blob_url =  uploadImage(await response.read(),fname+str(i))
-                # blob_url=uploadImageUnqFileName(await response.read(),fname+str(i))
-
+                
 
 async def fetch_all(
     session, urls, dir, fname, metadata, mapType, unique_directory, tilesMetaData
@@ -352,67 +358,6 @@ def get_distance(x1, y1, x2, y2):
     d = R * c
     return d
     # returns the distance in meters
-
-
-def appendMetadatatoPng(img, tilesMetadata):
-    imgmeta = Image.open(img)
-    # Create a new metadata object
-    metadata = PngImagePlugin.PngInfo()
-    metadata.add_text("lat", tilesMetadata["lat"])
-    metadata.add_text("lat_for_url", tilesMetadata["lat_for_url"])
-    metadata.add_text("lng", tilesMetadata["lng"])
-    metadata.add_text("h", tilesMetadata["h"])
-    metadata.add_text("w", tilesMetadata["w"])
-    metadata.add_text("id", tilesMetadata["id"])
-    metadata.add_text("col", tilesMetadata["col"])
-    metadata.add_text("row", tilesMetadata["row"])
-    metadata.add_text("url", tilesMetadata["url"])
-    imgmeta.save(img, "JPEG", pnginfo=metadata)
-
-
-def appendMetadatatoJpeg(img, tilesMetadata):
-    # Create a BytesIO object from the image data
-    # image_io = BytesIO(img)
-    # Open the image
-    if not img:
-        print("Error: Img data is empty.")
-    image = Image.open(img)
-    if not image:
-        print("Error: Image data is empty.")
-
-    # Load existing EXIF data or create a new one
-    exif_dict = piexif.load(image.info.get("exif", b""))
-
-    # Prepare the new data from the dictionary
-    new_data = json.dumps(tilesMetadata)
-
-    # Check if UserComment tag exists
-    user_comment_tag = piexif.ExifIFDName.UserComment
-    existing_comment = exif_dict["Exif"].get(user_comment_tag)
-
-    if existing_comment:
-        # Decode the existing comment and append new data
-        existing_comment = existing_comment.decode(
-            "utf-8"
-        )  # Decode from bytes to string
-        updated_comment = existing_comment + " " + new_data
-    else:
-        # If the tag doesn't exist or has no value, set it to the new data
-        updated_comment = new_data.strip()
-
-    # Update the EXIF dictionary
-    exif_dict["Exif"][user_comment_tag] = updated_comment.encode(
-        "utf-8"
-    )  # Encode back to bytes
-
-    # Convert the updated EXIF data back to bytes
-    exif_bytes = piexif.dump(exif_dict)
-
-    # Save the updated image with new EXIF data
-    image.save(img, exif=exif_bytes)
-    return img
-
-
 def getTileMetaData(tile, mapType):
     columns_to_extract = ["id", "lat", "lng", "h", "w"]
     tileMetadata = {}
@@ -455,10 +400,7 @@ def appendMetadatatoImg(img, tileMetaData, mapType):
         # Convert datetime to string format recognized by EXIF
         formatted_datetime = now.strftime("%Y:%m:%d %H:%M:%S")
         # Convert the custom metadata to EXIF format
-        # exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
         exif_dict = {"Exif": {}}
-        # exif_dict["0th"][piexif.ImageIFD.DateTime] = formatted_datetime
-        # exif_dict["0th"][piexif.ImageIFD.ColorMap] = mapType
         exif_dict["Exif"][piexif.ExifIFD.UserComment] = str(tileMetaData).encode(
             "utf-8"
         )
@@ -467,28 +409,12 @@ def appendMetadatatoImg(img, tileMetaData, mapType):
     exif_bytes = piexif.dump(exif_dict)
     #
     exif_bytes = piexif.dump(exif_dict)
-    # print(f"exif_bytes{exif_bytes}")
     # Save updated metadata back to a byte stream using BytesIO
-    # output_stream = io.BytesIO()
     # Save the modified image with updated EXIF data to a variable
     image_bytes = io.BytesIO()
     imgImage.save(image_bytes, format="JPEG", exif=exif_bytes)
     # Get the byte data from BytesIO object
     return image_bytes.getvalue()
-
-
-# Reset the stream position to start
-# output_stream.seek(0)
-
-# Read the byte stream and store it in a variable
-# modified_image_data = output_stream.read()
-
-# Close the stream to free up resources
-# output_stream.close()
-# return modified_image_data
-#
-# bounds checking
-#
 
 
 def check_bounds(x1, y1, x2, y2, bounds):
@@ -504,78 +430,6 @@ def check_tile_against_bounds(t, bounds):
     y2 = t["lat"] - t["h"] / 2
 
     return not (y1 < south or y2 > north or x2 < west or x1 > east)
-
-
-def uploadImage(blbname):
-
-    # Replace with your Azure Storage account details
-    connect_str = "DefaultEndpointsProtocol=https;AccountName=tsstorageaccountvssubscr;AccountKey=l7FCoM2QC+3Xljbb9EkwdZXYxtHBkH7GQX6ta5aHZf2i6N9ZCLUSufGaVIUcD693A8cp1QIHzQDO+AStjbtSQQ==;EndpointSuffix=core.windows.net"
-    container_name = "firstcontainerunderroot"
-    blob_name = blbname
-    file_path = "path_to_your_local_file"
-
-    # data = b"Hello, Azure Blob Storage!"
-
-    # Create a BlobServiceClient object
-    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-
-    container_client = blob_service_client.get_container_client(container_name)
-
-    # Create a BlobClient object for the blob
-    # blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
-    # Create a BlobClient object for the blob (file)
-
-    # # Upload data to the blob
-    # blob_client.upload_blob(data)
-
-    local_file_path = (
-        "C:/TowerScout/Testing/Bing/BingTempfolders/tmpg2scritl/tmpg2scritl1.jpg"
-    )
-    # blob_client = container_client.get_blob_client(blob=local_file_path.split("/")[-1])
-    blob_client = container_client.get_blob_client(blob_name)
-    # Upload the file
-    with open(local_file_path, "rb") as data:
-        blob_client.upload_blob(data, overwrite=True, timeout=60)
-        return blob_client.url
-    # uploadimagecontent = readimagecontent(local_file_path)
-
-    # container_client.upload_blob(name=blob_name, data=uploadimagecontent)
-
-
-async def readimagecontent(local_file_path):
-    async with aiofiles.open(local_file_path, "wb") as file:
-        uploadimagecontent = await file.read()
-        await file.close()
-    return uploadimagecontent
-
-
-def uploadImageUnqFileName(blobcontent, filename):
-
-    # Replace with your Azure Storage account details
-    connect_str = "DefaultEndpointsProtocol=https;AccountName=tsstorageaccountvssubscr;AccountKey=l7FCoM2QC+3Xljbb9EkwdZXYxtHBkH7GQX6ta5aHZf2i6N9ZCLUSufGaVIUcD693A8cp1QIHzQDO+AStjbtSQQ==;EndpointSuffix=core.windows.net"
-    container_name = "firstcontainerunderroot"
-
-    # Create a BlobServiceClient object
-    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-
-    container_client = blob_service_client.get_container_client(container_name)
-
-    # Define the directory where the file will be uploaded
-    directory_name = "my-images-directory/"
-
-    # Generate a unique file name using UUID
-    unique_file_name = f"{uuid.uuid4()}_{filename}"
-    # Create a BlobClient for the unique file in the directory
-    # blob_name = f"{directory_name}{unique_file_name}"
-    blob_name = f"{unique_file_name}"
-    blob_client = container_client.get_blob_client(blob_name)
-
-    blob_client.upload_blob(blobcontent, overwrite=True)
-    return blob_client.url
-
-    # uploadimagecontent = readimagecontent(local_file_path)
-
-    # container_client.upload_blob(name=blob_name, data=uploadimagecontent)
 
 
 async def uploadImagetodirUnqFileName(
@@ -618,46 +472,6 @@ async def uploadImagetodirUnqFileName(
     # container_client.upload_blob(name=blob_name, data=uploadimagecontent)
 
 
-def createUnqDir(containername):
-
-    # Replace with your Azure Storage account details
-    # Get the token using DefaultAzureCredential
-    credential = DefaultAzureCredential()
-
-    # Initialize the BlobServiceClient
-    storage_account_name = "davsynapseanalyticsdev"
-    blob_service_client = BlobServiceClient(
-        account_url=f"https://{storage_account_name}.blob.core.windows.net/",
-        credential=credential,
-    )
-
-    # Define the directory where the file will be uploaded
-    base_name = "dirazuremaptiles"
-    unique_directory_name = generate_unique_directory_name()
-
-    container_name = containername
-    # Create a blob client to upload a placeholder file
-    blob_client = blob_service_client.get_blob_client(
-        container=container_name, blob=f"{unique_directory_name}placeholder.txt"
-    )
-
-    # Upload a zero-byte blob to create the directory
-    blob_client.upload_blob(b"", overwrite=True)
-
-    return unique_directory_name
-
-    # uploadimagecontent = readimagecontent(local_file_path)
-
-    # container_client.upload_blob(name=blob_name, data=uploadimagecontent)
-
-
-def generate_unique_container_name(base_name):
-    # Generate a unique name by appending the current timestamp and a UUID
-    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    unique_id = str(uuid.uuid4())[:8]  # Take first 8 characters of UUID
-    return f"{base_name}-{timestamp}-{unique_id}"
-
-
 def generate_unique_directory_name(self):
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     self.request_id = str(uuid.uuid4())[:8]  # Take first 8 characters of UUID
@@ -674,81 +488,3 @@ def get_current_user():
     # Optionally, you can also get the domain
     domain = os.getenv("USERDOMAIN") or os.getenv("COMPUTERNAME")
     return f"{username}"
-
-
-# def get_current_user():
-#     username = getpass.getuser()  # Get the username
-#     # Optionally, you can also get the domain
-#     domain = os.getenv("USERDOMAIN") or os.getenv("COMPUTERNAME")
-#     logging.info("ts_maps domain {domain} username {username}")
-#     # Implementing for azure app services
-#     user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
-#     return f"{user_id}"
-
-
-def uploadImage(blobcontent, blbname):
-
-    # Replace with your Azure Storage account details
-    connect_str = "DefaultEndpointsProtocol=https;AccountName=tsstorageaccountvssubscr;AccountKey=l7FCoM2QC+3Xljbb9EkwdZXYxtHBkH7GQX6ta5aHZf2i6N9ZCLUSufGaVIUcD693A8cp1QIHzQDO+AStjbtSQQ==;EndpointSuffix=core.windows.net"
-    container_name = "firstcontainerunderroot"
-    blob_name = blbname
-    # file_path = "path_to_your_local_file"
-
-    # data = b"Hello, Azure Blob Storage!"
-
-    # Create a BlobServiceClient object
-    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-
-    container_client = blob_service_client.get_container_client(container_name)
-
-    # Create a BlobClient object for the blob
-    # blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
-    # Create a BlobClient object for the blob (file)
-
-    # # Upload data to the blob
-    # blob_client.upload_blob(data)
-
-    # local_file_path = "C:/TowerScout/Testing/Bing/BingTempfolders/tmpg2scritl/tmpg2scritl1.jpg"
-    # blob_client = container_client.get_blob_client(blob=local_file_path.split("/")[-1])
-    blob_client = container_client.get_blob_client(blob_name)
-    # # Upload the file
-    # with open(local_file_path, "rb") as data:
-    #     blob_client.upload_blob(data)
-
-    blob_client.upload_blob(blobcontent, overwrite=True)
-    return blob_client.url
-
-    # uploadimagecontent = readimagecontent(local_file_path)
-
-    # container_client.upload_blob(name=blob_name, data=uploadimagecontent)
-
-
-def uploadImagetoUnqDir(blobcontent, containername, directoryname, filename):
-
-    # Replace with your Azure Storage account details
-    # Get the token using DefaultAzureCredential
-    credential = DefaultAzureCredential()
-
-    # Initialize the BlobServiceClient
-    storage_account_name = "davsynapseanalyticsdev"
-    blob_service_client = BlobServiceClient(
-        account_url=f"https://{storage_account_name}.blob.core.windows.net/",
-        credential=credential,
-    )
-
-    container_name = containername
-    container_client = blob_service_client.get_container_client(container_name)
-
-    # Define the directory where the file will be uploaded
-    directory_name = directoryname
-
-    # Create a BlobClient for the file in the directory
-    blob_name = f"{directory_name}{filename}"
-    blob_client = container_client.get_blob_client(blob_name)
-
-    blob_client.upload_blob(blobcontent, overwrite=True)
-    return blob_client.url
-
-    # uploadimagecontent = readimagecontent(local_file_path)
-
-    # container_client.upload_blob(name=blob_name, data=uploadimagecontent)
