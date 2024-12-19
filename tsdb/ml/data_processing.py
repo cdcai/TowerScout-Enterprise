@@ -62,7 +62,10 @@ def get_transform_spec(): # pragma: nocover
 
 def get_converter(
     cat_name="edav_dev_csels", sch_name="towerscout_test_schema", batch_size=8
-):
+):  # pragma: no cover
+    """
+    This function is a duplicate of tsdb.preprocessing.process.create_converter
+    """
     petastorm_path = "file:///dbfs/tmp/petastorm/cache"
     images = spark.table(f"{cat_name}.{sch_name}.image_metadata").select(
         "content", "path"

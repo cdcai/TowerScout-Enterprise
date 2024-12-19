@@ -43,7 +43,3 @@ run_pytest_main([
     "--cov-report=term-missing",
     "--cov-config=.coveragerc"
 ])
-
-# COMMAND ----------
-
-
