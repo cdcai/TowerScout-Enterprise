@@ -7,6 +7,7 @@ from pyspark.sql import SparkSession
 from unittest.mock import MagicMock, patch
 from tsdb.ml.train import model_promotion
 from tsdb.ml.utils import PromotionArgs
+from tsdb.ml.train import perform_pass
 import mlflow
 from unittest.mock import MagicMock, patch, call
 
@@ -103,7 +104,6 @@ def test_perform_pass(
     mock_converter.make_torch_dataloader.return_value = dataloader_manager
 
     with patch("mlflow.log_metrics") as mock_log_metrics:
-        from tsdb.ml.train import perform_pass
         metrics = perform_pass(
             step_func=mock_step_func,
             converter=mock_converter,
