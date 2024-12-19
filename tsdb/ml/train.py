@@ -16,9 +16,8 @@ from enum import Enum
 from torch import nn
 
 from tsdb.ml.utils import TrainingArgs, FminArgs, SplitConverters, PromotionArgs
-from tsdb.ml.demo_utils import ModelTrainer, inference_step_demo
 from tsdb.ml.data_processing import get_transform_spec
-from tsdb.ml.model_trainer import Steps
+from tsdb.ml.model_trainer import Steps, TowerScoutModelTrainer, inference_step
 
 
 def perform_pass(
@@ -64,7 +63,7 @@ def perform_pass(
 
 def train(
     params: dict[str, Any], train_args: TrainingArgs, split_convs: SplitConverters
-) -> dict[str, Any]:
+) -> dict[str, Any]:  # pragma: no cover
     """
     Trains a model with given hyperparameter values and returns the value
     of the objective metric on the valdiation dataset.
@@ -79,7 +78,10 @@ def train(
 
     with mlflow.start_run(nested=True):
         # Create model and trainer
-        model_trainer = ModelTrainer(optimizer_args=params, metrics=train_args.metrics)
+        model_trainer = TowerScoutModelTrainer(
+            optimizer_args=params, 
+            metrics=train_args.metrics
+        )
         mlflow.log_params(params)
 
         context_args = {
@@ -109,7 +111,7 @@ def train(
 
         # testing
         test_metrics = perform_pass(
-            step_func=partial(inference_step_demo, model=model_trainer.model, step=Steps["TEST"].name, metrics=train_args.metrics), 
+            step_func=partial(inference_step, model=model_trainer.model, step=Steps["TEST"].name, metrics=train_args.metrics), 
             converter=split_convs.test, 
             context_args=context_args, 
             report_interval=len(split_convs.test)
@@ -139,7 +141,7 @@ def train(
 
 def tune_hyperparams(
     fmin_args: FminArgs, train_args: TrainingArgs
-) -> tuple[Any, float, dict[str, Any]]:
+) -> tuple[Any, float, dict[str, Any]]:  # pragma: no cover
     """
     Returns the best MLflow run and testing value of objective metric for that run
 
@@ -188,7 +190,7 @@ def model_promotion(promo_args: PromotionArgs) -> None:
 
     # get testing score for current produciton model
     champ_model_test_metrics = perform_pass(
-        step_func=partial(inference_step_demo, model=champ_model, step=Steps["TEST"].name, metrics=promo_args.metrics),
+        step_func=partial(inference_step, model=champ_model, step=Steps["TEST"].name, metrics=promo_args.metrics),
         converter=promo_args.test_conv,
         context_args=context_args,
         report_interval=len(promo_args.test_conv)
