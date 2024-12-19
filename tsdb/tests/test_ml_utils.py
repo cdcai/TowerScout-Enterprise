@@ -1,9 +1,5 @@
-from typing import Any
-
 import pytest
 import numpy as np
-import torchvision
-
 from PIL import Image
 from tsdb.ml.utils import cut_square_detection, get_model_tags
 
