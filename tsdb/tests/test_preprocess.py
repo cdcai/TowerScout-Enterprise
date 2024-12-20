@@ -179,6 +179,21 @@ def test_collate_fn_img_img(data, transforms):
     assert (2, 3, 640, 640) == tuple(img.shape), "Shape should be (batch_size, channels, height, width)"
 
 
+def test_collate_fn_img_ori_shape(data, transforms):
+    """Test ori_shape output of the collate_fn_img function."""
+    batch = collate_fn_img(data, transforms)
+    ori_shapes = batch["ori_shape"]
+    for ori_shape in ori_shapes:
+        assert (640, 640) == tuple(ori_shape), "Original shapes should be 640x640"
+
+
+def test_collate_fn_img_img_file(data, transforms):
+    """Test im_file output of the collate_fn_img function."""
+    batch = collate_fn_img(data, transforms)
+    im_files = batch["im_file"]
+    assert ("path/to/img1.jpg", "path/to/img2.jpg") == im_files
+
+
 @pytest.fixture
 def remote_dir() -> str:
     return '/Volumes/edav_dev_csels/towerscout/misc/mosaic_streaming_unit_test/'
@@ -194,7 +209,7 @@ def  batch_size() -> int:
     return 2
 
 
-def test_get_dataloader(remote_dir, local_dir, batch_size):
+def test_get_dataloader(remote_dir: str, local_dir, batch_size: str):
     """Test the get_dataloader function."""
     dataloader = get_dataloader(local_dir, remote_dir, batch_size)
     
