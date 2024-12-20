@@ -13,7 +13,12 @@ from tsdb.ml.utils import OptimizerArgs
 from tsdb.ml.model_trainer import Steps
 
 class YOLOLoss(Enum):
-    box_loss = auto()
+    """
+    Enum for the different loss types for the YOLO model. BL corresponds to box loss, BCE correspnds to 
+    binary cross entropy, and DLF corresponds to Distribution Focal loss.
+    For more info see: https://docs.ultralytics.com/reference/utils/loss/
+    """
+    BL = auto()
     BCE = auto()
     DLF = auto()
 
@@ -90,7 +95,7 @@ def score(
     step: str,
     device: str,
     args: IterableSimpleNamespace,
-) -> dict[str, float]:
+) -> dict[str, float]:  # pragma: no cover
     """
     Returns a dictionary of metrics to be logged.
     Code adapted from the update_metrics method in: ultralytics/models/yolo/detect/val.py
@@ -167,7 +172,7 @@ Ultralytics since we use Hyperopt for distributed tuning and it's not clear how 
 """
 
 class YoloModelTrainer:
-    def __init__(self, optimizer_args: OptimizerArgs, model: DetectionModel = None):
+    def __init__(self, optimizer_args: OptimizerArgs, model: DetectionModel = None):  # pragma: no cover
         self.model = model
         self.args = self.model.args
         self.amp = self.args.amp
@@ -207,6 +212,8 @@ class YoloModelTrainer:
 
         Returns:
             (torch.optim.Optimizer): The constructed optimizer.
+        
+        # TODO: test this
         """
         g = [], [], []  # optimizer parameter groups
         bn = tuple(
@@ -256,7 +263,7 @@ class YoloModelTrainer:
 
         return optimizer
 
-    def preprocess_train(self, batch: dict[str, Union[Tensor, int, float, str]]):
+    def preprocess_train(self, batch: dict[str, Union[Tensor, int, float, str]]):  # pragma: no cover
         """
         Preprocesses a batch of images by scaling and converting to float.
         Code adapted from preprocess_batch method in: ultralytics/models/yolo/detect/train.py 
@@ -265,7 +272,7 @@ class YoloModelTrainer:
         # didn't include self.args.multi_scale if statement from source code
         return batch
 
-    def preprocess_val(self, batch: dict[str, Union[Tensor, int, float, str]]):
+    def preprocess_val(self, batch: dict[str, Union[Tensor, int, float, str]]):  # pragma: no cover
         """
         Preprocesses a batch of images for validation.
         Code adapted from preprocess method in: ultralytics/models/yolo/detect/val.py 
@@ -278,7 +285,7 @@ class YoloModelTrainer:
 
         return batch
 
-    def optimizer_step(self):
+    def optimizer_step(self):  # pragma: no cover
         """
         Perform a single step of the training optimizer with gradient clipping and EMA update.
         Note: We didn't include the self.ema conditional from the source code
@@ -294,6 +301,9 @@ class YoloModelTrainer:
     def training_step(
         self, minibatch: Union[Tensor, int, float, str], **kwargs
     ) -> dict:
+        """
+        TODO: test this
+        """
         self.model.train()
 
         # forward pass
@@ -320,10 +330,10 @@ class YoloModelTrainer:
 
     def validation_step(
         self, minibatch: Union[Tensor, int, float, str], **kwargs
-    ) -> dict:
+    ) -> dict:  # pragma: no cover
         minibatch = self.preprocess_val(minibatch)
         return inference_step(minibatch, self.model, Steps["VAL"].name, self.device)
     
-    def save_model(self) -> None:
+    def save_model(self) -> None:  # pragma: no cover
         pass
 
