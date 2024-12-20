@@ -22,7 +22,7 @@ import os, glob
 
 from tsdb.utils.uc import CatalogInfo
 from tsdb.ml.detections import YOLOv5_Detector
-from tsdb.ml.efficientnet import EN_Classifier
+from tsdb.ml.efficientnet import ENClassifier
 
 # COMMAND ----------
 
@@ -176,7 +176,7 @@ en_model_name = f"{catalog}.{schema}.efficientnet"
 
 # Retrieves models by alias and create inference objects
 yolo_detector = YOLOv5_Detector.from_uc_registry(model_name=yolo_model_name, alias=alias, batch_size=16)
-en_classifier = EN_Classifier.from_uc_registry(model_name=en_model_name, alias=alias)
+en_classifier = ENClassifier.from_uc_registry(model_name=en_model_name, alias=alias)
 
 # COMMAND ----------
 
@@ -212,3 +212,18 @@ x_jpg = get_imgs(jpg_path, use_pil, num_imgs)
 x_test = x_jpg
 y_pred = yolo_detector.predict(model_input=x_test, secondary=en_classifier)
 print(y_pred)
+
+# COMMAND ----------
+
+y_pred[0]
+
+# COMMAND ----------
+
+import pandas as pd
+
+df = pd.DataFrame(y_pred, columns=["predictions"])
+display(df)
+
+# COMMAND ----------
+
+
