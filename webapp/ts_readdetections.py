@@ -100,6 +100,21 @@ class SilverTable:
                     if connection is None:
                          time.sleep(delay*2)
                          continue
+                    if not connection.open:
+                        connection = sql.connect(
+                        server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+                        http_path="/sql/1.0/warehouses/8605a48953a7f210",
+                        access_token="dapicb010df06931117a00ccc96cab0abdf0-3",
+                        connection_timeoutv= 30,  # Timeout in seconds
+                        retry_config={
+                        "min_retry_delay": 1.0,
+                        "max_retry_delay": 60.0,
+                        "max_attempts": max_retries,
+                        "retry_duration": 900.0,
+                        "default_retry_delay": 5.0,
+                        }
+                        )
+                        cursor = connection.cursor()
                     cursor.execute(
                         "SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
                         + user_id
@@ -126,6 +141,8 @@ class SilverTable:
                         retries += 1
                         if retries == max_retries:
                             max_retries +=1
+                        cursor.close()
+                        connection.close()
                             # raise Timeout("Forcing timeout error")
                         time.sleep(delay)
                 except Timeout as e:
