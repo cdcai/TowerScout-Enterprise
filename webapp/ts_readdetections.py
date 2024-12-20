@@ -13,8 +13,8 @@ class SilverTable:
         print("tilecount", tile_count)
         max_retries = tile_count * 2
         jobdone = self.poll_SilverTableJobDone(
-                request_id, user_id, tile_count, max_retries
-            )
+            request_id, user_id, tile_count, max_retries
+        )
         # jobdone = poll_table_for_record_count(
         #    request_id, user_id, tile_count, max_retries
         #    )
@@ -48,19 +48,19 @@ class SilverTable:
                 logging.error(
                     "Interface Error at %s",
                     "ts_readdetections.py(fetchbboxes)",
-                    exc_info=e
+                    exc_info=e,
                 )
             except sql.DatabaseError as e:
                 logging.error(
                     "Database Error at %s",
                     "ts_readdetections.py(fetchbboxes)",
-                    exc_info=e
+                    exc_info=e,
                 )
             except sql.OperationalError as e:
                 logging.error(
                     "Operational Error at %s",
                     "ts_readdetections.py(fetchbboxes)",
-                    exc_info=e
+                    exc_info=e,
                 )
             except Exception as e:
                 cursor.close()
@@ -69,50 +69,51 @@ class SilverTable:
                     "Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e
                 )
             except RuntimeError as e:
-                logging.error("Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e)
+                logging.error(
+                    "Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e
+                )
 
     def poll_SilverTableJobDone(
-        self, request_id, user_id, tile_count, max_retries, delay=30
+        self, request_id, user_id, tile_count, max_retries, delay=5
     ):
-        
         # # Testing existing data
         # user_id = 'cnu4'
         # request_id = '7fe1cd27'
         try:
             connection = sql.connect(
-            server_hostname="adb-1881246389460182.2.azuredatabricks.net",
-            http_path="/sql/1.0/warehouses/8605a48953a7f210",
-            access_token="dapicb010df06931117a00ccc96cab0abdf0-3",
-            connection_timeoutv= 30,  # Timeout in seconds
-            retry_config={
-            "min_retry_delay": 1.0,
-            "max_retry_delay": 60.0,
-            "max_attempts": max_retries,
-            "retry_duration": 900.0,
-            "default_retry_delay": 5.0,
-            }
-        )
+                server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+                http_path="/sql/1.0/warehouses/8605a48953a7f210",
+                access_token="dapicb010df06931117a00ccc96cab0abdf0-3",
+                connection_timeoutv=30,  # Timeout in seconds
+                retry_config={
+                    "min_retry_delay": 1.0,
+                    "max_retry_delay": 60.0,
+                    "max_attempts": max_retries,
+                    "retry_duration": 900.0,
+                    "default_retry_delay": 5.0,
+                },
+            )
             cursor = connection.cursor()
             retries = 0
             print("retries", max_retries)
             while retries < max_retries:
                 try:
                     if connection is None:
-                         time.sleep(delay*2)
-                         continue
+                        time.sleep(delay * 2)
+                        continue
                     if not connection.open:
                         connection = sql.connect(
-                        server_hostname="adb-1881246389460182.2.azuredatabricks.net",
-                        http_path="/sql/1.0/warehouses/8605a48953a7f210",
-                        access_token="dapicb010df06931117a00ccc96cab0abdf0-3",
-                        connection_timeoutv= 30,  # Timeout in seconds
-                        retry_config={
-                        "min_retry_delay": 1.0,
-                        "max_retry_delay": 60.0,
-                        "max_attempts": max_retries,
-                        "retry_duration": 900.0,
-                        "default_retry_delay": 5.0,
-                        }
+                            server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+                            http_path="/sql/1.0/warehouses/8605a48953a7f210",
+                            access_token="dapicb010df06931117a00ccc96cab0abdf0-3",
+                            connection_timeoutv=30,  # Timeout in seconds
+                            retry_config={
+                                "min_retry_delay": 1.0,
+                                "max_retry_delay": 60.0,
+                                "max_attempts": max_retries,
+                                "retry_duration": 900.0,
+                                "default_retry_delay": 5.0,
+                            },
                         )
                         cursor = connection.cursor()
                     cursor.execute(
@@ -140,34 +141,34 @@ class SilverTable:
                     else:
                         retries += 1
                         if retries == max_retries:
-                            max_retries +=1
+                            max_retries += 1
                         cursor.close()
                         connection.close()
-                            # raise Timeout("Forcing timeout error")
+                        # raise Timeout("Forcing timeout error")
                         time.sleep(delay)
                 except Timeout as e:
                     print("Request timeout error occurred. Retrying...")
                     retries += 1
                     if retries >= max_retries:
-                        max_retries+=1
+                        max_retries += 1
                     time.sleep(delay)  # Wait before retrying
         except sql.InterfaceError as e:
             logging.error(
                 "Interface Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
-                exc_info=e
+                exc_info=e,
             )
         except sql.DatabaseError as e:
             logging.error(
                 "Database Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
-                exc_info=e
+                exc_info=e,
             )
         except sql.OperationalError as e:
             logging.error(
                 "Operational Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
-                exc_info=e
+                exc_info=e,
             )
         except Exception as e:
             cursor.close()
@@ -175,11 +176,14 @@ class SilverTable:
             logging.error(
                 "Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
-                exc_info=e
+                exc_info=e,
             )
         except RuntimeError as e:
-            logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
-        
+            logging.error(
+                "Error at %s",
+                "ts_readdetections.py(poll_SilverTableJobDone)",
+                exc_info=e,
+            )
 
     def get_bboxesfortiles(self, tiles, events, id, request_id, user_id):
         tile_count = len(tiles)
@@ -198,7 +202,7 @@ class SilverTable:
                 #  get bbox column for each row from the results
                 # result[0] is bboxes, result[1] is tile id
                 bboxarray = result[0]
-                
+
                 tile_results = [
                     {
                         "x1": item["x1"],
@@ -239,27 +243,30 @@ class SilverTable:
 def get_record_count(conn, user_id, request_id):
     cursor = conn.cursor()
     cursor.execute(
-                        "SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
-                        + user_id
-                        + "' AND request_id = '"
-                        + request_id
-                        + "'"
-                    )
+        "SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
+        + user_id
+        + "' AND request_id = '"
+        + request_id
+        + "'"
+    )
     result = cursor.fetchone()
     return result[0]  # Return the record count from the query result
 
+
 # Function to poll the table until the required record count is met
-def poll_table_for_record_count(request_id, user_id, tile_count, max_retries, timeout = 300, delay=30):
+def poll_table_for_record_count(
+    request_id, user_id, tile_count, max_retries, timeout=300, delay=30
+):
     start_time = time.time()
     retries = 0
 
     # Connect to Databricks SQL Warehouse
     try:
         conn = sql.connect(
-             server_hostname="adb-1881246389460182.2.azuredatabricks.net",
+            server_hostname="adb-1881246389460182.2.azuredatabricks.net",
             http_path="/sql/1.0/warehouses/8605a48953a7f210",
             access_token="dapicb010df06931117a00ccc96cab0abdf0-3",
-            timeout=30  # Set a connection timeout of 30 seconds
+            timeout=30,  # Set a connection timeout of 30 seconds
         )
     except RequestException as e:
         print(f"Connection error: {e}")
@@ -286,7 +293,9 @@ def poll_table_for_record_count(request_id, user_id, tile_count, max_retries, ti
             print("Request timeout error occurred. Retrying...")
             retries += 1
             if retries >= max_retries:
-                print(f"Max retries reached. Aborting polling after {retries} attempts.")
+                print(
+                    f"Max retries reached. Aborting polling after {retries} attempts."
+                )
                 return None
             time.sleep(delay)  # Wait before retrying
         except RequestException as e:
@@ -299,6 +308,7 @@ def poll_table_for_record_count(request_id, user_id, tile_count, max_retries, ti
             # Always close the connection when done
             if conn:
                 conn.close()
+
 
 # # Example usage
 # table_name = "your_table_name"  # Replace with your table name

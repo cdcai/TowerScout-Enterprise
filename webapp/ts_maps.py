@@ -41,6 +41,7 @@ current_directory = os.getcwd()
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 timeout = aiohttp.ClientTimeout(total=60)  # Set the timeout to 60 seconds
 
+
 class Map:
 
     def __init__(self):
@@ -175,9 +176,17 @@ def convert_to_data_uri(image_content):
     return img_str
 
 
+import time
+import aiohttp
+
+
 async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
-    # execute
+    # Start performance logging
+    start_time = time.time()
+
+    # Generate a unique directory name
     unique_directory = generate_unique_directory_name(self)
+
     async with aiohttp.ClientSession(timeout=timeout) as session:
         await fetch_all(
             session,
@@ -190,23 +199,15 @@ async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
             tilesMetaData,
         )
 
+    # End performance logging
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Gathering URLs took {elapsed_time:.2f} seconds.")
 
-async def rate_limited_fetch(
-    session, url, dir, fname, i, index, mapType, unique_directory, tile, blob_service_client
+
+async def fetch(
+    session, url, dir, fname, i, mapType, unique_directory, tile, blob_service_client
 ):
-    # if ( mapType == 'azure'):
-        #Azure has more payload. Instead of increasing the sleep time exponentially, by changing it to 1 second per tile 
-        # has avoided the error aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed. This change will not have
-        # much impact on the time factor, especially with large number of tiles, when compared with exponentially increasing the time based on the
-        # number of tiles
-    # await asyncio.sleep(index * (1))
-    # else:
-    #     await asyncio.sleep(index * (1 / 3))
-    await asyncio.sleep(index * (1))
-    await fetch(session, url, dir, fname, i, mapType, unique_directory, tile, blob_service_client)
-
-
-async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile, blob_service_client):
 
     meta = False
     if url.endswith(" (meta)"):
@@ -276,7 +277,11 @@ async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile, bl
                 contentmeta = appendMetadatatoImg(rgbimg, tileMetadata, mapType)
                 blob_url = asyncio.create_task(
                     uploadImagetodirUnqFileName(
-                        contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
+                        contentmeta,
+                        "ddphss-csels",
+                        directoryname,
+                        blobname,
+                        blob_service_client,
                     )
                 )
                 # await f.write(contentmeta)
@@ -292,7 +297,11 @@ async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile, bl
                     contentmeta = appendMetadatatoImg(imgobject, tileMetadata, mapType)
                     blob_url = asyncio.create_task(
                         uploadImagetodirUnqFileName(
-                            contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
+                            contentmeta,
+                            "ddphss-csels",
+                            directoryname,
+                            blobname,
+                            blob_service_client,
                         )
                     )
                     # await f.write(contentmeta)
@@ -305,7 +314,7 @@ async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile, bl
                             content, "ddphss-csels", directoryname, blobname
                         )
                     )
-                
+
 
 async def fetch_all(
     session, urls, dir, fname, metadata, mapType, unique_directory, tilesMetaData
@@ -313,45 +322,51 @@ async def fetch_all(
     blob_service_client = createBlobServiceClient()
     tasks = []
     for i, tile in enumerate(tilesMetaData):
-        suffix = i
-        task = rate_limited_fetch(
-            session, tile["url"], dir, fname, suffix, i, mapType, unique_directory, tile, blob_service_client
+        task = fetch(
+            session,
+            tile["url"],
+            dir,
+            fname,
+            i,
+            mapType,
+            unique_directory,
+            tile,
+            blob_service_client,
         )
         tasks.append(task)
         if metadata:
-            task = rate_limited_fetch(
+            task = fetch(
                 session,
                 tile["metaurl"],
                 dir,
                 fname,
-                suffix,
                 i,
                 mapType,
                 unique_directory,
                 tile,
-                blob_service_client
+                blob_service_client,
             )
             tasks.append(task)
 
     results = await asyncio.gather(*tasks)
     return results
 
-        
+
 def createBlobServiceClient():
     # Replace with your Azure Storage account details
     # Get the token using DefaultAzureCredential
-        credential = DefaultAzureCredential()
+    credential = DefaultAzureCredential()
 
-        # Initialize the BlobServiceClient
-        storage_account_name = "davsynapseanalyticsdev"
-        
-        storageconnectionstring = ts_secrets.devSecrets.getSecret(
-            "TOWERSCOUTDEVSTORAGECONNSTR"
-        )
-        blob_service_client = BlobServiceClient.from_connection_string(
-            storageconnectionstring
-        )
-        return blob_service_client
+    # Initialize the BlobServiceClient
+    storage_account_name = "davsynapseanalyticsdev"
+
+    storageconnectionstring = ts_secrets.devSecrets.getSecret(
+        "TOWERSCOUTDEVSTORAGECONNSTR"
+    )
+    blob_service_client = BlobServiceClient.from_connection_string(
+        storageconnectionstring
+    )
+    return blob_service_client
 
 
 #
@@ -375,6 +390,8 @@ def get_distance(x1, y1, x2, y2):
     d = R * c
     return d
     # returns the distance in meters
+
+
 def getTileMetaData(tile, mapType):
     columns_to_extract = ["id", "lat", "lng", "h", "w"]
     tileMetadata = {}
@@ -453,7 +470,6 @@ async def uploadImagetodirUnqFileName(
     blobcontent, containername, directoryname, filename, blob_service_client
 ):
 
-   
     container_name = containername
     container_client = blob_service_client.get_container_client(container_name)
 
