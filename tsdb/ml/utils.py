@@ -1,10 +1,6 @@
 from collections import namedtuple
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field
 from typing import TypedDict
-
-from pyspark.sql import SparkSession, DataFrame, Column
-from pyspark.sql.types import Row
-import pyspark.sql.functions as F
 
 from enum import Enum
 
@@ -13,7 +9,6 @@ from torch import nn
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 from mlflow import MlflowClient
-from mlflow.entities.model_registry import ModelVersion
 
 from logging import Logger
 
@@ -149,12 +144,19 @@ def cut_square_detection(img, x1, y1, x2, y2):
 
     return img.crop((x1, y1, x2, y2))
 
-def get_model_tags(model_name: str, alias: str) -> dict[str, str]:
+def get_model_tags(model_name: str, alias: str) -> tuple[dict[str, str], str]:  # pragma: no cover
     """
     Returns the tags for the model with the given model name and alias
+    along with the model version.
+    
+    Note we do not unit test this function as `get_model_version_by_alias`
+    and `get_model_version` are unit tested in the MLflow git repo already at:
+    
+        - https://github.com/mlflow/mlflow/blob/8c07dc0f604565bec29358526db461ca4f842bb5/tests/tracking/test_client.py#L1532
+    
+        - https://github.com/mlflow/mlflow/blob/8c07dc0f604565bec29358526db461ca4f842bb5/tests/store/model_registry/test_rest_store.py#L306
     """
     client = MlflowClient()
-    catalog, schema, _ = model_name.split(".")
     model_version_info = client.get_model_version_by_alias(
         name=model_name, alias=alias
     )
@@ -164,4 +166,4 @@ def get_model_tags(model_name: str, alias: str) -> dict[str, str]:
     )
     model_tags = model_version_details.tags
 
-    return model_tags
+    return model_tags, model_version

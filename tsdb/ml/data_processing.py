@@ -19,7 +19,7 @@ from tsdb.preprocessing.transformations import compute_bytes
 from tsdb.preprocessing.preprocess import create_converter
 
 
-def transform_row(batch_pd):
+def transform_row(batch_pd): # pragma: nocover
     """
     Defines how to transform partition elements
     """
@@ -44,7 +44,7 @@ def transform_row(batch_pd):
     return batch_pd[["features"]]
 
 
-def get_transform_spec():
+def get_transform_spec(): # pragma: nocover
     """
     Applies transforms across partitions
     """
@@ -62,7 +62,10 @@ def get_transform_spec():
 
 def get_converter(
     cat_name="edav_dev_csels", sch_name="towerscout_test_schema", batch_size=8
-):
+):  # pragma: no cover
+    """
+    This function is a duplicate of tsdb.preprocessing.process.create_converter
+    """
     petastorm_path = "file:///dbfs/tmp/petastorm/cache"
     images = spark.table(f"{cat_name}.{sch_name}.image_metadata").select(
         "content", "path"
@@ -88,7 +91,7 @@ def get_converter(
     return converter
 
 
-def get_converter_df(dataframe: DataFrame, sc: SparkContext) -> callable:
+def get_converter_df(dataframe: DataFrame, sc: SparkContext) -> callable: # pragma: nocover
     """
     Creates a petastrom converter for a Spark dataframe
 
@@ -104,7 +107,7 @@ def get_converter_df(dataframe: DataFrame, sc: SparkContext) -> callable:
     return converter
 
 
-def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame):
+def split_data(images: DataFrame) -> (DataFrame, DataFrame, DataFrame): # pragma: nocover
     """
     Splits a Spark dataframe into train, test, and validation sets.
     Note that the input dataframe must have a column "label" with
