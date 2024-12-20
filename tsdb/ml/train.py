@@ -22,8 +22,8 @@ from tsdb.ml.model_trainer import Steps, TowerScoutModelTrainer, inference_step
 
 def perform_pass(
     step_func: Callable,
-    converter: Callable,
-    context_args: dict[str, Any],
+    converter: Callable, # TODO: assume dataloader input
+    context_args: dict[str, Any], # unneeded
     report_interval: int,
     epoch_num: int = 0,
 ) -> dict[str, float]:
@@ -47,6 +47,7 @@ def perform_pass(
     with converter.make_torch_dataloader(**context_args) as dataloader:
         dataloader_iter = iter(dataloader)
         
+        # TODO: steps_per_epoch not needed
         for minibatch_num in range(steps_per_epoch):
             minibatch_images = next(dataloader_iter)
             metrics = step_func(minibatch=minibatch_images)
@@ -62,7 +63,10 @@ def perform_pass(
 
 
 def train(
-    params: dict[str, Any], train_args: TrainingArgs, split_convs: SplitConverters
+    params: dict[str, Any],  # not needed
+    train_args: TrainingArgs, # not needed
+    split_convs: SplitConverters, # not needed
+    model_trainer: ModelTrainer # TODO: modify signature to take trainer and retrive any training args from trainer
 ) -> dict[str, Any]:  # pragma: no cover
     """
     Trains a model with given hyperparameter values and returns the value
@@ -78,12 +82,14 @@ def train(
 
     with mlflow.start_run(nested=True):
         # Create model and trainer
-        model_trainer = TowerScoutModelTrainer(
+        # TODO: remove
+        model_trainer = TowerScoutModelTrainer( # Input
             optimizer_args=params, 
             metrics=train_args.metrics
         )
         mlflow.log_params(params)
 
+        # TODO: remove
         context_args = {
             "transform_spec": get_transform_spec(),
             "batch_size": train_args.batch_size,
@@ -91,6 +97,7 @@ def train(
 
         # training
         for epoch in range(train_args.epochs):
+            # TODO: for new perform pass
             train_metrics = perform_pass(
                 step_func=model_trainer.training_step,
                 converter=split_convs.train,
@@ -101,6 +108,7 @@ def train(
 
         # validation
         for epoch in range(train_args.epochs):
+            # TODO: for new perform pass
             val_metrics = perform_pass(
                 step_func=model_trainer.validation_step,
                 converter=split_convs.val,
@@ -110,6 +118,7 @@ def train(
             )
 
         # testing
+        # TODO: for new perform pass
         test_metrics = perform_pass(
             step_func=partial(inference_step, model=model_trainer.model, step=Steps["TEST"].name, metrics=train_args.metrics), 
             converter=split_convs.test, 
@@ -117,18 +126,22 @@ def train(
             report_interval=len(split_convs.test)
         )
 
+        # TODO: 129-134
         with split_convs.test.make_torch_dataloader(**context_args) as dataloader:
             dataloader_iter = iter(dataloader)
 
             images = next(dataloader_iter)  # to get model signature
 
-            signature = infer_signature(
+            signature = model_trainer.get_signature(dataloader)
+
+            signature = infer_signature( # TODO: put in model trainer
                 model_input=images["features"].numpy(),
                 model_output=model_trainer.model(images["features"]).detach().numpy(),
-            )
-
+            ) 
+            
+            # Maybe we put this in the trainer?
             mlflow.pytorch.log_model(
-                model_trainer.model, "ts-model-mlflow", signature=signature
+                model_trainer.model, "ts-model-mlflow", signature=signature # TODO: model name should be an input
             )
 
         metric = val_metrics[
@@ -136,11 +149,14 @@ def train(
         ]  # minimize loss on val set b/c we are tuning hyperparams
 
     # Set the loss to -1*f1 so fmin maximizes the f1_score
+    # Be careful with this -1, it really should be a parameter
     return {"status": STATUS_OK, "loss": -1 * metric}
 
 
 def tune_hyperparams(
-    fmin_args: FminArgs, train_args: TrainingArgs
+    fmin_args: FminArgs, 
+    train_args: TrainingArgs,
+    run_name: str = "towerscout_retrain"
 ) -> tuple[Any, float, dict[str, Any]]:  # pragma: no cover
     """
     Returns the best MLflow run and testing value of objective metric for that run
@@ -152,7 +168,7 @@ def tune_hyperparams(
     Returns:
         tuple[Any, float, dict[str, Any]] A tuple containing the best run, the value of the objective metric for that run, and the hyperparameters of that run and the assocaited best hyperparameters
     """
-    with mlflow.start_run(run_name="towerscout_retrain"):
+    with mlflow.start_run(run_name=run_name):
         best_params = fmin(**(fmin_args._asdict()))
 
     # sort by val objective_metric we minimize, using DESC so assuming higher is better

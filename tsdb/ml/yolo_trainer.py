@@ -109,17 +109,16 @@ def score(
         (width, height, width, height), device=device
     )
 
-    if args.save_hybrid:
-        lb = [
-            torch.cat(
-                [
-                    minibatch["cls"][minibatch["batch_idx"] == i],
-                    bboxes[minibatch["batch_idx"] == i],
-                ],
-                dim=-1,
-            )
-            for i in range(nb)
+    def _concat(index):
+        selected = minibatch["batch_idx"] == index
+        items = [
+            minibatch["cls"][selected],
+            bboxes[selected]
         ]
+        return torch.cat(items, dim=-1)
+    
+    if args.save_hybrid:
+        lb = [_concat(i) for i in range(nb)]
     else:
         lb = []
 
