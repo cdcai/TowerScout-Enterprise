@@ -48,9 +48,9 @@ const DEFAULT_CONFIDENCE = 0.35
 function initBingMap() {
   bingMap = new BingMap();
   currentMap = bingMap;
-  
+
    // add change listeners for radio buttons
-  
+
 }
 
 // Initialize and add the map
@@ -236,31 +236,44 @@ class AzureMap extends TSMap {
               const geometryId = ui.item?.dataSources?.geometry?.id;
               if(geometryId) {
                 fetchGeometry(geometryId).then(geometryData => {
+                  const polys = [];
+
+                  const extractPoints = (coords) => {
+                    return coords.map(coord => [coord[0], coord[1]]);
+                  };
+
                   if (geometryData) {
-                      // Assuming geometryData contains the boundary coordinates
-                      const coordinates = geometryData.additionalData[0].geometryData.features[0].geometry.coordinates; // Adjust based on the actual response structure
+                      let coordinates = geometryData.additionalData[0].geometryData.features[0].geometry.coordinates;
+                      if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "MultiPolygon") { // This means it is a multi polygon...
+                        coordinates.map(polygon => {
+                          const muliPolygonPolygon = new atlas.data.Polygon(polygon);
+                          datasource.add(new atlas.data.Feature(muliPolygonPolygon));
+                          const points = extractPoints(muliPolygonPolygon.coordinates[0]);
+                          polys.push(new PolygonBoundary(points));
+                        })
+                      }
 
-                      // Create a polygon feature to shade the area
-                      const polygon = new atlas.data.Polygon(coordinates);
-                      datasource.add(new atlas.data.Feature(polygon));
+                      if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "Polygon") {
+                        const polygon = new atlas.data.Polygon(coordinates);
+                        datasource.add(new atlas.data.Feature(polygon));
+                        const points = extractPoints(polygon.coordinates[0]);
+                        polys.push(new PolygonBoundary(points));
+                      }
 
-                      // Optionally, you can set the fill color for the polygon
+
                       const polygonStyle = {
-                          fillColor: 'rgba(0, 0, 255, 0.5)', // Semi-transparent blue
+                          fillColor: 'rgba(0, 0, 255, 0.5)',
                           strokeColor: 'blue',
                           strokeWidth: 1
                       };
 
-                      // Add the polygon to the map with the specified style
                       const polygonLayer = new atlas.layer.PolygonLayer(datasource, 'searchResultPolygon', {
                           fillColor: polygonStyle.fillColor,
                           strokeColor: polygonStyle.strokeColor,
                           strokeWidth: polygonStyle.strokeWidth
                       });
                       this.map.layers.add(polygonLayer);
-                      const polys = [];
-                      const points = polygon.coordinates[0].map(coord => [coord[0], coord[1]]);
-                      polys.push(new PolygonBoundary(points));
+
                       this.boundaries = polys;
                   }
                 });
@@ -350,9 +363,9 @@ class AzureMap extends TSMap {
     }
     Detection.resetAll();
     this.drawingManager?.getSource()?.clear();
-    
+
     currentMap.clearAllCustomLayers();
-    
+
   }
   hideAllDataSources() {
     var layers = this.map.layers.getLayers();  // Get all layers on the map
@@ -372,7 +385,7 @@ class AzureMap extends TSMap {
       // if (layer['type'] != 'traffic'){
       currentMap.map.layers.remove(layer); // Remove each layer from the map
       // }
-      
+
     });
   }
   // Function to remove a layer by its id
@@ -481,7 +494,7 @@ class AzureMap extends TSMap {
       console.log('No shapes in the drawing manager.');
     }
   }
-  
+
   getBoundariesStr() {
     let result = [];
     for (let b of this.boundaries) {
@@ -507,9 +520,9 @@ class AzureMap extends TSMap {
     }
 
   }
-  
+
   //Draw bounding boxes
-  
+
   makeMapRect(o, listener) {
     try {
       let locs = [
@@ -527,23 +540,23 @@ class AzureMap extends TSMap {
         [o.x1, o.y2],  // Bottom-left corner
         [o.x1, o.y1]   // Closing the polygon (back to top-left)
       ];
-     
-        
+
+
     // });
     // Create a polygon (bounding box) from the coordinates
     var boundingBoxPolygon = new atlas.data.Polygon([boundingBoxCoordinates]);
     // Create a data source and add the bounding box (polygon) to it
-    
-    
+
+
     //Create dummy layer to avoid the obj ref error due to the click event handler
     var fillLayer;
-    
+
     if (o.classname == "tile"){
-    
+
       var tiledataSource = new atlas.source.DataSource(null);
       tiledataSource.add(boundingBoxPolygon);
       currentMap.map.sources.add(tiledataSource);
-      o.dataSourceID = tiledataSource.id;        
+      o.dataSourceID = tiledataSource.id;
       var tileborderLayer = new atlas.layer.LineLayer(tiledataSource, null, {
         strokeColor: 'blue',
         strokeWidth: 1                 // Border width
@@ -577,10 +590,10 @@ class AzureMap extends TSMap {
       });
       currentMap.map.layers.add(fillLayer);
       o.fillLayerID = fillLayer.id;;
-      
+
     }
-   
-   
+
+
     if ((typeof listener !== 'undefined') && (o.classname != 'tile')) {
       // Add click event to the layer using the 'addEventListener' method on the map
       this.map.events.add('click', fillLayer , function(e) {
@@ -590,10 +603,10 @@ class AzureMap extends TSMap {
               listener(clickedEntity);  // Call the listener function
           }
       });
-      
+
   }
       return boundingBoxPolygon;
-      
+
     }
     catch (error){
       console.log('An error occurred makeMapRect: ' + error);  // This won't execute
@@ -602,11 +615,11 @@ class AzureMap extends TSMap {
 
     }
     }
-  
+
   colorMapRect(o, color) {
     try{
       // Create a fill color with opacity
-      
+
       let fcolor = Microsoft.Maps.Color.fromHex(color);
       let alpha = o.opacity;
       // // Convert to RGB string format
@@ -615,9 +628,9 @@ class AzureMap extends TSMap {
       FilllayertoHighlight.setOptions({
           strokeColor: color,
           fillColor: fillcolor, // Semi-transparent fill
-          strokeWidth: 1 
+          strokeWidth: 1
         });
-      
+
     }
     catch (error){
       console.log('An error occurred colorMapRect: ' + error);  // This won't execute
@@ -629,8 +642,8 @@ class AzureMap extends TSMap {
   // Convert Microsoft.Maps.Color to an RGBA string
   colorToRGBA(color,alpha) {
     return 'rgba(' + color.r + ', ' + color.g + ', ' + color.b + ', ' + alpha + ')';
-  }  
-  
+  }
+
   updateMapRect(o, onoff) {
     try{
       if (onoff)
@@ -667,7 +680,7 @@ class AzureMap extends TSMap {
         });
         o.visibilitySetto = false
         }
-      
+
     }
     catch (error){
       console.log('An error occurred updateMapRect: ' + error);  // This won't execute
@@ -1192,7 +1205,7 @@ class PlaceRect {
       azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
       azureMap.setZoom(19);
     }
-    
+
   }
 
   getCenter() {
@@ -1598,7 +1611,7 @@ function getObjects(estimate) {
   let engine = $('input[name=model]:checked', '#engines').val()
   let provider = $('input[name=provider]:checked', '#providers').val()
   provider = provider.substring(0, provider.length - 9);
- 
+
 
   // now get the boundaries ready to ship
   let bounds = currentMap.getBoundsUrl();
@@ -1852,7 +1865,7 @@ function fillProviders() {
 }
 
 function setMap(newMap = currentMap) {
-  
+
   if (currentUI !== null) {
     currentMap.clearAll();
     document.getElementById(currentUI.value + "Map").style.display = "none";
@@ -1866,7 +1879,7 @@ function setMap(newMap = currentMap) {
   // let lastMap = currentMap;
   let zoom;
   let center;
-  
+
 
   if (currentUI.value === "upload") {
     document.getElementById("uploadsearchui").style.display = "block";
@@ -1912,6 +1925,7 @@ function setMap(newMap = currentMap) {
     document.getElementById("bingSearchBoxContainer").style.display = "none";
     document.getElementById("azureSearchBoxContainer").style.display = "inline";
     currentMap = azureMap;
+
     // recreate boundaries for azure
     let bs = currentMap.boundaries;
     currentMap.resetBoundaries();
@@ -2007,7 +2021,7 @@ function augmentDetections() {
           det.augment(addr);
           afterAugment();
         }
-  
+
         });
         },1000*i,i)
     }
@@ -2050,10 +2064,10 @@ function afterAugment() {
   Detection.generateList();
 
   // now hide low confidence values, sort the list and do the rest
-  
+
   console.log("Adjusting Confidence ....");
   adjustConfidence();
-  
+
   console.log("Done ....");
 }
 
