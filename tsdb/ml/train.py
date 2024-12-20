@@ -1,5 +1,4 @@
 import mlflow
-from mlflow.models.signature import infer_signature
 from mlflow import MlflowClient
 
 from hyperopt import fmin, STATUS_OK, SparkTrials, Trials
@@ -14,26 +13,27 @@ from functools import partial
 from enum import Enum
 
 from torch import nn
+from torch.utils.data import DataLoader
 
-from tsdb.ml.utils import TrainingArgs, FminArgs, SplitConverters, PromotionArgs
+from tsdb.ml.utils import TrainingArgs, FminArgs, SplitDataloaders, PromotionArgs
 from tsdb.ml.data_processing import get_transform_spec
-from tsdb.ml.model_trainer import Steps, TowerScoutModelTrainer, inference_step
+from tsdb.ml.model_trainer import Steps, ModelTrainerType
+from tsdb.ml.yolo_trainer import inference_step
+from tsdb.ml.utils import Steps
 
 
 def perform_pass(
     step_func: Callable,
-    converter: Callable, # TODO: assume dataloader input
-    context_args: dict[str, Any], # unneeded
+    dataloader: DataLoader,
     report_interval: int,
     epoch_num: int = 0,
 ) -> dict[str, float]:
     """
-    Perfroms a single pass (epcoh) over the data accessed by the converter
+    Perfroms a single pass (epcoh) over the data accessed by the dataloader
 
     Args:
         step_func: A callable that performs either a training or inference step
-        converter: The petastorm converter
-        context_args: Arguments for the converter context
+        dataloader: The torch dataloader
         report_interval: How often to report metrics during pass
         epoch_num: The current epoch number for logging metrics across epochs
     Returns:
@@ -41,108 +41,79 @@ def perform_pass(
     """
 
     metrics = {}
-    converter_length = len(converter)
-    steps_per_epoch = converter_length // context_args["batch_size"]
+    num_batches = len(dataloader)
 
-    with converter.make_torch_dataloader(**context_args) as dataloader:
-        dataloader_iter = iter(dataloader)
+    for minibatch_num, minibatch in enumerate(dataloader):
+        metrics = step_func(minibatch=minibatch)
         
-        # TODO: steps_per_epoch not needed
-        for minibatch_num in range(steps_per_epoch):
-            minibatch_images = next(dataloader_iter)
-            metrics = step_func(minibatch=minibatch_images)
-            
-            if minibatch_num % report_interval == 0:
-                step_num = minibatch_num + (epoch_num * converter_length)
-                mlflow.log_metrics(
-                    metrics,
-                    step=step_num
-                )
+        if minibatch_num % report_interval == 0:
+            step_num = minibatch_num + (epoch_num * num_batches)
+            mlflow.log_metrics(
+                metrics,
+                step=step_num
+            )
     
     return metrics
 
 
 def train(
-    params: dict[str, Any],  # not needed
-    train_args: TrainingArgs, # not needed
-    split_convs: SplitConverters, # not needed
-    model_trainer: ModelTrainer # TODO: modify signature to take trainer and retrive any training args from trainer
+    dataloaders: SplitDataLoaders,
+    model_trainer: ModelTrainerType, # TODO: modify signature to take trainer and retrive any training args from trainer - Done
+    model_name: str = "towerscout_model"
 ) -> dict[str, Any]:  # pragma: no cover
     """
     Trains a model with given hyperparameter values and returns the value
     of the objective metric on the valdiation dataset.
 
     Args:
-        params: The hyperparameter values to train model with
-        train_args: The arguements for training and validaiton loops
-        split_convs: The converters for the train/val/test datasets
+        model_trainer: The model trainer
+        dataloaders: The dataloaders for the train/val/test datasets
+        model_name: The name to log the model under in MLflow
     Returns:
         dict[str, float] A dict containing the loss
     """
 
     with mlflow.start_run(nested=True):
         # Create model and trainer
-        # TODO: remove
-        model_trainer = TowerScoutModelTrainer( # Input
-            optimizer_args=params, 
-            metrics=train_args.metrics
-        )
-        mlflow.log_params(params)
+        # TODO: remove - Done
+        mlflow.log_params(model_trainer.optimizer_args)
 
-        # TODO: remove
-        context_args = {
-            "transform_spec": get_transform_spec(),
-            "batch_size": train_args.batch_size,
-        }
+        train_args = model_trainer.train_args
 
         # training
         for epoch in range(train_args.epochs):
-            # TODO: for new perform pass
+            # TODO: for new perform pass - Done
             train_metrics = perform_pass(
                 step_func=model_trainer.training_step,
-                converter=split_convs.train,
-                context_args=context_args,
+                dataloader=dataloaders.train,
                 report_interval=train_args.report_interval,
                 epoch_num=epoch,
             )
 
         # validation
         for epoch in range(train_args.epochs):
-            # TODO: for new perform pass
+            # TODO: for new perform pass - Done
             val_metrics = perform_pass(
                 step_func=model_trainer.validation_step,
-                converter=split_convs.val,
-                context_args=context_args,
-                report_interval=len(split_convs.val),
+                dataloader=dataloaders.val,
+                report_interval=len(dataloaders.val),
                 epoch_num=epoch,
             )
 
         # testing
-        # TODO: for new perform pass
+        # TODO: for new perform pass - Done
         test_metrics = perform_pass(
             step_func=partial(inference_step, model=model_trainer.model, step=Steps["TEST"].name, metrics=train_args.metrics), 
-            converter=split_convs.test, 
-            context_args=context_args, 
-            report_interval=len(split_convs.test)
+            dataloader=dataloaders.test, 
+            report_interval=len(dataloaders.test)
         )
 
-        # TODO: 129-134
-        with split_convs.test.make_torch_dataloader(**context_args) as dataloader:
-            dataloader_iter = iter(dataloader)
-
-            images = next(dataloader_iter)  # to get model signature
-
-            signature = model_trainer.get_signature(dataloader)
-
-            signature = infer_signature( # TODO: put in model trainer
-                model_input=images["features"].numpy(),
-                model_output=model_trainer.model(images["features"]).detach().numpy(),
-            ) 
+        signature = model_trainer.get_signature(dataloader)
             
-            # Maybe we put this in the trainer?
-            mlflow.pytorch.log_model(
-                model_trainer.model, "ts-model-mlflow", signature=signature # TODO: model name should be an input
-            )
+        # Maybe we put this in the trainer?
+        mlflow.pytorch.log_model(
+            model_trainer.model, model_name, signature=signature # TODO: model name should be an input
+        )
 
         metric = val_metrics[
             f"{train_args.objective_metric}_VAL"
@@ -199,17 +170,11 @@ def model_promotion(promo_args: PromotionArgs) -> None:
         model_uri=f"models:/{promo_args.model_name}@{promo_args.alias}"
     )
 
-    context_args = {
-        "transform_spec": get_transform_spec(),
-        "batch_size": promo_args.batch_size,
-    }
-
     # get testing score for current produciton model
     champ_model_test_metrics = perform_pass(
         step_func=partial(inference_step, model=champ_model, step=Steps["TEST"].name, metrics=promo_args.metrics),
-        converter=promo_args.test_conv,
-        context_args=context_args,
-        report_interval=len(promo_args.test_conv)
+        dataloader=promo_args.test_dataloader,
+        report_interval=len(promo_args.test_dataloader)
     )
 
     champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]

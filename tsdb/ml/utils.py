@@ -2,15 +2,21 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 from typing import TypedDict
 
-from enum import Enum
+from enum import Enum, auto
 
 from torch import nn
 
-from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
+from torch.utils.data import DataLoader
 
 from mlflow import MlflowClient
 
 from logging import Logger
+
+
+class Steps(Enum):
+    TRAIN = auto()
+    VAL = auto()
+    TEST = auto()
 
 
 class ValidMetric(Enum):
@@ -28,20 +34,20 @@ FminArgs = namedtuple("FminArgs", ["fn", "space", "algo", "max_evals", "trials"]
 
 
 @dataclass
-class SplitConverters:
+class SplitDataloaders:
     """
-    A class to hold the spark dataset converters for the training, testing
+    A dataclass to hold the dataloaders for the training, testing
     and validation sets
 
     Attributes:
-        train: The spark dataset converter for the training dataset
-        val: The spark dataset converter for the validation dataset
-        test: The spark dataset converter for the testing dataset
+        train: The dataloader for the training dataset
+        val: The dataloader for the validation dataset
+        test: The dataloader for the testing dataset
     """
 
-    train: SparkDatasetConverter = None
-    val: SparkDatasetConverter = None
-    test: SparkDatasetConverter = None
+    train: DataLoader = None
+    val: DataLoader = None
+    test: DataLoader = None
 
 
 @dataclass
@@ -77,7 +83,7 @@ class PromotionArgs:
         model_name: The name of the model
         challenger_metric_value: The value of the objective metric achieved by the challenger model on the test dataset
         alias: The alias we are promoting the model to
-        test_conv: The converter for the test dataset
+        test_dataloader: The dataloader for the test dataset
     """
 
     objective_metric: str = "recall"
@@ -87,7 +93,7 @@ class PromotionArgs:
     model_name: str = "ts"
     challenger_metric_value: float = 0
     alias: str = "staging"
-    test_conv: SparkDatasetConverter = None
+    test_dataloader: DataLoader = None
     client: MlflowClient = None
     logger: Logger = None
 
