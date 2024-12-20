@@ -192,23 +192,21 @@ async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
 
 
 async def rate_limited_fetch(
-    session, url, dir, fname, i, index, mapType, unique_directory, tile
+    session, url, dir, fname, i, index, mapType, unique_directory, tile, blob_service_client
 ):
     # if ( mapType == 'azure'):
         #Azure has more payload. Instead of increasing the sleep time exponentially, by changing it to 1 second per tile 
         # has avoided the error aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed. This change will not have
         # much impact on the time factor, especially with large number of tiles, when compared with exponentially increasing the time based on the
         # number of tiles
-    await asyncio.sleep(index * (1))
+    # await asyncio.sleep(index * (1))
     # else:
     #     await asyncio.sleep(index * (1 / 3))
     await asyncio.sleep(index * (1))
-    # else:
-    #     await asyncio.sleep(index * (1 / 3))
-    await fetch(session, url, dir, fname, i, mapType, unique_directory, tile)
+    await fetch(session, url, dir, fname, i, mapType, unique_directory, tile, blob_service_client)
 
 
-async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile):
+async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile, blob_service_client):
 
     meta = False
     if url.endswith(" (meta)"):
@@ -278,7 +276,7 @@ async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile):
                 contentmeta = appendMetadatatoImg(rgbimg, tileMetadata, mapType)
                 blob_url = asyncio.create_task(
                     uploadImagetodirUnqFileName(
-                        contentmeta, "ddphss-csels", directoryname, blobname
+                        contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
                     )
                 )
                 # await f.write(contentmeta)
@@ -294,7 +292,7 @@ async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile):
                     contentmeta = appendMetadatatoImg(imgobject, tileMetadata, mapType)
                     blob_url = asyncio.create_task(
                         uploadImagetodirUnqFileName(
-                            contentmeta, "ddphss-csels", directoryname, blobname
+                            contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
                         )
                     )
                     # await f.write(contentmeta)
@@ -312,11 +310,12 @@ async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile):
 async def fetch_all(
     session, urls, dir, fname, metadata, mapType, unique_directory, tilesMetaData
 ):
+    blob_service_client = createBlobServiceClient()
     tasks = []
     for i, tile in enumerate(tilesMetaData):
         suffix = i
         task = rate_limited_fetch(
-            session, tile["url"], dir, fname, suffix, i, mapType, unique_directory, tile
+            session, tile["url"], dir, fname, suffix, i, mapType, unique_directory, tile, blob_service_client
         )
         tasks.append(task)
         if metadata:
@@ -330,11 +329,29 @@ async def fetch_all(
                 mapType,
                 unique_directory,
                 tile,
+                blob_service_client
             )
             tasks.append(task)
 
     results = await asyncio.gather(*tasks)
     return results
+
+        
+def createBlobServiceClient():
+    # Replace with your Azure Storage account details
+    # Get the token using DefaultAzureCredential
+        credential = DefaultAzureCredential()
+
+        # Initialize the BlobServiceClient
+        storage_account_name = "davsynapseanalyticsdev"
+        
+        storageconnectionstring = ts_secrets.devSecrets.getSecret(
+            "TOWERSCOUTDEVSTORAGECONNSTR"
+        )
+        blob_service_client = BlobServiceClient.from_connection_string(
+            storageconnectionstring
+        )
+        return blob_service_client
 
 
 #
@@ -433,25 +450,10 @@ def check_tile_against_bounds(t, bounds):
 
 
 async def uploadImagetodirUnqFileName(
-    blobcontent, containername, directoryname, filename
+    blobcontent, containername, directoryname, filename, blob_service_client
 ):
 
-    # Replace with your Azure Storage account details
-    # Get the token using DefaultAzureCredential
-    credential = DefaultAzureCredential()
-
-    # Initialize the BlobServiceClient
-    storage_account_name = "davsynapseanalyticsdev"
-    blob_service_client = BlobServiceClient(
-        account_url=f"https://{storage_account_name}.blob.core.windows.net/",
-        credential=credential,
-    )
-    storageconnectionstring = ts_secrets.devSecrets.getSecret(
-        "TOWERSCOUTDEVSTORAGECONNSTR"
-    )
-    blob_service_client = BlobServiceClient.from_connection_string(
-        storageconnectionstring
-    )
+   
     container_name = containername
     container_client = blob_service_client.get_container_client(container_name)
 
