@@ -102,6 +102,9 @@ train_set, test_set, val_set = split_datanolabel(images)
 logger.info(f"Creating converter for train/val/test datasets")
 # create converters for train/val/test spark df's
 sc = spark.sparkContext
+
+# TODO: get dataloaders from spark dataframe
+#
 converter_train = get_converter_df(train_set, sc)
 converter_val = get_converter_df(val_set, sc)
 converter_test = get_converter_df(test_set, sc)
@@ -128,6 +131,7 @@ search_space = {
 }
 
 # using partial to pass extra arugments to objective function
+# TODO: create trainer class object here
 objective_func = partial(train, train_args=train_args, split_convs=split_convs)
 
 fmin_args = FminArgs(

@@ -14,8 +14,10 @@ from tsdb.ml.data_processing import transform_row, get_transform_spec, get_conve
 TODO: Adapt this file to be the EN model trainer
 """
 
+
 class Metrics(Enum):
     MSE = nn.MSELoss()
+
 
 class Steps(Enum):
     TRAIN = auto()
@@ -63,10 +65,10 @@ def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):  
 
 
 def score(logits, labels, step: str, metrics: Metrics):  # pragma: no cover
-        return {
-            f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
-            for metric in metrics
-        }
+    return {
+        f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
+        for metric in metrics
+    }
 
 
 def forward_func(model, minibatch) -> tuple[Tensor,Tensor,Tensor]:  # pragma: no cover

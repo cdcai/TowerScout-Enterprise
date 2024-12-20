@@ -12,6 +12,7 @@ from mlflow import MlflowClient
 
 from logging import Logger
 
+
 class ValidMetric(Enum):
     """
     An Enum which is used to represent valid evaluation metrics for the model
@@ -22,7 +23,9 @@ class ValidMetric(Enum):
 
 
 # using a dataclass instead results in sparkcontext error
+# fn is the function to train the model
 FminArgs = namedtuple("FminArgs", ["fn", "space", "algo", "max_evals", "trials"])
+
 
 @dataclass
 class SplitConverters:
@@ -102,6 +105,7 @@ class OptimizerArgs:
     optimizer_name: str = "auto"
     lr0: float = 0.001
     momentum: float = 0.9
+
 
 class YOLOv5Detection(TypedDict):
     x1: float
