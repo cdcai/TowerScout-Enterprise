@@ -65,8 +65,6 @@ def data_augmentation(
     return transforms
 
 
-# Put these funcitons into preprocess.py not ml_utils!
-# Make new branch off this one after you merge main into it AND open a PR.
 def convert_to_mds(
     df: DataFrame, columns: dict[str, str], compression: str, out_root: str, **kwargs
 ) -> None:
@@ -118,7 +116,7 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
             if key == "img":
                 value = transforms(value)
 
-                # height & width after sime transform/augmentation has been done
+                # height & width after image transform/augmentation has been done
                 _, height, width = value.shape
                 result["resized_shape"].append((height, width))
                 
@@ -200,5 +198,5 @@ def get_dataloader(
     collate_fn = partial(collate_fn_img, transforms=transform)
     dataloader = DataLoader(
         dataset, batch_size=batch_size, collate_fn=collate_fn
-    )  # test this to make sure u get a DataLoader u can iterate through
+    )
     return dataloader
