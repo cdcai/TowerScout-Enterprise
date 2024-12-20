@@ -7,9 +7,12 @@ from enum import Enum, auto
 from collections import namedtuple
 from typing import Protocol
 
-from tsdb.ml.models import TowerScoutModel
+from tsdb.ml.efficientnet import EN_Classifier
 from tsdb.ml.data_processing import transform_row, get_transform_spec, get_converter
 
+"""
+TODO: Adapt this file to be the EN model trainer
+"""
 
 class Metrics(Enum):
     MSE = nn.MSELoss()
@@ -20,7 +23,7 @@ class Steps(Enum):
     TEST = auto()
 
 
-class ModelTrainerType(Protocol):
+class ModelTrainerType(Protocol):  # pragma: no cover
     """
     A protocol that defines the interface for a model trainer
     TODO: determine what other properties should be made required
@@ -45,7 +48,7 @@ class ModelTrainerType(Protocol):
         raise NotImplementedError
 
 
-def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):
+def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):  # pragma: no cover
     params_to_update = []
     for name, param in model.named_parameters():
         if "_bn" in name:
@@ -59,13 +62,14 @@ def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):
     return optimizer
 
 
-def score(logits, labels, step: str, metrics: Metrics):
+def score(logits, labels, step: str, metrics: Metrics):  # pragma: no cover
         return {
             f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
             for metric in metrics
         }
 
-def forward_func(model, minibatch) -> tuple[Tensor,Tensor,Tensor]:
+
+def forward_func(model, minibatch) -> tuple[Tensor,Tensor,Tensor]:  # pragma: no cover
         images = minibatch["features"]
         labels = minibatch["labels"]
 
@@ -79,15 +83,15 @@ def forward_func(model, minibatch) -> tuple[Tensor,Tensor,Tensor]:
     
 
 @torch.no_grad()
-def inference_step(minibatch, model, metrics, step) -> dict:
+def inference_step(minibatch, model, metrics, step) -> dict:  # pragma: no cover
     model.eval()
     logits, _, labels = forward_func(model, minibatch)
     return score(logits, labels, step, metrics)
 
 
-class TowerScoutModelTrainer:
+class TowerScoutModelTrainer:  # pragma: no cover
     def __init__(self, optimizer_args, metrics=None, criterion: str = "MSE"):
-        self.model = TowerScoutModel()
+        self.model = EN_Classifier()
 
         if metrics is None:
             metrics = [Metrics.MSE]
