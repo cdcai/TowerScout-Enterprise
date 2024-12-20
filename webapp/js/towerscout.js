@@ -49,7 +49,7 @@ function initBingMap() {
   bingMap = new BingMap();
   currentMap = bingMap;
 
-   // add change listeners for radio buttons
+  // add change listeners for radio buttons
 
 }
 
@@ -142,13 +142,13 @@ async function processRequest(url, map) {
   if (transform) requestParams = transform(url);
 
   const response = await fetch(requestParams.url, {
-      method: 'GET',
-      mode: 'cors',
-      headers: new Headers(requestParams.headers)
+    method: 'GET',
+    mode: 'cors',
+    headers: new Headers(requestParams.headers)
   });
 
   if (!response.ok) {
-      throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
+    throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
   }
 
   return response.json();
@@ -162,18 +162,18 @@ function fetchGeometry(geometryId) {
   const url = `https://atlas.microsoft.com/search/polygon/json?api-version=1.0&geometries=${geometryId}&subscription-key=${azure_api_key}`;
 
   return fetch(url)
-      .then(response => {
-          if (!response.ok) {
-              throw new Error('Network response was not ok');
-          }
-          return response.json();
-      })
-      .then(data => {
-          return data; // Return the geometry data
-      })
-      .catch(error => {
-          console.error('Error fetching geometry:', error);
-      });
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      return response.json();
+    })
+    .then(data => {
+      return data; // Return the geometry data
+    })
+    .catch(error => {
+      console.error('Error fetching geometry:', error);
+    });
 }
 
 class AzureMap extends TSMap {
@@ -214,91 +214,91 @@ class AzureMap extends TSMap {
       //Create a jQuery autocomplete UI widget.
       var geocodeServiceUrlTemplate = 'https://{azMapsDomain}/search/fuzzy/json?typeahead=true&api-version=1.0&query={query}&language=en-US&lon={lon}&lat={lat}&countrySet=US&view=Auto';
       $("#azureSearch").autocomplete({
-          minLength: 4,   //Don't ask for suggestions until atleast 3 characters have been typed. This will reduce costs by not making requests that will likely not have much relevance.
-          source: (request, response) => {
-              var center = this.map.getCamera().center;
+        minLength: 4,   //Don't ask for suggestions until atleast 3 characters have been typed. This will reduce costs by not making requests that will likely not have much relevance.
+        source: (request, response) => {
+          var center = this.map.getCamera().center;
 
-              //Create a URL to the Azure Maps search service to perform the search.
-              var requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(request.term))
-                  .replace('{lon}', center[0])    //Use a lat and lon value of the center the map to bais the results to the current map view.
-                  .replace('{lat}', center[1])
+          //Create a URL to the Azure Maps search service to perform the search.
+          var requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(request.term))
+            .replace('{lon}', center[0])    //Use a lat and lon value of the center the map to bais the results to the current map view.
+            .replace('{lat}', center[1])
 
-              processRequest(requestUrl, this.map).then(data => {
-                  response(data.results);
-              });
-          },
-          select: (event, ui) => {
-              event.preventDefault();
-              document.getElementById("azureSearch").value = ui.item.address.freeformAddress
-              //Remove any previous added data from the map.
-              datasource.clear();
+          processRequest(requestUrl, this.map).then(data => {
+            response(data.results);
+          });
+        },
+        select: (event, ui) => {
+          event.preventDefault();
+          document.getElementById("azureSearch").value = ui.item.address.freeformAddress
+          //Remove any previous added data from the map.
+          datasource.clear();
 
-              const geometryId = ui.item?.dataSources?.geometry?.id;
-              if(geometryId) {
-                fetchGeometry(geometryId).then(geometryData => {
-                  const polys = [];
+          const geometryId = ui.item?.dataSources?.geometry?.id;
+          if (geometryId) {
+            fetchGeometry(geometryId).then(geometryData => {
+              const polys = [];
 
-                  const extractPoints = (coords) => {
-                    return coords.map(coord => [coord[0], coord[1]]);
-                  };
+              const extractPoints = (coords) => {
+                return coords.map(coord => [coord[0], coord[1]]);
+              };
 
-                  if (geometryData) {
-                      let coordinates = geometryData.additionalData[0].geometryData.features[0].geometry.coordinates;
-                      if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "MultiPolygon") { // This means it is a multi polygon...
-                        coordinates.map(polygon => {
-                          const muliPolygonPolygon = new atlas.data.Polygon(polygon);
-                          datasource.add(new atlas.data.Feature(muliPolygonPolygon));
-                          const points = extractPoints(muliPolygonPolygon.coordinates[0]);
-                          polys.push(new PolygonBoundary(points));
-                        })
-                      }
+              if (geometryData) {
+                let coordinates = geometryData.additionalData[0].geometryData.features[0].geometry.coordinates;
+                if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "MultiPolygon") { // This means it is a multi polygon...
+                  coordinates.map(polygon => {
+                    const muliPolygonPolygon = new atlas.data.Polygon(polygon);
+                    datasource.add(new atlas.data.Feature(muliPolygonPolygon));
+                    const points = extractPoints(muliPolygonPolygon.coordinates[0]);
+                    polys.push(new PolygonBoundary(points));
+                  })
+                }
 
-                      if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "Polygon") {
-                        const polygon = new atlas.data.Polygon(coordinates);
-                        datasource.add(new atlas.data.Feature(polygon));
-                        const points = extractPoints(polygon.coordinates[0]);
-                        polys.push(new PolygonBoundary(points));
-                      }
+                if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "Polygon") {
+                  const polygon = new atlas.data.Polygon(coordinates);
+                  datasource.add(new atlas.data.Feature(polygon));
+                  const points = extractPoints(polygon.coordinates[0]);
+                  polys.push(new PolygonBoundary(points));
+                }
 
 
-                      const polygonStyle = {
-                          fillColor: 'rgba(0, 0, 255, 0.5)',
-                          strokeColor: 'blue',
-                          strokeWidth: 1
-                      };
+                const polygonStyle = {
+                  fillColor: 'rgba(0, 0, 255, 0.5)',
+                  strokeColor: 'blue',
+                  strokeWidth: 1
+                };
 
-                      const polygonLayer = new atlas.layer.PolygonLayer(datasource, 'searchResultPolygon', {
-                          fillColor: polygonStyle.fillColor,
-                          strokeColor: polygonStyle.strokeColor,
-                          strokeWidth: polygonStyle.strokeWidth
-                      });
-                      this.map.layers.add(polygonLayer);
-
-                      this.boundaries = polys;
-                  }
+                const polygonLayer = new atlas.layer.PolygonLayer(datasource, 'searchResultPolygon', {
+                  fillColor: polygonStyle.fillColor,
+                  strokeColor: polygonStyle.strokeColor,
+                  strokeWidth: polygonStyle.strokeWidth
                 });
+                this.map.layers.add(polygonLayer);
+
+                this.boundaries = polys;
               }
-
-              //Zoom the map into the selected location.
-              this.map.setCamera({
-                  bounds: [
-                      ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
-                      ui.item.viewport.btmRightPoint.lon, ui.item.viewport.topLeftPoint.lat
-                  ],
-                  padding: 0
-              });
+            });
           }
+
+          //Zoom the map into the selected location.
+          this.map.setCamera({
+            bounds: [
+              ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
+              ui.item.viewport.btmRightPoint.lon, ui.item.viewport.topLeftPoint.lat
+            ],
+            padding: 0
+          });
+        }
       }).autocomplete("instance")._renderItem = function (ul, item) {
-          //Format the displayed suggestion to show the formatted suggestion string.
-          var suggestionLabel = item.address.freeformAddress;
+        //Format the displayed suggestion to show the formatted suggestion string.
+        var suggestionLabel = item.address.freeformAddress;
 
-          if (item.poi && item.poi.name) {
-              suggestionLabel = item.poi.name + ' (' + suggestionLabel + ')';
-          }
+        if (item.poi && item.poi.name) {
+          suggestionLabel = item.poi.name + ' (' + suggestionLabel + ')';
+        }
 
-          return $("<li>")
-              .append("<a>" + suggestionLabel + "</a>")
-              .appendTo(ul);
+        return $("<li>")
+          .append("<a>" + suggestionLabel + "</a>")
+          .appendTo(ul);
       };
     });
   }
@@ -311,8 +311,8 @@ class AzureMap extends TSMap {
         toolbar: new atlas.control.DrawingToolbar({
           position: 'top-left',
           style: 'light'
-      })
-    });
+        })
+      });
     var layers = this.drawingManager.getLayers();
     layers.lineLayer.setOptions({
       strokeColor: 'blue',
@@ -334,7 +334,7 @@ class AzureMap extends TSMap {
       console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
       for (let shape of shapes) {
         let coordinates = [];
-        if("circlePolygon" in shape) {
+        if ("circlePolygon" in shape) {
           coordinates = shape.circlePolygon.geometry.coordinates[0];
         } else {
           coordinates = shape.data.geometry.coordinates[0];
@@ -358,7 +358,7 @@ class AzureMap extends TSMap {
   }
 
   clearAll() {
-    if (this.hasShapes){
+    if (this.hasShapes) {
       this.clearShapes();
     }
     Detection.resetAll();
@@ -371,17 +371,17 @@ class AzureMap extends TSMap {
     var layers = this.map.layers.getLayers();  // Get all layers on the map
 
     layers.forEach(function (layer) {
-        // Check if the layer is associated with any DataSource
-        // if (layer.getSource()) {
-        layer.setOptions({ visible: false });  // Hide the layer
-        // }
+      // Check if the layer is associated with any DataSource
+      // if (layer.getSource()) {
+      layer.setOptions({ visible: false });  // Hide the layer
+      // }
     });
     // console.log('All DataSource layers have been hidden');
-}
-// Function to clear all layers from the map
+  }
+  // Function to clear all layers from the map
   clearAllCustomLayers() {
     var layers = currentMap.map.layers.getLayers(); // Get all layers in the map
-    layers.forEach(function(layer) {
+    layers.forEach(function (layer) {
       // if (layer['type'] != 'traffic'){
       currentMap.map.layers.remove(layer); // Remove each layer from the map
       // }
@@ -393,7 +393,7 @@ class AzureMap extends TSMap {
     var layers = this.map.layers.getLayers(); // Get all layers in the map
     layers.forEach(function (layer) {
       if (layer.id === layerId) {
-          currentMap.map.layers.remove(layer); // Remove the layer with the matching id
+        currentMap.map.layers.remove(layer); // Remove the layer with the matching id
       }
     });
   }
@@ -516,7 +516,7 @@ class AzureMap extends TSMap {
     var msg = '';
 
     if (shape.isCircle()) {
-        document.getElementById("radius").value = shape.getProperties().radius;
+      document.getElementById("radius").value = shape.getProperties().radius;
     }
 
   }
@@ -542,116 +542,115 @@ class AzureMap extends TSMap {
       ];
 
 
-    // });
-    // Create a polygon (bounding box) from the coordinates
-    var boundingBoxPolygon = new atlas.data.Polygon([boundingBoxCoordinates]);
-    // Create a data source and add the bounding box (polygon) to it
+      // });
+      // Create a polygon (bounding box) from the coordinates
+      var boundingBoxPolygon = new atlas.data.Polygon([boundingBoxCoordinates]);
+      // Create a data source and add the bounding box (polygon) to it
 
 
-    //Create dummy layer to avoid the obj ref error due to the click event handler
-    var fillLayer;
+      //Create dummy layer to avoid the obj ref error due to the click event handler
+      var fillLayer;
 
-    if (o.classname == "tile"){
+      if (o.classname == "tile") {
 
-      var tiledataSource = new atlas.source.DataSource(null);
-      tiledataSource.add(boundingBoxPolygon);
-      currentMap.map.sources.add(tiledataSource);
-      o.dataSourceID = tiledataSource.id;
-      var tileborderLayer = new atlas.layer.LineLayer(tiledataSource, null, {
-        strokeColor: 'blue',
-        strokeWidth: 1                 // Border width
-      });
-      currentMap.map.layers.add(tileborderLayer);
-      o.borderLayerID = tileborderLayer.id;
+        var tiledataSource = new atlas.source.DataSource(null);
+        tiledataSource.add(boundingBoxPolygon);
+        currentMap.map.sources.add(tiledataSource);
+        o.dataSourceID = tiledataSource.id;
+        var tileborderLayer = new atlas.layer.LineLayer(tiledataSource, null, {
+          strokeColor: 'blue',
+          strokeWidth: 1                 // Border width
+        });
+        currentMap.map.layers.add(tileborderLayer);
+        o.borderLayerID = tileborderLayer.id;
 
-      fillLayer = new atlas.layer.PolygonLayer(tiledataSource, null, {
-        fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
-      });
-      currentMap.map.layers.add(fillLayer);
-      o.fillLayerID = fillLayer.id;
-    }
-    else {
-      var dataSource = new atlas.source.DataSource(null);
-      currentMap.map.sources.add(dataSource);
-      dataSource.add(boundingBoxPolygon);
-      o.dataSourceID = dataSource.id;
-      // console.log("dataSourceID:" + o.dataSourceID);
-      // Create a layer for just the border of the bounding box/tile (without fill)
-      var borderLayer = new atlas.layer.LineLayer(dataSource, null, {
-        strokeColor: 'red',
-        strokeWidth: 1                // Border width
-      });
-      currentMap.map.layers.add(borderLayer);
-      o.borderLayerID = borderLayer.id;
-      fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
-        strokeColor: 'red',
-        fillColor: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red fill
-        strokeWidth: 1                  // Border width
-      });
-      currentMap.map.layers.add(fillLayer);
-      o.fillLayerID = fillLayer.id;;
+        fillLayer = new atlas.layer.PolygonLayer(tiledataSource, null, {
+          fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
+        });
+        currentMap.map.layers.add(fillLayer);
+        o.fillLayerID = fillLayer.id;
+      }
+      else {
+        var dataSource = new atlas.source.DataSource(null);
+        currentMap.map.sources.add(dataSource);
+        dataSource.add(boundingBoxPolygon);
+        o.dataSourceID = dataSource.id;
+        // console.log("dataSourceID:" + o.dataSourceID);
+        // Create a layer for just the border of the bounding box/tile (without fill)
+        var borderLayer = new atlas.layer.LineLayer(dataSource, null, {
+          strokeColor: 'red',
+          strokeWidth: 1                // Border width
+        });
+        currentMap.map.layers.add(borderLayer);
+        o.borderLayerID = borderLayer.id;
+        fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
+          strokeColor: 'red',
+          fillColor: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red fill
+          strokeWidth: 1                  // Border width
+        });
+        currentMap.map.layers.add(fillLayer);
+        o.fillLayerID = fillLayer.id;;
 
-    }
+      }
 
 
-    if ((typeof listener !== 'undefined') && (o.classname != 'tile')) {
-      // Add click event to the layer using the 'addEventListener' method on the map
-      this.map.events.add('click', fillLayer , function(e) {
+      if ((typeof listener !== 'undefined') && (o.classname != 'tile')) {
+        // Add click event to the layer using the 'addEventListener' method on the map
+        this.map.events.add('click', fillLayer, function (e) {
           // Check if the click happened inside the polygon
           const clickedEntity = e.shapes[0];
           if (clickedEntity) {
-              listener(clickedEntity);  // Call the listener function
+            listener(clickedEntity);  // Call the listener function
           }
-      });
+        });
 
-  }
+      }
       return boundingBoxPolygon;
 
     }
-    catch (error){
+    catch (error) {
       console.log('An error occurred makeMapRect: ' + error);  // This won't execute
     }
-    finally{
+    finally {
 
     }
-    }
+  }
 
   colorMapRect(o, color) {
-    try{
+    try {
       // Create a fill color with opacity
 
       let fcolor = Microsoft.Maps.Color.fromHex(color);
       let alpha = o.opacity;
       // // Convert to RGB string format
-      let fillcolor = this.colorToRGBA(fcolor,alpha);
+      let fillcolor = this.colorToRGBA(fcolor, alpha);
       let FilllayertoHighlight = currentMap.getLayerById(o.fillLayerID);
       FilllayertoHighlight.setOptions({
-          strokeColor: color,
-          fillColor: fillcolor, // Semi-transparent fill
-          strokeWidth: 1
-        });
+        strokeColor: color,
+        fillColor: fillcolor, // Semi-transparent fill
+        strokeWidth: 1
+      });
 
     }
-    catch (error){
+    catch (error) {
       console.log('An error occurred colorMapRect: ' + error);  // This won't execute
     }
-    finally{
+    finally {
 
     }
-    }
+  }
   // Convert Microsoft.Maps.Color to an RGBA string
-  colorToRGBA(color,alpha) {
+  colorToRGBA(color, alpha) {
     return 'rgba(' + color.r + ', ' + color.g + ', ' + color.b + ', ' + alpha + ')';
   }
 
   updateMapRect(o, onoff) {
-    try{
-      if (onoff)
-      {
+    try {
+      if (onoff) {
         o.opacity = 1
         // console.log("o.fillLayerID:" + o.fillLayerID);
         let FilllayertoHide = currentMap.getLayerById(o.fillLayerID);
-          FilllayertoHide.setOptions({
+        FilllayertoHide.setOptions({
           visible: true
         });
         let BorderLayertoHide = currentMap.getLayerById(o.borderLayerID);
@@ -664,10 +663,10 @@ class AzureMap extends TSMap {
         });
         o.visibilitySetto = true
       }
-      else{
+      else {
         // console.log("o.fillLayerID:" + o.fillLayerID);
         let FilllayertoHide = currentMap.getLayerById(o.fillLayerID);
-          FilllayertoHide.setOptions({
+        FilllayertoHide.setOptions({
           visible: false
         });
         let BorderLayertoHide = currentMap.getLayerById(o.borderLayerID);
@@ -679,23 +678,23 @@ class AzureMap extends TSMap {
           visible: false
         });
         o.visibilitySetto = false
-        }
+      }
 
     }
-    catch (error){
+    catch (error) {
       console.log('An error occurred updateMapRect: ' + error);  // This won't execute
     }
-    finally{
+    finally {
 
     }
-    }
+  }
   // Function to get a layer by its id
   getLayerById(layerId) {
-  var layers = this.map.layers.getLayers(); // Get all layers in the map
-  return layers.find(function (layer) {
+    var layers = this.map.layers.getLayers(); // Get all layers in the map
+    return layers.find(function (layer) {
       return layer.id === layerId; // Compare the id of each layer
-  });
-}
+    });
+  }
 }
 
 
@@ -731,8 +730,8 @@ class BingMap extends TSMap {
     let bingMap = this.map;
     Microsoft.Maps.loadModule('Microsoft.Maps.AutoSuggest', function () {
       var options = {
-          maxResults: 4,
-          map: bingMap
+        maxResults: 4,
+        map: bingMap
       };
       var manager = new Microsoft.Maps.AutosuggestManager(options);
       manager.attachAutosuggest('#bingSearch', '#bingSearchBoxContainer', selectedSuggestion);
@@ -742,9 +741,9 @@ class BingMap extends TSMap {
 
     let searchManager;
     Microsoft.Maps.loadModule(['Microsoft.Maps.SpatialDataService',
-    'Microsoft.Maps.Search'], function () {
+      'Microsoft.Maps.Search'], function () {
         searchManager = new Microsoft.Maps.Search.SearchManager(bingMap);
-    });
+      });
 
     function Search() {
       //Remove all data from the map.
@@ -752,92 +751,92 @@ class BingMap extends TSMap {
 
       //Create the geocode request.
       var geocodeRequest = {
-          where: document.getElementById('bingSearch').value,
-          callback: getBoundary,
-          errorCallback: function (e) {
-              //If there is an error, alert the user about it.
-              //alert("No results found.");
-          }
+        where: document.getElementById('bingSearch').value,
+        callback: getBoundary,
+        errorCallback: function (e) {
+          //If there is an error, alert the user about it.
+          //alert("No results found.");
+        }
       };
       searchManager.geocode(geocodeRequest);
     }
-      function getBoundary(geocodeResult){
-        //Add the first result to the map and zoom into it.
-        if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
-            //Zoom into the location.
+    function getBoundary(geocodeResult) {
+      //Add the first result to the map and zoom into it.
+      if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
+        //Zoom into the location.
 
-            bingMap.setView({ bounds: geocodeResult.results[0].bestView });
+        bingMap.setView({ bounds: geocodeResult.results[0].bestView });
 
-            //Create the request options for the GeoData API.
-            var geoDataRequestOptions = {
-                lod: 1,
-                getAllPolygons: true
-            };
+        //Create the request options for the GeoData API.
+        var geoDataRequestOptions = {
+          lod: 1,
+          getAllPolygons: true
+        };
 
-            //Verify that the geocoded location has a supported entity type.
-            switch (geocodeResult.results[0].entityType) {
-                case "CountryRegion":
-                case "AdminDivision1":
-                case "AdminDivision2":
-                case "Postcode1":
-                case "Postcode2":
-                case "Postcode3":
-                case "Postcode4":
-                case "Neighborhood":
-                case "PopulatedPlace":
-                    geoDataRequestOptions.entityType = geocodeResult.results[0].entityType;
-                    break;
-                default:
-                    //Display a pushpin if GeoData API does not support EntityType.
-                    console.log(`GeoData API does not support EntityType ${geocodeResult.results[0].entityType}.`);
-                    return;
-            }
-
-            //Use the GeoData API manager to get the boundaries of the zip codes.
-            Microsoft.Maps.SpatialDataService.GeoDataAPIManager.getBoundary(
-              geocodeResult.results[0].location,
-              geoDataRequestOptions,
-              bingMap,
-              function (data) {
-                  //Add the polygons to the map.
-                  if (data.results && data.results.length > 0) {
-                    bingMap.entities.push(data.results[0].Polygons);
-                  } else {
-                      console.log(`Could not find boundary for ${document.getElementById('bingSearch').value}`)
-                  }
-              }
-            );
+        //Verify that the geocoded location has a supported entity type.
+        switch (geocodeResult.results[0].entityType) {
+          case "CountryRegion":
+          case "AdminDivision1":
+          case "AdminDivision2":
+          case "Postcode1":
+          case "Postcode2":
+          case "Postcode3":
+          case "Postcode4":
+          case "Neighborhood":
+          case "PopulatedPlace":
+            geoDataRequestOptions.entityType = geocodeResult.results[0].entityType;
+            break;
+          default:
+            //Display a pushpin if GeoData API does not support EntityType.
+            console.log(`GeoData API does not support EntityType ${geocodeResult.results[0].entityType}.`);
+            return;
         }
+
+        //Use the GeoData API manager to get the boundaries of the zip codes.
+        Microsoft.Maps.SpatialDataService.GeoDataAPIManager.getBoundary(
+          geocodeResult.results[0].location,
+          geoDataRequestOptions,
+          bingMap,
+          function (data) {
+            //Add the polygons to the map.
+            if (data.results && data.results.length > 0) {
+              bingMap.entities.push(data.results[0].Polygons);
+            } else {
+              console.log(`Could not find boundary for ${document.getElementById('bingSearch').value}`)
+            }
+          }
+        );
       }
+    }
 
     function selectedSuggestion(result) {
       bingMap.entities.clear;
       var geocodeRequest;
-      if ((result.entitySubType == "Address") || (result.entityType == "PostalAddress")){
+      if ((result.entitySubType == "Address") || (result.entityType == "PostalAddress")) {
         geocodeRequest = {
           where: result.formattedSuggestion,
           callback: function (r) {
-              //Add the first result to the map and zoom into it.
-              if (r && r.results && r.results.length > 0) {
-                  var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
-                  bingMap.entities.push(pin);
+            //Add the first result to the map and zoom into it.
+            if (r && r.results && r.results.length > 0) {
+              var pin = new Microsoft.Maps.Pushpin(r.results[0].location);
+              bingMap.entities.push(pin);
 
-                  bingMap.setView({ bounds: r.results[0].bestView });
-              }
+              bingMap.setView({ bounds: r.results[0].bestView });
+            }
           },
           errorCallback: function (e) {
-              //If there is an error, alert the user about it.
-              alert("No results found.");
+            //If there is an error, alert the user about it.
+            alert("No results found.");
           }
+        }
       }
-    }
-      else{
+      else {
         geocodeRequest = {
           where: result.title,
           callback: getBoundary,
           errorCallback: function (e) {
-              //If there is an error, alert the user about it.
-              alert("No results found.");
+            //If there is an error, alert the user about it.
+            alert("No results found.");
           }
         };
 
@@ -874,15 +873,15 @@ class BingMap extends TSMap {
   getBounds() {
     let locations = [];
 
-    for(var i = 0; i < this.map.entities.getLength(); i++) {
+    for (var i = 0; i < this.map.entities.getLength(); i++) {
       var entity = this.map.entities.get(i);
-      if(entity instanceof Microsoft.Maps.Polygon) {
+      if (entity instanceof Microsoft.Maps.Polygon) {
         var vertices = entity.getLocations();
         locations = locations.concat(vertices);
       }
     }
 
-    if(locations.length > 0) {
+    if (locations.length > 0) {
       var bounds = Microsoft.Maps.LocationRect.fromLocations(locations);
       this.map.setView({ bounds: bounds });
     }
@@ -959,14 +958,14 @@ class BingMap extends TSMap {
   }
 
   resetBoundaries() {
-    if(this.drawingManager) {
+    if (this.drawingManager) {
       this.drawingManager.clear();
     }
     for (let b of this.boundaries) {
       for (let i = this.map.entities.getLength() - 1; i >= 0; i--) {
         let obj = this.map.entities.get(i);
         // if (obj === b.bingObject) {
-          this.map.entities.removeAt(i);
+        this.map.entities.removeAt(i);
         // }
       }
       b.bingObject = null;
@@ -1068,16 +1067,16 @@ class BingMap extends TSMap {
   }
 
   clearShapes() {
-    if(this.drawingManager) {
+    if (this.drawingManager) {
       this.drawingManager.clear();
     }
-    if(this.entities) {
+    if (this.entities) {
       this.entities.clear();
     }
   }
 
   clearAll() {
-    if (this.hasShapes){
+    if (this.hasShapes) {
       this.clearShapes();
     }
 
@@ -1142,26 +1141,26 @@ class CircleBoundary extends PolygonBoundary {
       });
       const existingCircleDataSource = currentMap.map.sources.getById('circleDataSource');
       var dataSource = existingCircleDataSource ?? new atlas.source.DataSource('circleDataSource');
-      if(!existingCircleDataSource){
+      if (!existingCircleDataSource) {
         currentMap.map.sources.add(dataSource);
       }
       dataSource.add(circleShape);
       currentMap.map.layers.add(new atlas.layer.LineLayer(dataSource, 'circleShapeLayer', {
-          strokeColor: 'blue',
-          strokeWidth: 3
+        strokeColor: 'blue',
+        strokeWidth: 3
       }));
       this.points = circleShape.circlePolygon.geometry.coordinates;
       currentMap.boundaries.push(new PolygonBoundary(this.points[0]));
       return;
     }
 
-    if(currentUI.value === 'bing') {
+    if (currentUI.value === 'bing') {
 
-    locs = Microsoft.Maps.SpatialMath.getRegularPolygon(
-      new Microsoft.Maps.Location(center[1], center[0]),
-      radius,
-      256,
-      Microsoft.Maps.SpatialMath.DistanceUnits.Meters);
+      locs = Microsoft.Maps.SpatialMath.getRegularPolygon(
+        new Microsoft.Maps.Location(center[1], center[0]),
+        radius,
+        256,
+        Microsoft.Maps.SpatialMath.DistanceUnits.Meters);
     }
 
     this.points = locs.map(l => [l.longitude, l.latitude]);
@@ -1197,11 +1196,11 @@ class PlaceRect {
     // currentMap.setZoom(19);
     // googleMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
     // googleMap.setZoom(19);
-    if(currentUI.value === 'bing'){
+    if (currentUI.value === 'bing') {
       bingMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
       bingMap.setZoom(19);
     }
-    else if(currentUI.value === 'azure'){
+    else if (currentUI.value === 'azure') {
       azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
       azureMap.setZoom(19);
     }
@@ -1377,7 +1376,7 @@ class Detection extends PlaceRect {
         boxes += "this.parentElement.querySelector(\".nested\").classList.toggle(\"active\"),";
         boxes += "this.classList.toggle(\"caret-down\")';"
         boxes += "'></span>";
-        boxes += "<label id='lbladdrcb" + det.id + "' style='display:none' for='addrcb" + det.id + "'>addrcb"+det.id + "</label>"
+        boxes += "<label id='lbladdrcb" + det.id + "' style='display:none' for='addrcb" + det.id + "'>addrcb" + det.id + "</label>"
         boxes += "<input aria-labelledby = 'lbladdrcb" + det.id + "' type='checkbox' id='addrcb" + det.id + "' name='addrcb" + det.id;
         boxes + "' value='";
         boxes += det.id + "' checked style='display:inline;vertical-align:-10%;'"
@@ -1458,8 +1457,8 @@ class Detection extends PlaceRect {
 
   showAddr(onoff) {
     // Do not change the display to 'none' if the main addrli item is displaying as one of the firstdet is visible
-    if ((document.getElementById("addrli" + this.id).style.display == 'none') || (document.getElementById("addrli" + this.id).style.display == '')){
-    document.getElementById("addrli" + this.id).style.display = onoff ? "block" : "none";
+    if ((document.getElementById("addrli" + this.id).style.display == 'none') || (document.getElementById("addrli" + this.id).style.display == '')) {
+      document.getElementById("addrli" + this.id).style.display = onoff ? "block" : "none";
     }
   }
 
@@ -1602,10 +1601,10 @@ function getObjects(estimate) {
 
   if (Detection_detections.length > 0) {
     if (!window.confirm("This will erase current detections. Proceed?")) {
-       // erase the previous set of towers and tiles
-       currentMap.clearAll();
-  return;
-}
+      // erase the previous set of towers and tiles
+      currentMap.clearAll();
+      return;
+    }
   }
 
   let engine = $('input[name=model]:checked', '#engines').val()
@@ -1637,12 +1636,12 @@ function getObjects(estimate) {
   // first, play the request, but get an estimate of the number of tiles
   const formData = new FormData();
   formData.append('bounds', bounds);
-  formData.append('engine',engine);
-  formData.append('provider',provider );
+  formData.append('engine', engine);
+  formData.append('provider', provider);
   formData.append('polygons', boundaries);
   formData.append('estimate', "yes");
 
-  fetch("/getobjects",  { method: "POST", body: formData, })
+  fetch("/getobjects", { method: "POST", body: formData, })
     .then(result => result.text())
     .then(result => {
       if (Number(result) === -1) {
@@ -1651,7 +1650,7 @@ function getObjects(estimate) {
       }
       console.log("Number of tiles: " + result + ", estimated time: "
         + (Math.round(Number(result) * secsPerTile * 10) / 10) + " s");
-        // Get from Dev  Key Vault by default. Need to create secrets in the Prod Key Vault
+      // Get from Dev  Key Vault by default. Need to create secrets in the Prod Key Vault
 
       // let nt = estimateNumTiles(currentMap.getZoom());
       // console.log("  Estimated tiles:" + nt);
@@ -1683,12 +1682,11 @@ function getObjects(estimate) {
         });
     });
 
-    getazmapTransactioncountjs(2);
+  getazmapTransactioncountjs(2);
 }
 
 //get Azure map transaction count for the current month
-function getazmapTransactioncountjs(intEnv)
-{
+function getazmapTransactioncountjs(intEnv) {
   param = intEnv
   // fetch('/getazmaptransactions', { method: "POST", body:  JSON.stringify({ param: param }) })
   fetch('/getazmaptransactions')
@@ -1701,7 +1699,7 @@ function getazmapTransactioncountjs(intEnv)
       const message = data;
       // console.log(message); // Log the value to the console
       document.getElementById('lblazmaptransactions').innerText = message; // Display the string in the div
-  })
+    })
     .catch(error => {
       console.log(error);
     });
@@ -1851,14 +1849,14 @@ function fillProviders() {
         uploadImage();
       });
 
-       // also add change listeners for the UI providers
+      // also add change listeners for the UI providers
       currentUI = document.uis.uis[0];
-       // setMap(currentUI);
+      // setMap(currentUI);
       for (let rad of document.uis.uis) {
         rad.addEventListener('change', function () {
-           setMap;
-             });
-           }
+          setMap;
+        });
+      }
 
     }
   });
@@ -1974,83 +1972,89 @@ function changeReviewMode() {
 function augmentDetections() {
   Detection_detectionsAugmented = 0;
   //for (let det of Detection_detections) {
+  if (currentUI.value == "bing") {
+
     for (let i = 0; i < Detection_detections.length; i++) {
       let det = Detection_detections[i];
-    if (det.address !== "") {
-      Detection_detectionsAugmented++;
-      continue;
-    }
-    let loc = det.getCenterUrl();
-     // call Bing maps api instead at:
-    if (currentUI.value == "bing"){
-     setTimeout((ix)=>{
-      //console.log(ix+1);
-      $.ajax({
-      url: "https://dev.virtualearth.net/REST/v1/locationrecog/" + loc,
-      data: {
-        key: bak,
-        includeEntityTypes: "address",
-        output: "json",
-      },
-      success: function (result) {
-        let addr = result['resourceSets'][0]['resources'][0]['addressOfLocation'][0]['formattedAddress'];
-        det.augment(addr);
-        afterAugment();
+      if (det.address !== "") {
+        Detection_detectionsAugmented++;
+        continue;
       }
-
-      });
-      },1000*i,i)
-    }
-    else if (currentUI.value == "azure")
-    {
-      let reverseloc = loc.split(",")[1] + "," + loc.split(",")[0]
-      setTimeout((ix)=>{
+      let loc = det.getCenterUrl();
+      // call Bing maps api instead at:
+      setTimeout((ix) => {
         //console.log(ix+1);
         $.ajax({
-        // url: "https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query="+ loc + "&subscription-key=" + azure_api_key,
-        url: "https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates="+ reverseloc + "&subscription-key=" + azure_api_key,
-        type: 'GET',  // GET request to fetch data
-        // GET https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates={coordinates}&resultTypes={resultTypes}&view={view}
-        // data: {
-        //   resultTypes: "address",
-        //   // output: "json",
-        // },
-        success: function (result) {
-          let addr = result.features[0].properties.address.formattedAddress; // Get formatted address
-          // let addr = result['addresses'][0].address.freeformAddress; // Get freeform address
-          det.augment(addr);
-          afterAugment();
-        }
+          url: "https://dev.virtualearth.net/REST/v1/locationrecog/" + loc,
+          data: {
+            key: bak,
+            includeEntityTypes: "address",
+            output: "json",
+          },
+          success: function (result) {
+            let addr = result['resourceSets'][0]['resources'][0]['addressOfLocation'][0]['formattedAddress'];
+            det.augment(addr);
+            afterAugment();
+          }
 
         });
-        },1000*i,i)
+      }, 1000 * i, i)
     }
-    // $.ajax({
-    //   url: "https://maps.googleapis.com/maps/api/geocode/json",
-    //   data: {
-    //     latlng: loc,
-    //     key: gak,
-    //     location_type: "ROOFTOP",
-    //     result_type: "street_address",
-    //   },
-    //   success: function (result) {
-    //     let addr = "";
-    //     if (result['status'] === "OK") {
-    //       addr = result['results'][0]['formatted_address'];
-    //       det.augment(addr);
-    //       afterAugment();
-    //     } else {
-    //       addr = "(unable to determine address)";
-    //       // console.log("Cannot parse address result for tower "+i+": "+JSON.stringify(result));
-
-    //     }
-    //     //det.augment(addr);
-    //   }
-    // });
 
   }
+  else if (currentUI.value == "azure") {
+    const BATCH_SIZE = 99;
+    let batchItems = [];
+    for (let i = 0; i < Detection_detections.length; i++) {
+      let det = Detection_detections[i];
+      if (det.address === "") {
+        let loc = det.getCenterUrl();
+        let reverseloc = loc.split(",")[1] + "," + loc.split(",")[0];
+        let coordinates = reverseloc.split(",").map(Number);
+        batchItems.push({
+          coordinates: coordinates,
+          resultTypes: ["Address"]
+        });
+      }
+    }
 
-  //TODO-- Use Bing or Azure maps to Augment Detections
+    function chunkArray(array, chunkSize) {
+      const result = [];
+      for (let i = 0; i < array.length; i += chunkSize) {
+        result.push(array.slice(i, i + chunkSize));
+      }
+      return result;
+    }
+
+    const batchedItems = chunkArray(batchItems, BATCH_SIZE);
+
+    batchedItems.forEach((batch, batchIndex) => {
+      setTimeout(() => {
+        $.ajax({
+          url: "https://atlas.microsoft.com/reverseGeocode:batch?api-version=2023-06-01&subscription-key=" + azure_api_key,
+          type: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({ batchItems: batch }),
+          success: function (result) {
+            for (let i = 0; i < result.batchItems.length; i++) {
+              const features = result.batchItems[i].features;
+              if (features && features.length > 0) {
+                const addr = features[0].properties.address.formattedAddress;
+                let detectionIndex = batchIndex * 99 + i;
+                Detection_detections[detectionIndex].augment(addr);
+              } else {
+                console.log(`No address found for batch item ${batchIndex * 99 + i}`);
+              }
+            }
+            afterAugment();
+          },
+          error: function (error) {
+            console.error("Error in batch reverse geocode:", error);
+          }
+        });
+      }, 1000 * batchIndex);
+    });
+  }
 }
 
 function afterAugment() {
@@ -2283,12 +2287,12 @@ function drawCustomImage(url) {
   if (img.complete) {
     removeCustomImage(url)
   } else {
-    img.addEventListener('load', () => {removeCustomImage(url);}, {once:true});
+    img.addEventListener('load', () => { removeCustomImage(url); }, { once: true });
   }
 }
 
 function removeCustomImage(url) {
-  fetch('/rm'+url, { method: "GET"});
+  fetch('/rm' + url, { method: "GET" });
 }
 
 
@@ -2454,7 +2458,7 @@ function parseZipcodeResult(result) {
   let f = features[0];
   let geom = f['geometry']
   let coords = geom['coordinates'];
-  return geom['type'] === 'Polygon' ? [coords]:coords;
+  return geom['type'] === 'Polygon' ? [coords] : coords;
 }
 
 // init actions
@@ -2472,25 +2476,25 @@ function assignAriaLabels() {
 
   // Loop through each element
   elementsNeedingAriaLabel.forEach(element => {
-      const id = element.id; // Get the element's ID
-      if (!element.hasAttribute('aria-label')) {
-
-              element.setAttribute('aria-label', element.id);
-              // console.log(`Assigned aria-label to ${id}: ${element.id}`);
-
-      }
-  });
-  const mapelementsNeedingAriaLabel=document.getElementById("bingMap").querySelectorAll('*');
-   // Loop through each element
-   mapelementsNeedingAriaLabel.forEach(element => {
     const id = element.id; // Get the element's ID
     if (!element.hasAttribute('aria-label')) {
 
-            element.setAttribute('aria-label', element.id);
-            // console.log(`Assigned aria-label to ${id}: ${element.id}`);
+      element.setAttribute('aria-label', element.id);
+      // console.log(`Assigned aria-label to ${id}: ${element.id}`);
 
     }
-});
+  });
+  const mapelementsNeedingAriaLabel = document.getElementById("bingMap").querySelectorAll('*');
+  // Loop through each element
+  mapelementsNeedingAriaLabel.forEach(element => {
+    const id = element.id; // Get the element's ID
+    if (!element.hasAttribute('aria-label')) {
+
+      element.setAttribute('aria-label', element.id);
+      // console.log(`Assigned aria-label to ${id}: ${element.id}`);
+
+    }
+  });
 }
 function assignAriaLabelsToMapControl() {
   // // Example: Accessing zoom buttons
