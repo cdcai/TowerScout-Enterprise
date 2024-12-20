@@ -1959,85 +1959,90 @@ function changeReviewMode() {
 function augmentDetections() {
   Detection_detectionsAugmented = 0;
   //for (let det of Detection_detections) {
+  if (currentUI.value == "bing") {
+
     for (let i = 0; i < Detection_detections.length; i++) {
       let det = Detection_detections[i];
-    if (det.address !== "") {
-      Detection_detectionsAugmented++;
-      continue;
-    }
-    let loc = det.getCenterUrl();
-     // call Bing maps api instead at:
-    if (currentUI.value == "bing"){
-     setTimeout((ix)=>{
-      //console.log(ix+1);
-      $.ajax({
-      url: "https://dev.virtualearth.net/REST/v1/locationrecog/" + loc,
-      data: {
-        key: bak,
-        includeEntityTypes: "address",
-        output: "json",
-      },
-      success: function (result) {
-        let addr = result['resourceSets'][0]['resources'][0]['addressOfLocation'][0]['formattedAddress'];
-        det.augment(addr);
-        afterAugment();
+      if (det.address !== "") {
+        Detection_detectionsAugmented++;
+        continue;
       }
-
-      });
-      },1000*i,i)
-    }
-    else if (currentUI.value == "azure")
-    {
-      let reverseloc = loc.split(",")[1] + "," + loc.split(",")[0]
-      setTimeout((ix)=>{
+      let loc = det.getCenterUrl();
+      // call Bing maps api instead at:
+      setTimeout((ix) => {
         //console.log(ix+1);
         $.ajax({
-        // url: "https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query="+ loc + "&subscription-key=" + azure_api_key,
-        url: "https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates="+ reverseloc + "&subscription-key=" + azure_api_key,
-        type: 'GET',  // GET request to fetch data
-        // GET https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates={coordinates}&resultTypes={resultTypes}&view={view}
-        // data: {
-        //   resultTypes: "address",
-        //   // output: "json",
-        // },
-        success: function (result) {
-          let addr = result.features[0].properties.address.formattedAddress; // Get formatted address
-          // let addr = result['addresses'][0].address.freeformAddress; // Get freeform address
-          det.augment(addr);
-          afterAugment();
-        }
-  
-        });
-        },1000*i,i)
-    }
-    // $.ajax({
-    //   url: "https://maps.googleapis.com/maps/api/geocode/json",
-    //   data: {
-    //     latlng: loc,
-    //     key: gak,
-    //     location_type: "ROOFTOP",
-    //     result_type: "street_address",
-    //   },
-    //   success: function (result) {
-    //     let addr = "";
-    //     if (result['status'] === "OK") {
-    //       addr = result['results'][0]['formatted_address'];
-    //       det.augment(addr);
-    //       afterAugment();
-    //     } else {
-    //       addr = "(unable to determine address)";
-    //       // console.log("Cannot parse address result for tower "+i+": "+JSON.stringify(result));
+          url: "https://dev.virtualearth.net/REST/v1/locationrecog/" + loc,
+          data: {
+            key: bak,
+            includeEntityTypes: "address",
+            output: "json",
+          },
+          success: function (result) {
+            let addr = result['resourceSets'][0]['resources'][0]['addressOfLocation'][0]['formattedAddress'];
+            det.augment(addr);
+            afterAugment();
+          }
 
-    //     }
-    //     //det.augment(addr);
-    //   }
-    // });
+        });
+      }, 1000 * i, i)
+    }
 
   }
+  else if (currentUI.value == "azure") {
+    const BATCH_SIZE = 99;
+    let batchItems = [];
+    for (let i = 0; i < Detection_detections.length; i++) {
+      let det = Detection_detections[i];
+      if (det.address === "") {
+        let loc = det.getCenterUrl();
+        let reverseloc = loc.split(",")[1] + "," + loc.split(",")[0];
+        let coordinates = reverseloc.split(",").map(Number);
+        batchItems.push({
+          coordinates: coordinates,
+          resultTypes: ["Address"]
+        });
+      }
+    }
 
-  //TODO-- Use Bing or Azure maps to Augment Detections
+    function chunkArray(array, chunkSize) {
+      const result = [];
+      for (let i = 0; i < array.length; i += chunkSize) {
+        result.push(array.slice(i, i + chunkSize));
+      }
+      return result;
+    }
+
+    const batchedItems = chunkArray(batchItems, BATCH_SIZE);
+
+    batchedItems.forEach((batch, batchIndex) => {
+      setTimeout(() => {
+        $.ajax({
+          url: "https://atlas.microsoft.com/reverseGeocode:batch?api-version=2023-06-01&subscription-key=" + azure_api_key,
+          type: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({ batchItems: batch }),
+          success: function (result) {
+            for (let i = 0; i < result.batchItems.length; i++) {
+              const features = result.batchItems[i].features;
+              if (features && features.length > 0) {
+                const addr = features[0].properties.address.formattedAddress;
+                let detectionIndex = batchIndex * 99 + i;
+                Detection_detections[detectionIndex].augment(addr);
+              } else {
+                console.log(`No address found for batch item ${batchIndex * 99 + i}`);
+              }
+            }
+            afterAugment();
+          },
+          error: function (error) {
+            console.error("Error in batch reverse geocode:", error);
+          }
+        });
+      }, 1000 * batchIndex);
+    });
+  }
 }
-
 function afterAugment() {
   // wait for the last one
   if (Detection_detectionsAugmented !== Detection_detections.length) {
