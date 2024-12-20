@@ -19,10 +19,6 @@ else:
 
 # COMMAND ----------
 
-# MAGIC %pip install efficientnet_pytorch
-
-# COMMAND ----------
-
 import mlflow
 from mlflow import MlflowClient
 
@@ -37,45 +33,26 @@ from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 from tsdb.ml.train import perform_pass, train, tune_hyperparams, model_promotion
 from tsdb.ml.utils import ValidMetric, TrainingArgs, FminArgs, SplitConverters, PromotionArgs 
 from tsdb.utils.logger import setup_logger
-from tsdb.utils.uc import CatalogInfo
 from tsdb.ml.data_processing import split_datanolabel, get_converter_df
 
 # COMMAND ----------
 
-# project name folder
-petastorm_path = "file:///dbfs/TowerScout/tmp/petastorm/dataloader_development_cache"
-
-# Create petastorm cache
-spark.conf.set(SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF, petastorm_path)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Config file stuff
-
-# COMMAND ----------
-
 # widgets probs will go into config file
-dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
-dbutils.widgets.text("source_table", defaultValue="image_metadata")
+# dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")  # config file
+# dbutils.widgets.text("source_table", defaultValue="image_metadata")  # config file
 
-dbutils.widgets.text("epochs", defaultValue="5")
-dbutils.widgets.text("batch_size", defaultValue="1")
-dbutils.widgets.text("report_interval", defaultValue="5")
-dbutils.widgets.text("max_evals", defaultValue="8")
-dbutils.widgets.text("parallelism", defaultValue="2")
+# dbutils.widgets.text("epochs", defaultValue="5")  # nb widget or hyperopt tuned
+# dbutils.widgets.text("batch_size", defaultValue="1")  # nb widget or hyperopt tuned
+# dbutils.widgets.text("report_interval", defaultValue="5")  # nb widget 
+# dbutils.widgets.text("max_evals", defaultValue="8")  # nb widget
+# dbutils.widgets.text("parallelism", defaultValue="2")  # nb widget
 
-stages = ["Dev", "Staging", "Production"]
-dbutils.widgets.dropdown("stage", "Production", stages)
+# stages = ["Dev", "Staging", "Production"]
+# dbutils.widgets.dropdown("stage", "Production", stages)  # config file
 
-metrics = [member.name for member in ValidMetric]
-dbutils.widgets.dropdown("objective_metric", "MSE", metrics)
-dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Notebook params
+# metrics = [member.name for member in ValidMetric]
+# dbutils.widgets.dropdown("objective_metric", "MSE", metrics)  # nb widget
+# dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)  # nb widget
 
 # COMMAND ----------
 
