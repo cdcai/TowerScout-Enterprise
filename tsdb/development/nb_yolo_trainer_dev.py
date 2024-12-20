@@ -54,18 +54,25 @@ yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model)
 
 # COMMAND ----------
 
-batch_size = 4
+batch_size = 3
 
 # seems like confusion matrix methods only work when the dataset is built with
 # mode="val" or else the minibatches wont have the key "ratio_pad" that is needed by some functions
 model.args.fraction = 1.0 # fraction of dataset to use when in train mode
 dataset = build_yolo_dataset(
-    cfg=model.args, data=data, img_path=data["train"], batch=batch_size, mode="train"
+    cfg=model.args, data=data, img_path=data["train"], batch=batch_size, mode="val"
 )
 
 # COMMAND ----------
 
 loader = build_dataloader(dataset, batch_size, workers=4)
+
+# COMMAND ----------
+
+for image_batch in loader:
+    #print(image_batch)
+    print(image_batch['bboxes'].shape)
+    print(image_batch['cls'].shape)
 
 # COMMAND ----------
 

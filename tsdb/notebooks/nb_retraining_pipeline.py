@@ -50,6 +50,7 @@ spark.conf.set(SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF, petastorm_path)
 
 # COMMAND ----------
 
+# widgets probs will go into config file
 dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")
 dbutils.widgets.text("source_table", defaultValue="image_metadata")
 
