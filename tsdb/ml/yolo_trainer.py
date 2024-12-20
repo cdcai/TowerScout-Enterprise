@@ -6,11 +6,13 @@ from ultralytics.nn.tasks import DetectionModel
 
 import torch
 from torch import Tensor, nn, optim
+from torch.utils.data import DataLoader
 from typing import Union
 from enum import Enum, auto
 
-from tsdb.ml.utils import OptimizerArgs
-from tsdb.ml.model_trainer import Steps
+from mlflow.models.signature import infer_signature, ModelSignature
+
+from tsdb.ml.utils import OptimizerArgs, Steps, TrainingArgs
 
 class YOLOLoss(Enum):
     """
@@ -171,8 +173,9 @@ Ultralytics since we use Hyperopt for distributed tuning and it's not clear how 
 """
 
 class YoloModelTrainer:
-    def __init__(self, optimizer_args: OptimizerArgs, model: DetectionModel = None):  # pragma: no cover
+    def __init__(self, optimizer_args: OptimizerArgs, model: DetectionModel, train_args: TrainingArgs):  # pragma: no cover
         self.model = model
+        self.train_args = train_args
         self.args = self.model.args
         self.amp = self.args.amp
         self.scaler = (
@@ -333,6 +336,22 @@ class YoloModelTrainer:
         minibatch = self.preprocess_val(minibatch)
         return inference_step(minibatch, self.model, Steps["VAL"].name, self.device)
     
+    def get_signature(self, dataloader: DataLoader) -> ModelSignature:
+        """
+        Returns the mlflow signature of the model for logging and registration
+        """
+        self.model.eval()
+        dataloader_iter = iter(dataloader)
+        minibatch = next(data_iter)
+        minibatch = self.preprocess_val(minibatch)
+
+        signature = infer_signature(
+                model_input=minibatch["img"][0].numpy(), # Note: we are using the first image in the batch
+                model_output=self.model(minibatch["img"]).detach().numpy(),
+            ) 
+        
+        return signature
+
     def save_model(self) -> None:  # pragma: no cover
         pass
 

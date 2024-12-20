@@ -3,12 +3,14 @@ from torch import nn, optim
 from torch import Tensor
 from torchvision import transforms, datasets
 from efficientnet_pytorch import EfficientNet
-from enum import Enum, auto
+from enum import Enum
 from collections import namedtuple
 from typing import Protocol
 
 from tsdb.ml.efficientnet import EN_Classifier
+from tsdb.ml.utils import Steps
 from tsdb.ml.data_processing import transform_row, get_transform_spec, get_converter
+
 
 """
 TODO: Adapt this file to be the EN model trainer
@@ -17,12 +19,6 @@ TODO: Adapt this file to be the EN model trainer
 
 class Metrics(Enum):
     MSE = nn.MSELoss()
-
-
-class Steps(Enum):
-    TRAIN = auto()
-    VAL = auto()
-    TEST = auto()
 
 
 class ModelTrainerType(Protocol):  # pragma: no cover

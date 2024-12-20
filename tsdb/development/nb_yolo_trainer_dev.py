@@ -1,6 +1,6 @@
 # Databricks notebook source
-# MAGIC %pip install ultralytics
-# MAGIC %pip install efficientnet_pytorch
+# %pip install ultralytics
+# %pip install efficientnet_pytorch
 
 # COMMAND ----------
 
@@ -46,11 +46,16 @@ model = get_model(model_yaml, model_pt, data)
 
 # COMMAND ----------
 
+import torch
+isinstance(model, torch.nn.Module)
+
+# COMMAND ----------
+
 model.args.single_cls = True # set to False when using coco dataset since it has 80 classes
 
 # COMMAND ----------
 
-yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model)
+yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model, train_args=None)
 
 # COMMAND ----------
 
