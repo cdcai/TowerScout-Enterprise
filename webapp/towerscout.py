@@ -34,7 +34,7 @@ from functools import reduce
 import asyncio
 import jwt
 import msal
-from msal import ConfidentialClientApplication
+from datetime import timedelta
 
 from flask import (
     Flask,
@@ -549,6 +549,12 @@ def get_objects():
             print("cleaned up tmp dir", session["tmpdirname"])
             del session["tmpdirname"]
 
+         # Generate a temporary file name (but don't create the file)
+        temp_name = tempfile.mktemp()
+
+        # Extract the filename from the full path
+        fname = os.path.basename(temp_name)
+
         # make a new tempdir name and attach to session
         tmpdir = tempfile.TemporaryDirectory()
         tmpdirname = tmpdir.name
@@ -692,6 +698,7 @@ def get_objects():
         # print()
 
         exit_events.free(id(session))
+        # Read and return the data (just to show the file is written correctly)
         results = json.dumps(results)
         session["results"] = results
         return results
@@ -1017,7 +1024,9 @@ def write_contents_file(tmpdirname, tiles, keep_ids, additions, meta):
         f.write("," + ("false" if meta else "true"))
         f.write("]")
 
-
+app.permanent_session_lifetime = timedelta(minutes=60)  # Adjust this as needed
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
+app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False  # Disable pretty-printing for large JSON
 #
 #
 # upload dataset for further editing:

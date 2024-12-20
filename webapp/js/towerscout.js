@@ -181,8 +181,8 @@ class AzureMap extends TSMap {
     super();
     this.map = new atlas.Map('azureMap', {
       center: [nyc[0], nyc[1]], // Reverse Bing
-      zoom: 19,
-      maxZoom: 20,
+      zoom: 18,
+      maxZoom: 18,
       disableStreetside: true,
       authOptions: {
         authType: 'subscriptionKey',
@@ -400,7 +400,7 @@ class AzureMap extends TSMap {
         [b[2], b[3]]  // Northeast
       ],
       padding: 0,
-      zoom: 19
+      zoom: 18
     });
   }
 
@@ -527,7 +527,6 @@ class AzureMap extends TSMap {
         [o.x1, o.y2],  // Bottom-left corner
         [o.x1, o.y1]   // Closing the polygon (back to top-left)
       ];
-     
         
     // });
     // Create a polygon (bounding box) from the coordinates
@@ -1190,7 +1189,7 @@ class PlaceRect {
     }
     else if(currentUI.value === 'azure'){
       azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
-      azureMap.setZoom(19);
+      azureMap.setZoom(18);
     }
     
   }
@@ -1382,7 +1381,7 @@ class Detection extends PlaceRect {
       firstDet.maxP2 = Math.max(det.p2, firstDet.maxP2)
       det.firstDet = firstDet; // record block header
       det.indexInList = count;
-      det.update();
+      // det.update();
       count++;
     }
     boxes += "</li></ul>";
