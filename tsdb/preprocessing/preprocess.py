@@ -1,23 +1,28 @@
+"""
+This module contains higher level preprocessing workflows
+that use a combination of tsdb.preprocessing.functions
+"""
 from collections import defaultdict
 from functools import partial
 from typing import Any
 
 import numpy as np
+from PIL import Image
 from pyspark.context import SparkContext
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
+
 from petastorm.spark import SparkDatasetConverter, make_spark_converter
-from tsdb.preprocessing.functions import sum_bytes
-from torchvision.transforms import v2
-import torchvision
+
 import torch
 from torch.utils.data import DataLoader
-from PIL import Image
+import torchvision
+from torchvision.transforms import v2
+
 from streaming import StreamingDataset, MDSWriter  # mosiacml-streaming
 
-"""
-This module contains higher level preprocessing workflows
-that use a combination of tsdb.preprocessing.functions
-"""
+from tsdb.preprocessing.functions import sum_bytes
+
+
 
 def create_converter(
     dataframe, bytes_column: "ColumnOrName", sc: SparkContext, parallelism: int = 0
@@ -68,7 +73,11 @@ def data_augmentation(
 # Put these funcitons into preprocess.py not ml_utils!
 # Make new branch off this one after you merge main into it AND open a PR.
 def convert_to_mds(
-    df: DataFrame, columns: dict[str, str], compression: str, out_root: str, **kwargs
+    df: DataFrame,
+    out_root: str,
+    columns: dict[str, str] = None,
+    compression: str = "zstd",
+    **kwargs
 ) -> None:
     """
     Function that converts a Spark DataFrame to a collection of `.mds` files.
@@ -82,11 +91,20 @@ def convert_to_mds(
     compression: Compression algorithm name to use
     out_root: The local or remote directory path to store the output compressed files
     """
+    if columns is None:
+        columns = {
+            "image_path": "str",
+            "img": "jpeg",
+            "bboxes": "ndarray:float32",
+            "cls": "ndarray:float32",
+            "ori_shape": "ndarray:uint32"
+        }
+
     pd_df = df.toPandas()
     samples = pd_df.to_dict("records")
 
     for sample in samples:
-        sample["img"] = Image.open(sample["im_file"])
+        sample["img"] = Image.open(sample["image_path"])
         sample["ori_shape"] = np.array(sample["img"].size, dtype=np.uint32)
 
     # Use `MDSWriter` to iterate through the input data and write to a collection of `.mds` files.
@@ -202,3 +220,49 @@ def get_dataloader(
         dataset, batch_size=batch_size, collate_fn=collate_fn
     )  # test this to make sure u get a DataLoader u can iterate through
     return dataloader
+
+
+def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: str) -> None:
+    """
+    Given a catalog, schema, table_name for a delta table, creates a MDS dataset for training, validation, and testing.
+    Obtains the latest delta table version and persists this information in the path for reproducibility.
+
+    Args:
+        catalog: UC name
+        schema: UC schema name
+        table: UC table name
+        out_root_base: Volume path to save data to
+    """
+    spark = SparkSession.builder.getOrCreate()
+
+    training_data_table = f"{catalog}.{schema}.{table}"
+    
+    # We get the latest version number for reproducibility
+    version_number = (
+        spark
+        .sql(f"DESCRIBE HISTORY {training_data_table} LIMIT 1")
+        .collect()[0]["version"]
+    )
+
+    # Read the dataframe, we flatten bboxes to match a mds data type
+    # image_path will be read by convert_to_mds
+    # cls is extracted from bboxes to match ultralytics training setup
+    dataframe = (
+        spark
+        .read
+        .format("delta")
+        .option("versionAsOf", version_number)
+        .table(training_data_table)
+        .selectExpr(
+            "image_path",
+            "transform(bboxes, x -> float(0)) AS cls",
+            "flatten(transform(bboxes, x -> array(x.x1, x.y1, x.x2, x.y2))) AS bboxes",
+            "split_label"
+        )
+    )
+
+    save_path = f"{out_root_base}/{table}/version={version_number}/"
+    
+    for split in ("train", "val", "test"):
+        split_df = dataframe.filter(f"split_label == '{split}'")
+        convert_to_mds(split_df, out_root=f"{save_path}/{split}")
