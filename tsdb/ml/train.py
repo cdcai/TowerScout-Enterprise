@@ -57,7 +57,7 @@ def perform_pass(
 
 
 def train(
-    dataloaders: SplitDataLoaders,
+    dataloaders: SplitDataloaders,
     model_trainer: ModelTrainerType, # TODO: modify signature to take trainer and retrive any training args from trainer - Done
     model_name: str = "towerscout_model"
 ) -> dict[str, Any]:  # pragma: no cover

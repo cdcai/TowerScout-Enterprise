@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %run ./nb_config_retrieval
+
+# COMMAND ----------
+
 # Purpose: Check if the global view 'global_temp_towerscout_configs' exists and extract configuration values from it. 
 # If the view does not exist, exit the notebook with an error message.
 
@@ -31,28 +35,27 @@ from datetime import datetime
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 from tsdb.ml.train import perform_pass, train, tune_hyperparams, model_promotion
-from tsdb.ml.utils import ValidMetric, TrainingArgs, FminArgs, SplitConverters, PromotionArgs 
+from tsdb.ml.utils import ValidMetric, TrainingArgs, FminArgs, PromotionArgs 
 from tsdb.utils.logger import setup_logger
-from tsdb.ml.data_processing import split_datanolabel, get_converter_df
 
 # COMMAND ----------
 
 # widgets probs will go into config file
-# dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")  # config file
-# dbutils.widgets.text("source_table", defaultValue="image_metadata")  # config file
+dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")  # config file
+dbutils.widgets.text("source_table", defaultValue="image_metadata")  # config file
 
-# dbutils.widgets.text("epochs", defaultValue="5")  # nb widget or hyperopt tuned
-# dbutils.widgets.text("batch_size", defaultValue="1")  # nb widget or hyperopt tuned
-# dbutils.widgets.text("report_interval", defaultValue="5")  # nb widget 
-# dbutils.widgets.text("max_evals", defaultValue="8")  # nb widget
-# dbutils.widgets.text("parallelism", defaultValue="2")  # nb widget
+dbutils.widgets.text("epochs", defaultValue="5")  # nb widget or hyperopt tuned
+dbutils.widgets.text("batch_size", defaultValue="1")  # nb widget or hyperopt tuned
+dbutils.widgets.text("report_interval", defaultValue="5")  # nb widget 
+dbutils.widgets.text("max_evals", defaultValue="8")  # nb widget
+dbutils.widgets.text("parallelism", defaultValue="2")  # nb widget
 
-# stages = ["Dev", "Staging", "Production"]
-# dbutils.widgets.dropdown("stage", "Production", stages)  # config file
+stages = ["Dev", "Staging", "Production"]
+dbutils.widgets.dropdown("stage", "Production", stages)  # config file
 
-# metrics = [member.name for member in ValidMetric]
-# dbutils.widgets.dropdown("objective_metric", "MSE", metrics)  # nb widget
-# dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)  # nb widget
+metrics = [member.name for member in ValidMetric]
+dbutils.widgets.dropdown("objective_metric", "MSE", metrics)  # nb widget
+dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)  # nb widget
 
 # COMMAND ----------
 
@@ -74,7 +77,7 @@ report_interval = int(dbutils.widgets.get("report_interval"))
 metrics = [ValidMetric[metric] for metric in dbutils.widgets.get("metrics").split(",")]
 parallelism = int(dbutils.widgets.get("parallelism"))
 max_evals = int(dbutils.widgets.get("max_evals"))
-logger.info("Loaded parameters.")
+# logger.info("Loaded parameters.")
 
 # COMMAND ----------
 
@@ -83,7 +86,64 @@ mlflow.set_registry_uri("databricks-uc")
 
 # create MLflow client
 client = MlflowClient()
-logger.info("Created MLflow client.")
+# logger.info("Created MLflow client.")
+
+# COMMAND ----------
+
+from tsdb.preprocessing.preprocess import build_mds_by_splits
+
+out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits"
+
+build_mds_by_splits(
+    "edav_dev_csels",
+    "towerscout",
+    "test_image_gold",
+    out_root_base_path
+)
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+'/Volumes/edav_dev_csels/towerscout/data/Training Data/nyc/1000001936.png'
+
+# COMMAND ----------
+
+out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits"
+
+def build_mds_by_splits(catalog: str, schema: str, table_name: str, out_root_base: str) -> None:
+    training_data_table = f"{catalog}.{schema}.{table_name}"
+    
+    # We get the latest version number for reproducibility
+    version_number = (
+        spark
+        .sql(f"DESCRIBE HISTORY training_data_table LIMIT 1")
+        .collect()[0]["version"]
+    )
+
+    dataframe = (
+        spark
+        .read
+        .format("delta")
+        .option("versionAsOf", version_number)
+        .table(training_data_table)
+        .selectExpr(
+            "image_path",
+            "transform(bboxes, x -> float(0)) AS cls",
+            "flatten(transform(bboxes, x -> array(x.x1, x.y1, x.x2, x.y2))) AS bboxes"
+        )
+    )
+
+    save_path = f"{out_root_base}/{table_name}/version={version_number}/"
+    for split in ("train", "val", "test"):
+        split_df = dataframe.filter(F.col("split") == split)
+        convert_to_mds(split_df, out_root=f"{save_path}/{split}")
+
+# COMMAND ----------
+
+build_mds_by_splits("edav_dev_csels.towerscout.test_image_gold")
 
 # COMMAND ----------
 
@@ -94,8 +154,8 @@ table_name = f"{catalog}.{schema}.{source_table}"
 
 images = spark.table(table_name).select("content", "path")
 
-logger.info("Loading and splitting data into train, test, and validation sets")
-train_set, test_set, val_set = split_datanolabel(images)
+# logger.info("Loading and splitting data into train, test, and validation sets")
+# train_set, test_set, val_set = split_datanolabel(images)
 
 # COMMAND ----------
 
