@@ -12,7 +12,7 @@ from enum import Enum, auto
 
 from mlflow.models.signature import infer_signature, ModelSignature
 
-from tsdb.ml.utils import OptimizerArgs, Steps, TrainingArgs
+from tsdb.ml.utils import Hyperparameters, Steps, TrainingArgs
 
 class YOLOLoss(Enum):
     """
@@ -195,10 +195,11 @@ class YoloModelTrainer:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         self.loss_types = [loss.name for loss in YOLOLoss]
-
-    def from_optuna_hyperparameters(cls, hyperparameters: dict[str, Any], model: DetectionModel, train_args: TrainingArgs) -> "YoloModelTrainer":
+    
+    @classmethod
+    def from_optuna_hyperparameters(cls, hyperparameters: Hyperparameters, model: DetectionModel, train_args: TrainingArgs) -> "YoloModelTrainer":
         """
-
+        Class method to create a YoloModelTrainer class instance from the Hyperparameters dataclass
         """
         optimizer = self.build_optimizer(
             model=model,
@@ -401,7 +402,6 @@ class YoloModelTrainer:
 
         signature = self.get_signature(dataloaders.val)
 
-        # Maybe we put this in the trainer?
         mlflow.pytorch.log_model(
             self.model,
             model_name,
