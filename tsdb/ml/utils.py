@@ -34,7 +34,7 @@ FminArgs = namedtuple("FminArgs", ["fn", "space", "algo", "max_evals", "trials"]
 
 
 @dataclass
-class SplitDataloaders:
+class DataLoaders:
     """
     A dataclass to hold the dataloaders for the training, testing
     and validation sets

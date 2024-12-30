@@ -15,7 +15,8 @@ from enum import Enum
 from torch import nn
 from torch.utils.data import DataLoader
 
-from tsdb.ml.utils import TrainingArgs, FminArgs, SplitDataloaders, PromotionArgs
+from tsdb.ml.utils import TrainingArgs, FminArgs, PromotionArgs
+from tsdb.ml.data import DataLoaders
 from tsdb.ml.data_processing import get_transform_spec
 from tsdb.ml.model_trainer import Steps, ModelTrainerType
 from tsdb.ml.yolo_trainer import inference_step
@@ -57,9 +58,9 @@ def perform_pass(
 
 
 def train(
-    dataloaders: SplitDataloaders,
+    dataloaders: DataLoaders,
     model_trainer: ModelTrainerType, # TODO: modify signature to take trainer and retrive any training args from trainer - Done
-    model_name: str = "towerscout_model"
+    model_name: str = "towerscout_model",
 ) -> dict[str, Any]:  # pragma: no cover
     """
     Trains a model with given hyperparameter values and returns the value
@@ -121,6 +122,7 @@ def train(
 
     # Set the loss to -1*f1 so fmin maximizes the f1_score
     # Be careful with this -1, it really should be a parameter
+    return metric
     return {"status": STATUS_OK, "loss": -1 * metric}
 
 
@@ -131,6 +133,8 @@ def tune_hyperparams(
 ) -> tuple[Any, float, dict[str, Any]]:  # pragma: no cover
     """
     Returns the best MLflow run and testing value of objective metric for that run
+
+    Optimize function
 
     Args:
         fmin_args: FminArgs The arguments to HyperOpts fmin function
