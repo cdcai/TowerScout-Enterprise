@@ -35,8 +35,14 @@ from datetime import datetime
 from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
 
 from tsdb.ml.train import perform_pass, train, tune_hyperparams, model_promotion
+from tsdb.ml.data import DataLoaders, data_augmentation
 from tsdb.ml.utils import ValidMetric, TrainingArgs, FminArgs, PromotionArgs 
 from tsdb.utils.logger import setup_logger
+
+# COMMAND ----------
+
+import joblib
+import optuna
 
 # COMMAND ----------
 
@@ -90,6 +96,13 @@ client = MlflowClient()
 
 # COMMAND ----------
 
+dbutils.fs.rm(
+    "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits",
+    recurse=True
+)
+
+# COMMAND ----------
+
 from tsdb.preprocessing.preprocess import build_mds_by_splits
 
 out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits"
@@ -100,50 +113,6 @@ build_mds_by_splits(
     "test_image_gold",
     out_root_base_path
 )
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-'/Volumes/edav_dev_csels/towerscout/data/Training Data/nyc/1000001936.png'
-
-# COMMAND ----------
-
-out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits"
-
-def build_mds_by_splits(catalog: str, schema: str, table_name: str, out_root_base: str) -> None:
-    training_data_table = f"{catalog}.{schema}.{table_name}"
-    
-    # We get the latest version number for reproducibility
-    version_number = (
-        spark
-        .sql(f"DESCRIBE HISTORY training_data_table LIMIT 1")
-        .collect()[0]["version"]
-    )
-
-    dataframe = (
-        spark
-        .read
-        .format("delta")
-        .option("versionAsOf", version_number)
-        .table(training_data_table)
-        .selectExpr(
-            "image_path",
-            "transform(bboxes, x -> float(0)) AS cls",
-            "flatten(transform(bboxes, x -> array(x.x1, x.y1, x.x2, x.y2))) AS bboxes"
-        )
-    )
-
-    save_path = f"{out_root_base}/{table_name}/version={version_number}/"
-    for split in ("train", "val", "test"):
-        split_df = dataframe.filter(F.col("split") == split)
-        convert_to_mds(split_df, out_root=f"{save_path}/{split}")
-
-# COMMAND ----------
-
-build_mds_by_splits("edav_dev_csels.towerscout.test_image_gold")
 
 # COMMAND ----------
 
@@ -159,15 +128,23 @@ images = spark.table(table_name).select("content", "path")
 
 # COMMAND ----------
 
-logger.info(f"Creating converter for train/val/test datasets")
-# create converters for train/val/test spark df's
-sc = spark.sparkContext
+out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=377"
 
-# TODO: get dataloaders from spark dataframe
-#
-converter_train = get_converter_df(train_set, sc)
-converter_val = get_converter_df(val_set, sc)
-converter_test = get_converter_df(test_set, sc)
+dataloaders = DataLoaders.from_mds(
+    cache_dir="/tmp/training_cache/", 
+    mds_dir=out_root_base_path, 
+    batch_size=32, 
+    transforms=data_augmentation()
+)
+
+# COMMAND ----------
+
+from tsdb.ml.yolo_trainer import YoloModelTrainer
+
+# COMMAND ----------
+
+logger.info(f"Creating converter for train/val/test datasets")
+
 
 train_args = TrainingArgs(
     objective_metric=objective_metric,
@@ -177,22 +154,24 @@ train_args = TrainingArgs(
     metrics=metrics,
 )
 
-split_convs = SplitConverters(
-    train=converter_train, val=converter_val, test=converter_test
-)
-
 trials = SparkTrials(parallelism=parallelism)
 logger.info(
     f"Training with {train_args.epochs} epochs, {train_args.batch_size} batch size, {train_args.report_interval} report interval, {train_args.objective_metric} objective metric"
 )
+
 search_space = {
-    "lr": hp.uniform("lr", 1e-4, 1e-3),
-    "weight_decay": hp.uniform("weight_decay", 1e-4, 1e-3),
+    "lr": hp.uniform("lr", 1e-6, 1e-2),
+    "weight_decay": hp.uniform("weight_decay", 1e-6, 1e-1),
 }
 
 # using partial to pass extra arugments to objective function
 # TODO: create trainer class object here
-objective_func = partial(train, train_args=train_args, split_convs=split_convs)
+objective_func = partial(
+    train, 
+    dataloaders=dataloaders, 
+    model_trainer=, 
+    model_name="
+)
 
 fmin_args = FminArgs(
     fn=objective_func,

@@ -59,7 +59,7 @@ def data_augmentation(
     Data Augmentation function to add label invariant transforms to training pipeline
     Applies a series of transformations such as rotation, horizontal and vertical flips, and Gaussian blur to each image
 
-    TODO: test this
+    TODO: test this in tsdb.ml.data. DELETE HERE
     """
     transforms = [
         v2.RandomRotation(rotation_angle),
@@ -90,6 +90,8 @@ def convert_to_mds(
             as keys and the corresponding mds data types as values
     compression: Compression algorithm name to use
     out_root: The local or remote directory path to store the output compressed files
+
+    TODO: this implementation is not completely tested
     """
     if columns is None:
         columns = {
@@ -104,7 +106,7 @@ def convert_to_mds(
     samples = pd_df.to_dict("records")
 
     for sample in samples:
-        sample["img"] = Image.open(sample["image_path"])
+        sample["img"] = Image.open(sample["image_path"]).convert("RGB")
         sample["ori_shape"] = np.array(sample["img"].size, dtype=np.uint32)
 
     # Use `MDSWriter` to iterate through the input data and write to a collection of `.mds` files.
@@ -113,7 +115,10 @@ def convert_to_mds(
         out=out_root, columns=columns, compression=compression, **kwargs
     ) as out:
         for sample in samples:
-            out.write(sample)
+            try:
+                out.write(sample)
+            except:
+                print(sample)
 
 
 def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str, Any]:
@@ -128,6 +133,8 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
         transforms: Torchvision transforms applied to the PIL images
     Returns: A dictionary containing the collated data in the formated
             expected by the Ultralytics DetectionModel class
+    
+    TODO: DELETE HERE
     """
     result = defaultdict(list)
 
@@ -193,6 +200,8 @@ def get_dataloader(
     transforms: A list of torchvision transforms to be composed and applied to the images
     Returns:
     A PyTorch DataLoader object
+
+    TODO: DELETE HERE
     """
 
     # Note that StreamingDataset is unit tested here: https://github.com/mosaicml/streaming/blob/main/tests/test_streaming.py
@@ -200,7 +209,6 @@ def get_dataloader(
         local=local_dir,
         remote=remote_dir,
         batch_size=batch_size,
-        split=None,
         shuffle=True,
         **kwargs
     )
@@ -264,5 +272,5 @@ def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: st
     save_path = f"{out_root_base}/{table}/version={version_number}/"
     
     for split in ("train", "val", "test"):
-        split_df = dataframe.filter(f"split_label == '{split}'")
+        split_df = dataframe.filter(f"split_label == '{split}'").drop("split_label")
         convert_to_mds(split_df, out_root=f"{save_path}/{split}")
