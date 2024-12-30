@@ -8,6 +8,8 @@ from torch import nn
 
 from torch.utils.data import DataLoader
 
+from optuna.trial import Trial
+
 from mlflow import MlflowClient
 
 from logging import Logger
@@ -50,6 +52,10 @@ class DataLoaders:
     test: DataLoader = None
 
 
+def default_metrics() -> list[ValidMetric]:
+    return [ValidMetric.BCE.value, ValidMetric.MSE.value]
+
+
 @dataclass
 class TrainingArgs:
     """
@@ -65,7 +71,8 @@ class TrainingArgs:
     objective_metric: str = "f1"  # will be selected option for the drop down
     epochs: int = 2
     report_interval: int = 5
-    metrics: list[ValidMetric] = field(default_factory=dict)  # make default_factory a function that returns some list of valid metrics
+    val_interval: int = 10
+    metrics: list[ValidMetric] = field(default_factory=default_metrics)  # make default_factory a function that returns some list of valid metrics
 
 
 @dataclass
@@ -97,19 +104,40 @@ class PromotionArgs:
 
 
 @dataclass
-class OptimizerArgs:
+class Hyperparameters:
     """
-    A class to represent YOLO model optimizer arguements
+    A class to represent hyperparameter arguements
 
     Attributes:
-        optimizer_name: The name of optimzer to use SGD, Adam, etc
         lr0: The initial learning rate
-        momentum: Momentum parameter
+        momentum: optimizer momentum parameter
+        weight_decay: optimizer weight decay parameter
+        batch_size: batch size for dataloader
+        epochs: number of epochs
+        prob_H_flip: probablity of horizontally flipping image
+        prob_V_flip: probability of vertically flipping image
     """
-    optimizer_name: str = "auto"
     lr0: float = 0.001
     momentum: float = 0.9
     weight_decay: float =  1e-5
+    batch_size: int
+    epochs: int
+    prob_H_flip: float
+    prob_V_flip: float
+
+    @classmethod
+    def from_optuna_trial(cls, trial: Trial):
+        lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
+        momentum = trial.suggest_float("momentum", 0.0, 0.99)
+        weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True)
+        batch_size_power = trial.suggest_int("batch_size_power", 4, 8)
+        batch_size = 2**batch_size_power
+        prob_H_flip = trial.suggest_float("prob_H_flip", 0.3, 0.7)
+        prob_V_flip = trial.suggest_float("prob_V_flip", 0.3, 0.7)
+        epcohs = trial.suggest_int("epochs", 5, 100, step=2)
+
+        return cls(lr, momentum, weight_decay, batch_size, epochs, prob_H_flip, prob_V_flip)
+
 
 
 class YOLOv5Detection(TypedDict):

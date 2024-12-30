@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from ultralytics.cfg import get_cfg
 from ultralytics.nn.tasks import attempt_load_one_weight, DetectionModel
 
-from tsdb.ml.utils import TrainingArgs, FminArgs, PromotionArgs, OptimizerArgs
+from tsdb.ml.utils import TrainingArgs, FminArgs, PromotionArgs, Hyperparameters
 from tsdb.ml.data import DataLoaders
 from tsdb.ml.data_processing import get_transform_spec
 from tsdb.preprocessing.preprocess import build_mds_by_splits
@@ -56,63 +56,6 @@ def perform_pass(
             mlflow.log_metrics(metrics, step=step_num)
 
     return metrics
-
-
-def train(
-    dataloaders: DataLoaders,
-    model_trainer: ModelTrainerType,
-    model_name: str = "towerscout_model",
-) -> dict[str, Any]:  # pragma: no cover
-    """
-    Trains a model with given hyperparameter values and returns the value
-    of the objective metric on the valdiation dataset.
-
-    Args:
-        model_trainer: The model trainer
-        dataloaders: The dataloaders for the train/val/test datasets
-        model_name: The name to log the model under in MLflow
-    Returns:
-        dict[str, float] A dict containing the loss
-    """
-
-    with mlflow.start_run(nested=True):
-        # Create model and trainer
-        mlflow.log_params(model_trainer.optimizer_args)
-
-        train_args = model_trainer.train_args
-
-        # training
-        for epoch in range(train_args.epochs):
-            train_metrics = perform_pass(
-                step_func=model_trainer.training_step,
-                dataloader=dataloaders.train,
-                report_interval=train_args.report_interval,
-                epoch_num=epoch,
-            )
-
-            if epoch % train_args.val_interval == 0:
-                # validation
-                val_metrics = perform_pass(
-                    step_func=model_trainer.validation_step,
-                    dataloader=dataloaders.val,
-                    report_interval=len(dataloaders.val), # we want to run through whole validation dataloader and then log the metrics
-                    epoch_num=epoch,
-                )
-
-        signature = model_trainer.get_signature(dataloaders.val)
-
-        # Maybe we put this in the trainer?
-        mlflow.pytorch.log_model(
-            model_trainer.model,
-            model_name,
-            signature=signature,
-        )
-
-        metric = val_metrics[
-            f"{train_args.objective_metric}_VAL"
-        ]  # minimize loss on val set b/c we are tuning hyperparams
-
-    return metric
 
 
 def get_model(model_yaml: str, model_pt: str) -> DetectionModel:
@@ -160,34 +103,24 @@ def objective(
         The value of the objective metric to optimize after model trianing
         with suggested hyperparameters is completed
     """
-
-    lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
-    momentum = trial.suggest_float("momentum", 0.0, 0.99)
-    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True)
-    optimizer_args = OptimizerArgs("Adam", lr, momentum, weight_decay)
-    # TODO: Make arguements to get_model inputs to this function
     model = get_model(f"{yolo_version}.yaml", f"{yolo_version}.pt")
-    hyperparameters = 
-    train_args = TrainingArgs(epochs=epochs) # pass optuna value for epochs
+    hyperparameters = Hyperparameters.from_optuna_trial(trial)
+    train_args = TrainingArgs()
+    
+    model_trainer = YoloModelTrainer.from_optuna_hyperparameters(hyperparameters, model, train_args)
 
-    model_trainer = YoloModelTrainer(optimizer_args, model, train_args)
-
-    batch_size_power = trial.suggest_int("batch_size_power", 5, 10)
-    batch_size = 2**batch_size_power
-    prob_H_flip = trial.suggest_float("prob_H_flip", 0.3, 0.7)
-    prob_V_flip = trial.suggest_float("prob_V_flip", 0.3, 0.7)
-
-    transforms = data_augmentation(prob_H_flip=prob_H_flip, prob_V_flip=prob_V_flip)
+    transforms = data_augmentation(prob_H_flip=hyperparameters.prob_H_flip, prob_V_flip=hyperparameters.prob_V_flip)
     cache_dir = "/local/cache/path"
 
     dataloaders = DataLoaders.from_mds(
-        cache_dir, mds_dir=out_root_base, batch_size=batch_size, transforms=transforms
+        cache_dir, mds_dir=out_root_base, batch_size=hyperparameters.batch_size, transforms=transforms
     )
     
     with mlflow.start_run(nested=True):
         # Create model and trainer
-        mlflow.log_params(hyperparameters)  # convert dataclass to dict
+        mlflow.log_params(asdict(hyperparameters))  # convert dataclass to dict
         metric = model_trainer.train(dataloaders, model_name="towerscout_model")
+
 
     return metric
 
