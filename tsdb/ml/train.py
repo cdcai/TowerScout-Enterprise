@@ -1,10 +1,9 @@
 import mlflow
 from mlflow import MlflowClient
 
-from hyperopt import fmin, STATUS_OK, SparkTrials, Trials
+from optuna.trial import Trial
 
-from dataclasses import dataclass, asdict, field
-from collections import namedtuple
+from dataclasses import asdict
 
 from typing import Any, Callable, Union
 
@@ -15,11 +14,16 @@ from enum import Enum
 from torch import nn
 from torch.utils.data import DataLoader
 
-from tsdb.ml.utils import TrainingArgs, FminArgs, PromotionArgs
+from ultralytics.cfg import get_cfg
+from ultralytics.nn.tasks import attempt_load_one_weight, DetectionModel
+
+from tsdb.ml.utils import TrainingArgs, FminArgs, PromotionArgs, OptimizerArgs
 from tsdb.ml.data import DataLoaders
 from tsdb.ml.data_processing import get_transform_spec
+from tsdb.preprocessing.preprocess import build_mds_by_splits
 from tsdb.ml.model_trainer import Steps, ModelTrainerType
-from tsdb.ml.yolo_trainer import inference_step
+from tsdb.ml.data import DataLoaders, data_augmentation
+from tsdb.ml.yolo_trainer import inference_step, YoloModelTrainer
 from tsdb.ml.utils import Steps
 
 
@@ -46,20 +50,17 @@ def perform_pass(
 
     for minibatch_num, minibatch in enumerate(dataloader):
         metrics = step_func(minibatch=minibatch)
-        
+
         if minibatch_num % report_interval == 0:
             step_num = minibatch_num + (epoch_num * num_batches)
-            mlflow.log_metrics(
-                metrics,
-                step=step_num
-            )
-    
+            mlflow.log_metrics(metrics, step=step_num)
+
     return metrics
 
 
 def train(
     dataloaders: DataLoaders,
-    model_trainer: ModelTrainerType, # TODO: modify signature to take trainer and retrive any training args from trainer - Done
+    model_trainer: ModelTrainerType,
     model_name: str = "towerscout_model",
 ) -> dict[str, Any]:  # pragma: no cover
     """
@@ -76,14 +77,12 @@ def train(
 
     with mlflow.start_run(nested=True):
         # Create model and trainer
-        # TODO: remove - Done
         mlflow.log_params(model_trainer.optimizer_args)
 
         train_args = model_trainer.train_args
 
         # training
         for epoch in range(train_args.epochs):
-            # TODO: for new perform pass - Done
             train_metrics = perform_pass(
                 step_func=model_trainer.training_step,
                 dataloader=dataloaders.train,
@@ -91,45 +90,110 @@ def train(
                 epoch_num=epoch,
             )
 
-        # validation
-        for epoch in range(train_args.epochs):
-            # TODO: for new perform pass - Done
-            val_metrics = perform_pass(
-                step_func=model_trainer.validation_step,
-                dataloader=dataloaders.val,
-                report_interval=len(dataloaders.val),
-                epoch_num=epoch,
-            )
+            if epoch % train_args.val_interval == 0:
+                # validation
+                val_metrics = perform_pass(
+                    step_func=model_trainer.validation_step,
+                    dataloader=dataloaders.val,
+                    report_interval=len(dataloaders.val), # we want to run through whole validation dataloader and then log the metrics
+                    epoch_num=epoch,
+                )
 
-        # testing
-        # TODO: for new perform pass - Done
-        test_metrics = perform_pass(
-            step_func=partial(inference_step, model=model_trainer.model, step=Steps["TEST"].name, metrics=train_args.metrics), 
-            dataloader=dataloaders.test, 
-            report_interval=len(dataloaders.test)
-        )
+        signature = model_trainer.get_signature(dataloaders.val)
 
-        signature = model_trainer.get_signature(dataloader)
-            
         # Maybe we put this in the trainer?
         mlflow.pytorch.log_model(
-            model_trainer.model, model_name, signature=signature # TODO: model name should be an input
+            model_trainer.model,
+            model_name,
+            signature=signature,
         )
 
         metric = val_metrics[
             f"{train_args.objective_metric}_VAL"
         ]  # minimize loss on val set b/c we are tuning hyperparams
 
-    # Set the loss to -1*f1 so fmin maximizes the f1_score
-    # Be careful with this -1, it really should be a parameter
     return metric
-    return {"status": STATUS_OK, "loss": -1 * metric}
+
+
+def get_model(model_yaml: str, model_pt: str) -> DetectionModel:
+    """
+    Function for creating a DetectionModel object based on pretrained model weights
+    and yaml file.
+    See DetectionTrainer class and BaseTrainer class for details on how to setup the model
+
+    Args:
+        model_yaml: str, path to yaml file for YOLO model
+        model_pt: str, path to pretrained YOLO model weights
+
+    Returns:
+        DetectionModel, an Ultralytics pytorch model with pretrained weights and class names attached
+    """
+    # get params for model from: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/default.yaml
+    args = get_cfg()
+    model = DetectionModel(cfg=model_yaml, verbose=False)
+    weights, _ = attempt_load_one_weight(model_pt)
+    model.load(weights)
+    model.nc = 1  # attach number of classes to model
+    model.names = ["ct"]  # attach class names to model
+    model.args = args
+    # Note that this isn't set in cfg/default.yaml so must set it ourselves
+    model.args.conf = 0.001
+    # Set to true for towerscout since there's only 1 class
+    model.args.single_cls = True
+
+    return model
+
+
+def objective(
+    trial: Trial,
+    out_root_base: str,
+    yolo_version: str = "yolov10n",
+) -> float:  # pragma: no cover
+    """
+    Objective function for Optuna to optimize.
+
+    Args:
+        trail: Optuna Trail object for hyperparameter suggestions
+        out_root_base: The directory to store the mds files 
+        yolo_version: the version of YOLO to use, default yolov10n
+    Returns:
+        The value of the objective metric to optimize after model trianing
+        with suggested hyperparameters is completed
+    """
+
+    lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
+    momentum = trial.suggest_float("momentum", 0.0, 0.99)
+    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True)
+    optimizer_args = OptimizerArgs("Adam", lr, momentum, weight_decay)
+    # TODO: Make arguements to get_model inputs to this function
+    model = get_model(f"{yolo_version}.yaml", f"{yolo_version}.pt")
+    hyperparameters = 
+    train_args = TrainingArgs(epochs=epochs) # pass optuna value for epochs
+
+    model_trainer = YoloModelTrainer(optimizer_args, model, train_args)
+
+    batch_size_power = trial.suggest_int("batch_size_power", 5, 10)
+    batch_size = 2**batch_size_power
+    prob_H_flip = trial.suggest_float("prob_H_flip", 0.3, 0.7)
+    prob_V_flip = trial.suggest_float("prob_V_flip", 0.3, 0.7)
+
+    transforms = data_augmentation(prob_H_flip=prob_H_flip, prob_V_flip=prob_V_flip)
+    cache_dir = "/local/cache/path"
+
+    dataloaders = DataLoaders.from_mds(
+        cache_dir, mds_dir=out_root_base, batch_size=batch_size, transforms=transforms
+    )
+    
+    with mlflow.start_run(nested=True):
+        # Create model and trainer
+        mlflow.log_params(hyperparameters)  # convert dataclass to dict
+        metric = model_trainer.train(dataloaders, model_name="towerscout_model")
+
+    return metric
 
 
 def tune_hyperparams(
-    fmin_args: FminArgs, 
-    train_args: TrainingArgs,
-    run_name: str = "towerscout_retrain"
+    fmin_args: FminArgs, train_args: TrainingArgs, run_name: str = "towerscout_retrain"
 ) -> tuple[Any, float, dict[str, Any]]:  # pragma: no cover
     """
     Returns the best MLflow run and testing value of objective metric for that run
@@ -176,9 +240,14 @@ def model_promotion(promo_args: PromotionArgs) -> None:
 
     # get testing score for current produciton model
     champ_model_test_metrics = perform_pass(
-        step_func=partial(inference_step, model=champ_model, step=Steps["TEST"].name, metrics=promo_args.metrics),
+        step_func=partial(
+            inference_step,
+            model=champ_model,
+            step=Steps["TEST"].name,
+            metrics=promo_args.metrics,
+        ),
         dataloader=promo_args.test_dataloader,
-        report_interval=len(promo_args.test_dataloader)
+        report_interval=len(promo_args.test_dataloader),
     )
 
     champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]

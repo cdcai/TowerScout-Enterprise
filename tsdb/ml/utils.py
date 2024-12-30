@@ -58,16 +58,14 @@ class TrainingArgs:
     Attributes:
         objective_metric:The evaluation metric we want to optimize
         epochs: Number of epochs to optimize model over
-        batch_size: The size of the minibatchs passed to the model
         report_interval: Interval to log metrics during training
         metrics: Various model evaluation metrics we want to track
     """
 
-    objective_metric: str = "recall"  # will be selected option for the drop down
+    objective_metric: str = "f1"  # will be selected option for the drop down
     epochs: int = 2
-    batch_size: int = 4
     report_interval: int = 5
-    metrics: list[ValidMetric] = field(default_factory=dict)
+    metrics: list[ValidMetric] = field(default_factory=dict)  # make default_factory a function that returns some list of valid metrics
 
 
 @dataclass
@@ -111,6 +109,7 @@ class OptimizerArgs:
     optimizer_name: str = "auto"
     lr0: float = 0.001
     momentum: float = 0.9
+    weight_decay: float =  1e-5
 
 
 class YOLOv5Detection(TypedDict):

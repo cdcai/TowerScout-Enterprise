@@ -172,10 +172,18 @@ Note that we have removed the torch.nn.parallel.DistributedDataParallel (DDP) us
 Ultralytics since we use Hyperopt for distributed tuning and it's not clear how nicely they will interact with each other.
 """
 
+
 class YoloModelTrainer:
-    def __init__(self, optimizer_args: OptimizerArgs, model: DetectionModel, train_args: TrainingArgs):  # pragma: no cover
+    """
+    TODO: Add perform_pass as a STATIC method so that we dont need 
+    to instantiate the class to use it
+    also create ModelTrainer ABC that this class will inheret from. 
+    """
+    def __init__(self, optimizer: torch.optim.Optimizer, model: DetectionModel, train_args: TrainingArgs, epochs: int):  # pragma: no cover
         self.model = model
         self.train_args = train_args
+        self.optimizer = optimizer
+        self.epochs = epochs
         self.args = self.model.args
         self.amp = self.args.amp
         self.scaler = (
@@ -184,15 +192,23 @@ class YoloModelTrainer:
             else torch.cuda.amp.GradScaler(enabled=self.amp)
         )
 
-        self.optimizer = self.build_optimizer(
-            model=self.model,
-            name=optimizer_args.optimizer_name,
-            lr=optimizer_args.lr0,
-            momentum=optimizer_args.momentum,
-        )
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         self.loss_types = [loss.name for loss in YOLOLoss]
+
+    def from_optuna_hyperparameters(cls, hyperparameters: dict[str, Any], model: DetectionModel, train_args: TrainingArgs) -> "YoloModelTrainer":
+        """
+
+        """
+        optimizer = self.build_optimizer(
+            model=model,
+            name="Adam",  # TODO: can be tuned by Optuna but is not right now
+            lr=hyperparameters.lr0,
+            momentum=hyperparameters.momentum,
+            decay=hyperparameters.weight_decay
+        )
+
+        return cls(optimizer, model, train_args, hyperparameters.epochs)
 
     def build_optimizer(
         self, model, name="auto", lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5
@@ -351,6 +367,52 @@ class YoloModelTrainer:
             ) 
         
         return signature
+
+    def train(self, dataloaders: DataLoaders, model_name: str = "towerscout_model") -> dict[str, Any]:  # pragma: no cover
+        """
+        Trains a model with given hyperparameter values and returns the value
+        of the objective metric on the valdiation dataset.
+
+        Args:
+            model_trainer: The model trainer
+            dataloaders: The dataloaders for the train/val/test datasets
+            model_name: The name to log the model under in MLflow
+        Returns:
+            dict[str, float] A dict containing the loss
+        """
+
+        # training
+        for epoch in range(self.epochs):
+            train_metrics = perform_pass(
+                step_func=self.training_step,
+                dataloader=dataloaders.train,
+                report_interval=self.train_args.report_interval,
+                epoch_num=epoch,
+            )
+
+            if epoch % self.train_args.val_interval == 0:
+                # validation
+                val_metrics = perform_pass(
+                    step_func=self.validation_step,
+                    dataloader=dataloaders.val,
+                    report_interval=len(dataloaders.val), # we want to run through whole validation dataloader and then log the metrics
+                    epoch_num=epoch,
+                )
+
+        signature = self.get_signature(dataloaders.val)
+
+        # Maybe we put this in the trainer?
+        mlflow.pytorch.log_model(
+            self.model,
+            model_name,
+            signature=signature,
+        )
+
+        metric = val_metrics[
+            f"{self.train_args.objective_metric}_VAL"
+        ]  # minimize loss on val set b/c we are tuning hyperparams
+
+    return metric
 
     def save_model(self) -> None:  # pragma: no cover
         pass
