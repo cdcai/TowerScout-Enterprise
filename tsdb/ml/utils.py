@@ -107,6 +107,7 @@ class PromotionArgs:
 class Hyperparameters:
     """
     A class to represent hyperparameter arguements
+    to be used for Optuna tuning
 
     Attributes:
         lr0: The initial learning rate
@@ -117,9 +118,9 @@ class Hyperparameters:
         prob_H_flip: probablity of horizontally flipping image
         prob_V_flip: probability of vertically flipping image
     """
-    lr0: float = 0.001
-    momentum: float = 0.9
-    weight_decay: float =  1e-5
+    lr0: float
+    momentum: float
+    weight_decay: float
     batch_size: int
     epochs: int
     prob_H_flip: float

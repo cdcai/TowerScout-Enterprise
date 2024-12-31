@@ -1,34 +1,27 @@
 import mlflow
-from mlflow import MlflowClient
 
 from optuna.trial import Trial
 
 from dataclasses import asdict
 
-from typing import Any, Callable, Union
+from typing import Any
 
 from functools import partial
 
-from enum import Enum
-
-from torch import nn
 from torch.utils.data import DataLoader
 
 from ultralytics.cfg import get_cfg
 from ultralytics.nn.tasks import attempt_load_one_weight, DetectionModel
 
 from tsdb.ml.utils import TrainingArgs, FminArgs, PromotionArgs, Hyperparameters
-from tsdb.ml.data import DataLoaders
-from tsdb.ml.data_processing import get_transform_spec
-from tsdb.preprocessing.preprocess import build_mds_by_splits
-from tsdb.ml.model_trainer import Steps, ModelTrainerType
+from tsdb.ml.model_trainer import ModelTrainerType
 from tsdb.ml.data import DataLoaders, data_augmentation
 from tsdb.ml.yolo_trainer import inference_step, YoloModelTrainer
 from tsdb.ml.utils import Steps
 
 
 def perform_pass(
-    step_func: Callable,
+    step_func: callable,
     dataloader: DataLoader,
     report_interval: int,
     epoch_num: int = 0,
@@ -97,7 +90,7 @@ def objective(
 
     Args:
         trail: Optuna Trail object for hyperparameter suggestions
-        out_root_base: The directory to store the mds files 
+        out_root_base: The directory to store the mds files
         yolo_version: the version of YOLO to use, default yolov10n
     Returns:
         The value of the objective metric to optimize after model trianing
@@ -106,53 +99,29 @@ def objective(
     model = get_model(f"{yolo_version}.yaml", f"{yolo_version}.pt")
     hyperparameters = Hyperparameters.from_optuna_trial(trial)
     train_args = TrainingArgs()
-    
-    model_trainer = YoloModelTrainer.from_optuna_hyperparameters(hyperparameters, model, train_args)
 
-    transforms = data_augmentation(prob_H_flip=hyperparameters.prob_H_flip, prob_V_flip=hyperparameters.prob_V_flip)
+    model_trainer = YoloModelTrainer.from_optuna_hyperparameters(
+        hyperparameters, model, train_args
+    )
+
+    transforms = data_augmentation(
+        prob_H_flip=hyperparameters.prob_H_flip, prob_V_flip=hyperparameters.prob_V_flip
+    )
     cache_dir = "/local/cache/path"
 
     dataloaders = DataLoaders.from_mds(
-        cache_dir, mds_dir=out_root_base, batch_size=hyperparameters.batch_size, transforms=transforms
+        cache_dir,
+        mds_dir=out_root_base,
+        batch_size=hyperparameters.batch_size,
+        transforms=transforms,
     )
-    
+
     with mlflow.start_run(nested=True):
         # Create model and trainer
         mlflow.log_params(asdict(hyperparameters))  # convert dataclass to dict
         metric = model_trainer.train(dataloaders, model_name="towerscout_model")
 
-
     return metric
-
-
-def tune_hyperparams(
-    fmin_args: FminArgs, train_args: TrainingArgs, run_name: str = "towerscout_retrain"
-) -> tuple[Any, float, dict[str, Any]]:  # pragma: no cover
-    """
-    Returns the best MLflow run and testing value of objective metric for that run
-
-    Optimize function
-
-    Args:
-        fmin_args: FminArgs The arguments to HyperOpts fmin function
-        train_args: TrainingArgs The arguements for training and validaiton loops
-
-    Returns:
-        tuple[Any, float, dict[str, Any]] A tuple containing the best run, the value of the objective metric for that run, and the hyperparameters of that run and the assocaited best hyperparameters
-    """
-    with mlflow.start_run(run_name=run_name):
-        best_params = fmin(**(fmin_args._asdict()))
-
-    # sort by val objective_metric we minimize, using DESC so assuming higher is better
-    best_run = mlflow.search_runs(
-        order_by=[f'metrics.{train_args.objective_metric + "_VAL"} DESC']
-    ).iloc[0]
-
-    # get test score of best run
-    best_run_test_metric = best_run[f"metrics.{train_args.objective_metric}_TEST"]
-    mlflow.end_run()  # end run before exiting
-
-    return best_run, best_run_test_metric, best_params
 
 
 def model_promotion(promo_args: PromotionArgs) -> None:
