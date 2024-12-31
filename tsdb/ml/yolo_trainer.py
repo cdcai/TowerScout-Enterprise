@@ -14,15 +14,18 @@ from mlflow.models.signature import infer_signature, ModelSignature
 
 from tsdb.ml.utils import Hyperparameters, Steps, TrainingArgs
 
+
 class YOLOLoss(Enum):
     """
-    Enum for the different loss types for the YOLO model. BL corresponds to box loss, BCE correspnds to 
+    Enum for the different loss types for the YOLO model. BL corresponds to box loss, BCE correspnds to
     binary cross entropy, and DLF corresponds to Distribution Focal loss.
     For more info see: https://docs.ultralytics.com/reference/utils/loss/
     """
+
     BL = auto()
     BCE = auto()
     DLF = auto()
+
 
 def _prepare_batch(
     si: int, batch: Tensor, device: str
@@ -113,12 +116,9 @@ def score(
 
     def _concat(index):
         selected = minibatch["batch_idx"] == index
-        items = [
-            minibatch["cls"][selected],
-            bboxes[selected]
-        ]
+        items = [minibatch["cls"][selected], bboxes[selected]]
         return torch.cat(items, dim=-1)
-    
+
     if args.save_hybrid:
         lb = [_concat(i) for i in range(nb)]
     else:
@@ -143,7 +143,9 @@ def score(
 
     N = conf_mat.matrix.sum()  # total number of instances
     tp, fp = conf_mat.tp_fp()  # returns list of tp & fp per class
-    fn = conf_mat.matrix.sum(0)[:-1] - tp  # use [:-1] to exlcude background class since task=detect
+    fn = (
+        conf_mat.matrix.sum(0)[:-1] - tp
+    )  # use [:-1] to exlcude background class since task=detect
     tp, fp, fn = tp[0], fp[0], fn[0]
     tn = N - (tp + fp + fn)
     acc = (tp + tn) / (tp + fp + fn + tn)
@@ -160,9 +162,10 @@ def inference_step(
     step: str,
     device: str,
 ) -> dict[str, float]:
-    
     model.eval()
-    pred = model(minibatch["img"])  # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
+    pred = model(
+        minibatch["img"]
+    )  # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
     return score(minibatch, pred, step, device, model.args)
 
 
@@ -175,11 +178,18 @@ Ultralytics since we use Hyperopt for distributed tuning and it's not clear how 
 
 class YoloModelTrainer:
     """
-    TODO: Add perform_pass as a STATIC method so that we dont need 
+    TODO: Add perform_pass as a STATIC method so that we dont need
     to instantiate the class to use it
-    also create ModelTrainer ABC that this class will inheret from. 
+    also create ModelTrainer ABC that this class will inheret from.
     """
-    def __init__(self, optimizer: torch.optim.Optimizer, model: DetectionModel, train_args: TrainingArgs, epochs: int):  # pragma: no cover
+
+    def __init__(
+        self,
+        optimizer: optim.Optimizer,
+        model: DetectionModel,
+        train_args: TrainingArgs,
+        epochs: int,
+    ):  # pragma: no cover
         self.model = model
         self.train_args = train_args
         self.optimizer = optimizer
@@ -195,24 +205,30 @@ class YoloModelTrainer:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         self.loss_types = [loss.name for loss in YOLOLoss]
-    
+
     @classmethod
-    def from_optuna_hyperparameters(cls, hyperparameters: Hyperparameters, model: DetectionModel, train_args: TrainingArgs) -> "YoloModelTrainer":
+    def from_optuna_hyperparameters(
+        cls,
+        hyperparameters: Hyperparameters,
+        model: DetectionModel,
+        train_args: TrainingArgs,
+    ) -> "YoloModelTrainer":
         """
         Class method to create a YoloModelTrainer class instance from the Hyperparameters dataclass
         """
-        optimizer = self.build_optimizer(
+        optimizer = cls.build_optimizer(
             model=model,
             name="Adam",  # TODO: can be tuned by Optuna but is not right now
             lr=hyperparameters.lr0,
             momentum=hyperparameters.momentum,
-            decay=hyperparameters.weight_decay
+            decay=hyperparameters.weight_decay,
         )
 
         return cls(optimizer, model, train_args, hyperparameters.epochs)
 
+    @staticmethod
     def build_optimizer(
-        self, model, name="auto", lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5
+        model, name="auto", lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5
     ):
         """
         Code adapted from the build_optimizer method in: ultralytics/models/yolo/train.py
@@ -231,7 +247,7 @@ class YoloModelTrainer:
 
         Returns:
             (torch.optim.Optimizer): The constructed optimizer.
-        
+
         # TODO: test this
         """
         g = [], [], []  # optimizer parameter groups
@@ -246,7 +262,7 @@ class YoloModelTrainer:
             name, lr, momentum = (
                 ("SGD", 0.01, 0.9) if iterations > 10000 else ("AdamW", lr_fit, 0.9)
             )
-            self.args.warmup_bias_lr = 0.0  # no higher than 0.01 for Adam
+            model.args.warmup_bias_lr = 0.0  # no higher than 0.01 for Adam
 
         for module_name, module in model.named_modules():
             for param_name, param in module.named_parameters(recurse=False):
@@ -282,23 +298,29 @@ class YoloModelTrainer:
 
         return optimizer
 
-    def preprocess_train(self, batch: dict[str, Union[Tensor, int, float, str]]):  # pragma: no cover
+    def preprocess_train(
+        self, batch: dict[str, Union[Tensor, int, float, str]]
+    ):  # pragma: no cover
         """
         Preprocesses a batch of images by scaling and converting to float.
-        Code adapted from preprocess_batch method in: ultralytics/models/yolo/detect/train.py 
+        Code adapted from preprocess_batch method in: ultralytics/models/yolo/detect/train.py
         """
         batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
         # didn't include self.args.multi_scale if statement from source code
         return batch
 
-    def preprocess_val(self, batch: dict[str, Union[Tensor, int, float, str]]):  # pragma: no cover
+    def preprocess_val(
+        self, batch: dict[str, Union[Tensor, int, float, str]]
+    ):  # pragma: no cover
         """
         Preprocesses a batch of images for validation.
-        Code adapted from preprocess method in: ultralytics/models/yolo/detect/val.py 
+        Code adapted from preprocess method in: ultralytics/models/yolo/detect/val.py
         Note: We didn't include the self.args.multi_scale if statement from the source code
         """
         batch["img"] = batch["img"].to(self.device, non_blocking=True)
-        batch["img"] = (batch["img"].half() if self.args.half else batch["img"].float()) / 255
+        batch["img"] = (
+            batch["img"].half() if self.args.half else batch["img"].float()
+        ) / 255
         for k in ["batch_idx", "cls", "bboxes"]:
             batch[k] = batch[k].to(self.device)
 
@@ -329,8 +351,10 @@ class YoloModelTrainer:
         minibatch = self.preprocess_train(minibatch)
 
         # Note: criterion is implemented as a class in ultralytics
-        preds = self.model(minibatch["img"], augment=False)  # can also get loss directly by passing whole dict
-        
+        preds = self.model(
+            minibatch["img"], augment=False
+        )  # can also get loss directly by passing whole dict
+
         # Note: we are not including tloss variable b/c it seems to only be used for logging purposes
         self.loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
 
@@ -352,7 +376,7 @@ class YoloModelTrainer:
     ) -> dict:  # pragma: no cover
         minibatch = self.preprocess_val(minibatch)
         return inference_step(minibatch, self.model, Steps["VAL"].name, self.device)
-    
+
     def get_signature(self, dataloader: DataLoader) -> ModelSignature:
         """
         Returns the mlflow signature of the model for logging and registration
@@ -363,13 +387,17 @@ class YoloModelTrainer:
         minibatch = self.preprocess_val(minibatch)
 
         signature = infer_signature(
-                model_input=minibatch["img"][0].numpy(), # Note: we are using the first image in the batch
-                model_output=self.model(minibatch["img"]).detach().numpy(),
-            ) 
-        
+            model_input=minibatch["img"][
+                0
+            ].numpy(),  # Note: we are using the first image in the batch
+            model_output=self.model(minibatch["img"]).detach().numpy(),
+        )
+
         return signature
 
-    def train(self, dataloaders: DataLoaders, model_name: str = "towerscout_model") -> dict[str, Any]:  # pragma: no cover
+    def train(
+        self, dataloaders: DataLoaders, model_name: str = "towerscout_model"
+    ) -> dict[str, Any]:  # pragma: no cover
         """
         Trains a model with given hyperparameter values and returns the value
         of the objective metric on the valdiation dataset.
@@ -396,7 +424,9 @@ class YoloModelTrainer:
                 val_metrics = perform_pass(
                     step_func=self.validation_step,
                     dataloader=dataloaders.val,
-                    report_interval=len(dataloaders.val), # we want to run through whole validation dataloader and then log the metrics
+                    report_interval=len(
+                        dataloaders.val
+                    ),  # we want to run through whole validation dataloader and then log the metrics
                     epoch_num=epoch,
                 )
 
@@ -416,4 +446,3 @@ class YoloModelTrainer:
 
     def save_model(self) -> None:  # pragma: no cover
         pass
-
