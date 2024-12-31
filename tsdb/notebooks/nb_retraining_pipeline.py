@@ -74,8 +74,12 @@ else:
 
 # COMMAND ----------
 
+from functools import partial
+
 import joblib
+import mlflow
 import optuna
+
 
 from tsdb.ml.train import objective
 
@@ -87,10 +91,13 @@ out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_split
 
 study = optuna.create_study(direction="maximize")
 objective_with_args = partial(
-    objective
-    out_root_base=out_root_base_path,
+    objective,
+    out_root_base=out_root_base_path
 )
-study.optimize(partial)
+
+study.optimize(objective_with_args, n_trials=2)
+
+best_params = study.best_params
 
 # COMMAND ----------
 
