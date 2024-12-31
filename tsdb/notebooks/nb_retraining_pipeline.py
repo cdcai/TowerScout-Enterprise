@@ -23,163 +23,74 @@ else:
 
 # COMMAND ----------
 
-import mlflow
-from mlflow import MlflowClient
+# widgets probs will go into config file
+# dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")  # config file
+# dbutils.widgets.text("source_table", defaultValue="image_metadata")  # config file
 
-from hyperopt import tpe, hp, SparkTrials
+# dbutils.widgets.text("report_interval", defaultValue="5")  # nb widget 
+# dbutils.widgets.text("max_evals", defaultValue="8")  # nb widget
+# dbutils.widgets.text("parallelism", defaultValue="2")  # nb widget
 
-from functools import partial
+# metrics = [member.name for member in ValidMetric]
+# dbutils.widgets.dropdown("objective_metric", "MSE", metrics)  # nb widget
+# dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)  # nb widget
 
-from datetime import datetime
+# COMMAND ----------
 
-from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
+# DBTITLE 1,Retrieve parameters from notebook
+# objective_metric = dbutils.widgets.get("objective_metric")
+# report_interval = int(dbutils.widgets.get("report_interval"))
+# metrics = [ValidMetric[metric] for metric in dbutils.widgets.get("metrics").split(",")]
+# parallelism = int(dbutils.widgets.get("parallelism"))
+# max_evals = int(dbutils.widgets.get("max_evals"))
 
-from tsdb.ml.train import perform_pass, train, tune_hyperparams, model_promotion
-from tsdb.ml.data import DataLoaders, data_augmentation
-from tsdb.ml.utils import ValidMetric, TrainingArgs, FminArgs, PromotionArgs 
-from tsdb.utils.logger import setup_logger
+# COMMAND ----------
+
+# set registry to be UC model registry
+
+# COMMAND ----------
+
+# from tsdb.preprocessing.preprocess import build_mds_by_splits
+
+# out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits"
+
+# build_mds_by_splits(
+#     "edav_dev_csels",
+#     "towerscout",
+#     "test_image_gold",
+#     out_root_base_path
+# )
+
+# COMMAND ----------
+
+# out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=377"
+
+# dataloaders = DataLoaders.from_mds(
+#     cache_dir="/tmp/training_cache/", 
+#     mds_dir=out_root_base_path, 
+#     batch_size=32, 
+#     transforms=data_augmentation()
+# )
 
 # COMMAND ----------
 
 import joblib
 import optuna
 
-# COMMAND ----------
-
-# widgets probs will go into config file
-dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")  # config file
-dbutils.widgets.text("source_table", defaultValue="image_metadata")  # config file
-
-dbutils.widgets.text("epochs", defaultValue="5")  # nb widget or hyperopt tuned
-dbutils.widgets.text("batch_size", defaultValue="1")  # nb widget or hyperopt tuned
-dbutils.widgets.text("report_interval", defaultValue="5")  # nb widget 
-dbutils.widgets.text("max_evals", defaultValue="8")  # nb widget
-dbutils.widgets.text("parallelism", defaultValue="2")  # nb widget
-
-stages = ["Dev", "Staging", "Production"]
-dbutils.widgets.dropdown("stage", "Production", stages)  # config file
-
-metrics = [member.name for member in ValidMetric]
-dbutils.widgets.dropdown("objective_metric", "MSE", metrics)  # nb widget
-dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)  # nb widget
+from tsdb.ml.train import objective
 
 # COMMAND ----------
 
-timestamp = str(datetime.now().strftime("%Y-%m-%d %H:%M"))
-log_path = f"/Volumes/{catalog}/{schema}/test_volume/logs/towerscout_{timestamp}.log"
-logger_name = "towerscout"
-logger, handler = setup_logger(log_path, logger_name)
-logger.info("This is an info message and the first message of the logs.")
-logger.warning("This is a warning message.")
-logger.error("This is an error message.")
-
-# COMMAND ----------
-
-# DBTITLE 1,Retrieve parameters from notebook
-objective_metric = dbutils.widgets.get("objective_metric")
-epochs = int(dbutils.widgets.get("epochs"))
-batch_size = int(dbutils.widgets.get("batch_size"))
-report_interval = int(dbutils.widgets.get("report_interval"))
-metrics = [ValidMetric[metric] for metric in dbutils.widgets.get("metrics").split(",")]
-parallelism = int(dbutils.widgets.get("parallelism"))
-max_evals = int(dbutils.widgets.get("max_evals"))
-# logger.info("Loaded parameters.")
-
-# COMMAND ----------
-
-# set registry to be UC model registry
 mlflow.set_registry_uri("databricks-uc")
-
-# create MLflow client
-client = MlflowClient()
-# logger.info("Created MLflow client.")
-
-# COMMAND ----------
-
-dbutils.fs.rm(
-    "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits",
-    recurse=True
-)
-
-# COMMAND ----------
-
-from tsdb.preprocessing.preprocess import build_mds_by_splits
-
-out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits"
-
-build_mds_by_splits(
-    "edav_dev_csels",
-    "towerscout",
-    "test_image_gold",
-    out_root_base_path
-)
-
-# COMMAND ----------
-
-# DBTITLE 1,Data Ingestion and Splitting
-source_table = dbutils.widgets.get("source_table")
-
-table_name = f"{catalog}.{schema}.{source_table}"
-
-images = spark.table(table_name).select("content", "path")
-
-# logger.info("Loading and splitting data into train, test, and validation sets")
-# train_set, test_set, val_set = split_datanolabel(images)
-
-# COMMAND ----------
 
 out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=377"
 
-dataloaders = DataLoaders.from_mds(
-    cache_dir="/tmp/training_cache/", 
-    mds_dir=out_root_base_path, 
-    batch_size=32, 
-    transforms=data_augmentation()
+study = optuna.create_study(direction="maximize")
+objective_with_args = partial(
+    objective
+    out_root_base=out_root_base_path,
 )
-
-# COMMAND ----------
-
-from tsdb.ml.yolo_trainer import YoloModelTrainer
-
-# COMMAND ----------
-
-logger.info(f"Creating converter for train/val/test datasets")
-
-
-train_args = TrainingArgs(
-    objective_metric=objective_metric,
-    epochs=epochs,
-    batch_size=batch_size,
-    report_interval=report_interval,
-    metrics=metrics,
-)
-
-trials = SparkTrials(parallelism=parallelism)
-logger.info(
-    f"Training with {train_args.epochs} epochs, {train_args.batch_size} batch size, {train_args.report_interval} report interval, {train_args.objective_metric} objective metric"
-)
-
-search_space = {
-    "lr": hp.uniform("lr", 1e-6, 1e-2),
-    "weight_decay": hp.uniform("weight_decay", 1e-6, 1e-1),
-}
-
-# using partial to pass extra arugments to objective function
-# TODO: create trainer class object here
-objective_func = partial(
-    train, 
-    dataloaders=dataloaders, 
-    model_trainer=, 
-    model_name="
-)
-
-fmin_args = FminArgs(
-    fn=objective_func,
-    space=search_space,
-    algo=tpe.suggest,
-    max_evals=max_evals,
-    trials=trials,
-)
+study.optimize(partial)
 
 # COMMAND ----------
 
