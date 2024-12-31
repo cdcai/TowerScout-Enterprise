@@ -442,7 +442,7 @@ class YoloModelTrainer:
             f"{self.train_args.objective_metric}_VAL"
         ]  # minimize loss on val set b/c we are tuning hyperparams
 
-    return metric
+        return metric
 
     def save_model(self) -> None:  # pragma: no cover
         pass
