@@ -6,15 +6,17 @@ import ultralytics.utils as uutils
 from ultralytics.nn.tasks import DetectionModel
 
 import torch
-from torch import nn # nn.
-from torch import Tensor, nn, optim # torch.Tensor, torch.optim
+from torch import nn  # nn.
+from torch import Tensor, nn, optim  # torch.Tensor, torch.optim
 from torch.utils.data import DataLoader
-from typing import Union
+from typing import Union, Any
 from enum import Enum, auto
+import mlflow
 
 from mlflow.models.signature import infer_signature, ModelSignature
 
 from tsdb.ml.utils import Hyperparameters, Steps, TrainingArgs
+from tsdb.ml.data import DataLoaders
 
 
 class YOLOLoss(Enum):
@@ -41,15 +43,14 @@ def _prepare_batch(
     bbox = batch["bboxes"][idx]
     ori_shape = batch["ori_shape"][si]
     imgsz = batch["img"].shape[2:]
-    try:  # this key only exists if dataloader is a val dataloader
-        ratio_pad = batch["ratio_pad"][si]
-    except:
-        ratio_pad = None
+    # set this to None to have scale_boxes compute for us
+    ratio_pad = None
     if len(cls):
         bbox = (
-            ops.xywh2xyxy(bbox) * torch.tensor(imgsz, device=device)[[1, 0, 1, 0]]
+            uutils.ops.xywh2xyxy(bbox)
+            * torch.tensor(imgsz, device=device)[[1, 0, 1, 0]]
         )  # target boxes
-        ops.scale_boxes(
+        uutils.ops.scale_boxes(
             imgsz, bbox, ori_shape, ratio_pad=ratio_pad
         )  # native-space labels
     return {
@@ -69,23 +70,20 @@ def _prepare_pred(
     This is a method from the DectionValidator class see: ultralytics/models/yolo/detect/val.py
     """
     predn = pred.clone()
-    ops.scale_boxes(
-        pbatch["imgsz"],
-        predn[:, :4],
-        pbatch["ori_shape"],
-        ratio_pad=pbatch["ratio_pad"],
+    uutils.ops.scale_boxes(
+        pbatch["imgsz"], predn[:, :4], pbatch["ori_shape"], ratio_pad=None
     )  # native-space pred
     return predn
 
 
 def postprocess(
-    preds: Tensor, args: IterableSimpleNamespace, lb: list[Tensor]
+    preds: Tensor, args: uutils.IterableSimpleNamespace, lb: list[Tensor]
 ) -> Tensor:
     """
     Apply Non-maximum suppression to prediction outputs.
     This is a method from the DectionValidator class see: ultralytics/models/yolo/detect/val.py
     """
-    return ops.non_max_suppression(
+    return uutils.ops.non_max_suppression(
         preds,
         args.conf,
         args.iou,
@@ -101,14 +99,16 @@ def score(
     preds: Tensor,
     step: str,
     device: str,
-    args: IterableSimpleNamespace,
+    args: uutils.IterableSimpleNamespace,
 ) -> dict[str, float]:  # pragma: no cover
     """
     Returns a dictionary of metrics to be logged.
     Code adapted from the update_metrics method in: ultralytics/models/yolo/detect/val.py
     NOTE: preds must be outputs from the model when it is in eval() mode NOT train() mode.
     """
-    conf_mat = ConfusionMatrix(nc=1, task="detect")  # only 1 class: cooling towers
+    conf_mat = uutils.metrics.ConfusionMatrix(
+        nc=1, task="detect"
+    )  # only 1 class: cooling towers
 
     height, width = minibatch["img"].shape[2:]
     nb = len(minibatch["img"])
@@ -145,14 +145,21 @@ def score(
 
     N = conf_mat.matrix.sum()  # total number of instances
     tp, fp = conf_mat.tp_fp()  # returns list of tp & fp per class
-    fn = (
-        conf_mat.matrix.sum(0)[:-1] - tp
-    )  # use [:-1] to exlcude background class since task=detect
+    # use [:-1] to exlcude background class since task=detect
+    fn = conf_mat.matrix.sum(0)[:-1] - tp
     tp, fp, fn = tp[0], fp[0], fn[0]
     tn = N - (tp + fp + fn)
     acc = (tp + tn) / (tp + fp + fn + tn)
     f1 = (2 * tp) / (2 * tp + fp + fn)
-    metrics = {f"accuracy_{step}": acc, f"f1_{step}": f1}
+    # adding small constant for stability to avoid div by 0
+    precision = tp / (tp + fp + 1e-10)
+    recall = tp / (tp + fn)
+    metrics = {
+        f"accuracy_{step}": acc,
+        f"f1_{step}": f1,
+        f"recall_{step}": recall,
+        f"precision_{step}": precision,
+    }
 
     return metrics
 
@@ -165,9 +172,8 @@ def inference_step(
     device: str,
 ) -> dict[str, float]:
     model.eval()
-    pred = model(
-        minibatch["img"]
-    )  # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
+    # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
+    pred = model(minibatch["img"])
     return score(minibatch, pred, step, device, model.args)
 
 
@@ -187,10 +193,10 @@ class YoloModelTrainer:
 
     def __init__(
         self,
-        optimizer: optim.Optimizer,
         model: DetectionModel,
-        train_args: TrainingArgs,
-        epochs: int,
+        optimizer: optim.Optimizer = None,
+        train_args: TrainingArgs = None,
+        epochs: int = 1,
     ):  # pragma: no cover
         self.model = model
         self.train_args = train_args
@@ -200,7 +206,7 @@ class YoloModelTrainer:
         self.amp = self.args.amp
         self.scaler = (
             torch.amp.GradScaler("cuda", enabled=self.amp)
-            if TORCH_2_4
+            if uutils.torch_utils.TORCH_2_4
             else torch.cuda.amp.GradScaler(enabled=self.amp)
         )
 
@@ -226,7 +232,7 @@ class YoloModelTrainer:
             decay=hyperparameters.weight_decay,
         )
 
-        return cls(optimizer, model, train_args, hyperparameters.epochs)
+        return cls(model, optimizer, train_args, hyperparameters.epochs)
 
     @staticmethod
     def build_optimizer(
@@ -341,9 +347,7 @@ class YoloModelTrainer:
         self.scaler.update()
         self.optimizer.zero_grad()
 
-    def training_step(
-        self, minibatch: Union[Tensor, int, float, str], **kwargs
-    ) -> dict:
+    def training_step(self, minibatch: Union[Tensor, int, float, str]) -> dict:
         """
         TODO: test this
         """
@@ -367,35 +371,79 @@ class YoloModelTrainer:
         self.optimizer_step()
 
         loss_scores = {
-            f"{name}_{Steps['TRAIN'].name}": loss_items[i].item()
+            f"{name}_{Steps.TRAIN.name}": loss_items[i].item()
             for i, name in enumerate(self.loss_types)
         }
 
         return loss_scores
 
+    @torch.no_grad()
     def validation_step(
-        self, minibatch: Union[Tensor, int, float, str], **kwargs
+        self, minibatch: Union[Tensor, int, float, str], step: Steps = Steps.VAL
     ) -> dict:  # pragma: no cover
         minibatch = self.preprocess_val(minibatch)
-        return inference_step(minibatch, self.model, Steps["VAL"].name, self.device)
+        # NOTE: moved inference_step logic into this function, added no_grad decorator to this
+        self.model.eval()
+        # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
+        preds = self.model(minibatch["img"])
+        metrics = score(minibatch, preds, step.name, self.device, self.model.args)
+
+        if step.name == "VAL":
+            _, loss_items = self.model.loss(batch=minibatch, preds=preds)
+            loss_scores = {
+                f"{name}_{step.name}": loss_items[i].item()
+                for i, name in enumerate(self.loss_types)
+            }
+            metrics = {**metrics, **loss_scores}
+
+        return metrics
 
     def get_signature(self, dataloader: DataLoader) -> ModelSignature:
         """
         Returns the mlflow signature of the model for logging and registration
         """
         self.model.eval()
-        dataloader_iter = iter(dataloader)
-        minibatch = next(data_iter)
+        minibatch = next(iter(dataloader))
         minibatch = self.preprocess_val(minibatch)
 
+        # Note: we are using the first image in the batch
         signature = infer_signature(
-            model_input=minibatch["img"][
-                0
-            ].numpy(),  # Note: we are using the first image in the batch
-            model_output=self.model(minibatch["img"]).detach().numpy(),
+            model_input=minibatch["img"][0].cpu().numpy(),
+            model_output=self.model(minibatch["img"])[0].detach().cpu().numpy(),
         )
 
         return signature
+
+    @staticmethod
+    def perform_pass(
+        step_func: callable,
+        dataloader: DataLoader,
+        report_interval: int,
+        epoch_num: int = 0,
+    ) -> dict[str, float]:
+        """
+        Performs a single pass (epoch) over the data accessed by the dataloader
+
+        Args:
+            step_func: A callable that performs either a training or inference step
+            dataloader: The torch dataloader
+            report_interval: How often to report metrics during pass
+            epoch_num: The current epoch number for logging metrics across epochs
+        Returns:
+            dict[str, float] A dict containing values of various metrics for the epoch
+        """
+
+        metrics = {}
+        num_batches = len(dataloader)
+
+        for minibatch_num, minibatch in enumerate(dataloader):
+            metrics = step_func(minibatch=minibatch)
+
+            if minibatch_num % report_interval == 0:
+                step_num = minibatch_num + (epoch_num * num_batches)
+                mlflow.log_metrics(metrics, step=step_num)
+
+        return metrics
 
     def train(
         self, dataloaders: DataLoaders, model_name: str = "towerscout_model"
@@ -414,7 +462,7 @@ class YoloModelTrainer:
 
         # training
         for epoch in range(self.epochs):
-            train_metrics = perform_pass(
+            train_metrics = YoloModelTrainer.perform_pass(
                 step_func=self.training_step,
                 dataloader=dataloaders.train,
                 report_interval=self.train_args.report_interval,
@@ -423,12 +471,11 @@ class YoloModelTrainer:
 
             if epoch % self.train_args.val_interval == 0:
                 # validation
-                val_metrics = perform_pass(
+                val_metrics = YoloModelTrainer.perform_pass(
                     step_func=self.validation_step,
                     dataloader=dataloaders.val,
-                    report_interval=len(
-                        dataloaders.val
-                    ),  # we want to run through whole validation dataloader and then log the metrics
+                    # we want to run through whole validation dataloader and then log the metrics
+                    report_interval=len(dataloaders.val)-1,
                     epoch_num=epoch,
                 )
 
