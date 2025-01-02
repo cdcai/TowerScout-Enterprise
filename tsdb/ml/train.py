@@ -13,42 +13,11 @@ from torch.utils.data import DataLoader
 from ultralytics.cfg import get_cfg
 from ultralytics.nn.tasks import attempt_load_one_weight, DetectionModel
 
-from tsdb.ml.utils import TrainingArgs, FminArgs, PromotionArgs, Hyperparameters
+from tsdb.ml.utils import TrainingArgs, PromotionArgs, Hyperparameters
 from tsdb.ml.model_trainer import ModelTrainerType
 from tsdb.ml.data import DataLoaders, data_augmentation
 from tsdb.ml.yolo_trainer import inference_step, YoloModelTrainer
 from tsdb.ml.utils import Steps
-
-
-def perform_pass(
-    step_func: callable,
-    dataloader: DataLoader,
-    report_interval: int,
-    epoch_num: int = 0,
-) -> dict[str, float]:
-    """
-    Perfroms a single pass (epcoh) over the data accessed by the dataloader
-
-    Args:
-        step_func: A callable that performs either a training or inference step
-        dataloader: The torch dataloader
-        report_interval: How often to report metrics during pass
-        epoch_num: The current epoch number for logging metrics across epochs
-    Returns:
-        dict[str, float] A dict containing values of various metrics for the epoch
-    """
-
-    metrics = {}
-    num_batches = len(dataloader)
-
-    for minibatch_num, minibatch in enumerate(dataloader):
-        metrics = step_func(minibatch=minibatch)
-
-        if minibatch_num % report_interval == 0:
-            step_num = minibatch_num + (epoch_num * num_batches)
-            mlflow.log_metrics(metrics, step=step_num)
-
-    return metrics
 
 
 def get_model(model_yaml: str, model_pt: str) -> DetectionModel:

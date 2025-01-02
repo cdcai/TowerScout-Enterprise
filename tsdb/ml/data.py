@@ -6,18 +6,18 @@ import numpy as np
 
 import torch
 from torch.utils.data import DataLoader
-from torchvision.transforms import v2
 
 from streaming.base.util import clean_stale_shared_memory
+
+from ultalytics.utils.instance import Instances
+from ultralytics.data.augment import RandomFlip
 
 from tsdb.preprocessing.preprocess import get_dataloader
 
 
 def data_augmentation(
-    rotation_angle: int = 15,
     prob_H_flip: float = 0.2,
     prob_V_flip: float = 0.2,
-    blur: tuple[int, float] = (1, 0.1),
 ) -> list:
     """
     Data Augmentation function to add label invariant transforms to training pipeline
@@ -26,10 +26,8 @@ def data_augmentation(
     TODO: test this
     """
     transforms = [
-        v2.RandomRotation(rotation_angle),
-        v2.RandomHorizontalFlip(prob_H_flip),
-        v2.RandomVerticalFlip(prob_V_flip),
-        v2.GaussianBlur(kernel_size=blur[0], sigma=blur[1]),
+        RandomFlip(p=prob_H_flip, direction="horizontal"),
+        RandomFlip(p=prob_V_flip, direction="vertical"),
     ]
     return transforms
 
@@ -43,10 +41,10 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
 
     Args:
         data: The data to be collated a batch
-        transforms: Torchvision transforms applied to the PIL images
+        transforms: Ultralytics transforms applied to the np array images
     Returns: A dictionary containing the collated data in the formated
             expected by the Ultralytics DetectionModel class
-    
+
     TODO: DELETE HERE
     """
     result = defaultdict(list)
@@ -54,21 +52,29 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
     for index, element in enumerate(data):
         for key, value in element.items():
             if key == "img":
-                value = transforms(value)
-
-                # height & width after sime transform/augmentation has been done
-                _, height, width = value.shape
-                result["resized_shape"].append((height, width))
+                instances = Instances(bboxes=element["bboxes"].reshape(-1, 4), bbox_format="xyxy", normalized=True)
+                labels = {"img": value, "instances": instances}
+                labels = transforms(labels)
+                bboxes = labels["instances"]._bboxes.bboxes
+                img = labels["img"]
+                result["bboxes"].append(bboxes)
+                result["img"].append(torch.tensor(img))
                 
+                # height & width after some transform/augmentation has been done
+                _, height, width = labels["img"].shape
+                result["resized_shape"].append((height, width))
+
                 # from https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/base.py#L295
                 result["ratio_pad"].append(
                     (
                         result["resized_shape"][index][0] / element["ori_shape"][0],
                         result["resized_shape"][index][1] / element["ori_shape"][1],
                     )
-                )  
-
-            result[key].append(value)
+                )
+            elif key == "bboxes":
+                continue
+            else:
+               result[key].append(value)
 
         num_boxes = len(element["cls"])
 
@@ -81,7 +87,7 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
     result["batch_idx"] = torch.tensor(result["batch_idx"])
 
     # Shape of resulting tensor should be (num_bboxes_in_batch, 4)
-    result["bboxes"] = torch.tensor(np.concatenate(result["bboxes"])).reshape(-1, 4)
+    result["bboxes"] = torch.tensor(np.concatenate(result["bboxes"]))
 
     # Shape of resulting tensor should be (num_bboxes_in_batch, 1)
     # Call np.concatenate to avoid calling tensor on a list of np arrays but instead just one 2d np array
@@ -121,7 +127,7 @@ class DataLoaders:
                 remote_dir=mds_dir,
                 batch_size=batch_size,
                 split=split,
-                transforms=transforms if transforms else None
+                transforms=transforms if split == "train" else None,
             )
             for split in ("train", "val", "test")
         ]
