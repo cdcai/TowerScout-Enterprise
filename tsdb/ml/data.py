@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
+from functools import partial
 
 import numpy as np
 
@@ -8,11 +9,32 @@ import torch
 from torch.utils.data import DataLoader
 
 from streaming.base.util import clean_stale_shared_memory
+from streaming import StreamingDataset
 
-from ultalytics.utils.instance import Instances
+import ultralytics
+from ultralytics.utils.instance import Instances
 from ultralytics.data.augment import RandomFlip
 
-from tsdb.preprocessing.preprocess import get_dataloader
+
+# NOTE: We create our own ToTensor class since the one by Ultralytics
+# doesn't take input data in the same format as the RandomFlip 
+# transformation does i.e. a dict with keys "img" and "instances".
+class ToTensor:
+    def __init__(self, half: bool = False):
+        """
+        Initializes the ToTensor object for converting images to PyTorch tensors.
+
+        This class is designed to be used as part of a transformation pipeline for image preprocessing in the
+        Ultralytics YOLO framework. It converts numpy arrays or PIL Images to PyTorch tensors, with an option
+        for half-precision (float16) conversion.
+        """
+        super().__init__()
+        self.half = half
+
+    def __call__(self, labels: dict[str, np.ndarray|Instances]) -> dict[str, torch.Tensor|Instances]:
+        labels["img"] = torch.tensor(np.ascontiguousarray(labels["img"]))
+        labels["img"] = labels["img"].half() if self.half else labels["img"].float()
+        return labels
 
 
 def data_augmentation(
@@ -52,14 +74,21 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
     for index, element in enumerate(data):
         for key, value in element.items():
             if key == "img":
-                instances = Instances(bboxes=element["bboxes"].reshape(-1, 4), bbox_format="xyxy", normalized=True)
+                instances = Instances(
+                    bboxes=element["bboxes"].reshape(-1, 4),
+                    segments=np.array(
+                        [[[5, 5], [10, 10]], [[15, 15], [20, 20]]]
+                    ),  # dummy arg, remove later
+                    bbox_format="xyxy",
+                    normalized=True,
+                )
                 labels = {"img": value, "instances": instances}
                 labels = transforms(labels)
                 bboxes = labels["instances"]._bboxes.bboxes
                 img = labels["img"]
                 result["bboxes"].append(bboxes)
-                result["img"].append(torch.tensor(img))
-                
+                result["img"].append(img)
+
                 # height & width after some transform/augmentation has been done
                 _, height, width = labels["img"].shape
                 result["resized_shape"].append((height, width))
@@ -74,7 +103,7 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
             elif key == "bboxes":
                 continue
             else:
-               result[key].append(value)
+                result[key].append(value)
 
         num_boxes = len(element["cls"])
 
@@ -99,6 +128,49 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
     result["ratio_pad"] = tuple(result["ratio_pad"])
 
     return dict(result)
+
+
+def get_dataloader(
+    local_dir: str,
+    remote_dir: str,
+    batch_size: int,
+    transforms: list[callable] = None,
+    **kwargs,
+) -> DataLoader:
+    """
+    Function that creates a PyTorch DataLoader from a collection of `.mds` files.
+
+    Args:
+    local_dir: Local directory where dataset is cached during training
+    remote_dir: The local or remote directory where dataset `.mds` files are stored
+    batch_size: The batch size of the dataloader and dataset.
+          See: https://docs.mosaicml.com/projects/streaming/en/stable/getting_started/faqs_and_tips.html
+    transforms: A list of torchvision transforms to be composed and applied to the images
+    Returns:
+    A PyTorch DataLoader object
+
+    TODO: DELETE HERE
+    """
+
+    # Note that StreamingDataset is unit tested here: https://github.com/mosaicml/streaming/blob/main/tests/test_streaming.py
+    dataset = StreamingDataset(
+        local=local_dir,
+        remote=remote_dir,
+        batch_size=batch_size,
+        shuffle=True,
+        **kwargs,
+    )
+
+    if transforms is None:
+       transform = ultralytics.data.augment.Compose([ToTensor()])  
+    else:
+       transforms = transforms + [ToTensor()]
+       transform = ultralytics.data.augment.Compose(transforms)
+
+    # Create PyTorch DataLoader
+    collate_fn = partial(collate_fn_img, transforms=transform)
+    dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn)
+    return dataloader
 
 
 @dataclass

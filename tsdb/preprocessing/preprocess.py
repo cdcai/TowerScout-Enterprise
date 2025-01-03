@@ -18,10 +18,9 @@ from torch.utils.data import DataLoader
 import torchvision
 from torchvision.transforms import v2
 
-from streaming import StreamingDataset, MDSWriter  # mosiacml-streaming
+from streaming import MDSWriter  # mosiacml-streaming
 
 from tsdb.preprocessing.functions import sum_bytes
-from tsdb.ml.data import collate_fn_img
 
 
 def create_converter(
@@ -73,7 +72,7 @@ def convert_to_mds(
     if columns is None:
         columns = {
             "image_path": "str",
-            "img": "ndarray:uint8",
+            "img": "ndarray:uint8:3,640,640",
             "bboxes": "ndarray:float32",
             "cls": "ndarray:float32",
             "ori_shape": "ndarray:uint32"
@@ -85,6 +84,7 @@ def convert_to_mds(
     for sample in samples:
         img = Image.open(sample["image_path"]).convert("RGB")
         sample["img"] = np.array(img.resize((640, 640)))
+        sample["img"] = np.transpose(sample["img"], (2, 0, 1))  # convert from HWC to CHW 
         sample["ori_shape"] = np.array(img.size, dtype=np.uint32)
 
     # Use `MDSWriter` to iterate through the input data and write to a collection of `.mds` files.
@@ -97,47 +97,6 @@ def convert_to_mds(
                 out.write(sample)
             except:
                 print(sample)
-
-
-def get_dataloader(
-    local_dir: str,
-    remote_dir: str,
-    batch_size: int,
-    transforms: list[callable] = None,
-    **kwargs
-) -> DataLoader:
-    """
-    Function that creates a PyTorch DataLoader from a collection of `.mds` files.
-
-    Args:
-    local_dir: Local directory where dataset is cached during training
-    remote_dir: The local or remote directory where dataset `.mds` files are stored
-    batch_size: The batch size of the dataloader and dataset.
-          See: https://docs.mosaicml.com/projects/streaming/en/stable/getting_started/faqs_and_tips.html
-    transforms: A list of torchvision transforms to be composed and applied to the images
-    Returns:
-    A PyTorch DataLoader object
-
-    TODO: DELETE HERE
-    """
-
-    # Note that StreamingDataset is unit tested here: https://github.com/mosaicml/streaming/blob/main/tests/test_streaming.py
-    dataset = StreamingDataset(
-        local=local_dir,
-        remote=remote_dir,
-        batch_size=batch_size,
-        shuffle=True,
-        **kwargs
-    )
-
-    transform = ultralytics.data.augment.Compose(transform)
-
-    # Create PyTorch DataLoader
-    collate_fn = partial(collate_fn_img, transforms=transform)
-    dataloader = DataLoader(
-        dataset, batch_size=batch_size, collate_fn=collate_fn
-    )
-    return dataloader
 
 
 def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: str) -> None:

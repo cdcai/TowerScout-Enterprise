@@ -95,7 +95,7 @@ objective_with_args = partial(
     out_root_base=out_root_base_path
 )
 
-study.optimize(objective_with_args, n_trials=2)
+study.optimize(objective_with_args, n_trials=1)
 
 best_params = study.best_params
 
