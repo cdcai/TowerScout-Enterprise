@@ -46,7 +46,7 @@ class TrainingArgs:
         metrics: Various model evaluation metrics we want to track
     """
 
-    objective_metric: str = "f1"  # will be selected option for the drop down
+    objective_metric: str = "BCE"  # will be selected option for the drop down
     epochs: int = 2
     report_interval: int = 5
     val_interval: int = 2
@@ -69,7 +69,7 @@ class PromotionArgs:
         test_dataloader: The dataloader for the test dataset
     """
 
-    objective_metric: str = "recall"
+    objective_metric: str = "f1"
     batch_size: int = 4
     metrics: list[ValidMetric] = field(default_factory=list)
     model_version: int = 1
@@ -106,14 +106,14 @@ class Hyperparameters:
 
     @classmethod
     def from_optuna_trial(cls, trial: Trial):
-        lr = trial.suggest_float("lr", 2e-3, 2e-3, log=True)
-        momentum = trial.suggest_float("momentum", 0.9, 0.9)
-        weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-5, log=True)
-        batch_size_power = trial.suggest_int("batch_size_power", 3, 3)
+        lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
+        momentum = trial.suggest_float("momentum", 0.9, 0.99)
+        weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True)
+        batch_size_power = trial.suggest_int("batch_size_power", 2, 4)
         batch_size = 2**batch_size_power
-        prob_H_flip = trial.suggest_float("prob_H_flip", 0.3, 0.7)
-        prob_V_flip = trial.suggest_float("prob_V_flip", 0.3, 0.7)
-        epochs = trial.suggest_int("epochs", 30, 30)
+        prob_H_flip = trial.suggest_float("prob_H_flip", 0.3, 0.5)
+        prob_V_flip = trial.suggest_float("prob_V_flip", 0.0, 0.5)
+        epochs = trial.suggest_int("epochs", 10, 10)
 
         return cls(lr, momentum, weight_decay, batch_size, epochs, prob_H_flip, prob_V_flip)
 

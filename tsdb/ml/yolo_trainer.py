@@ -18,13 +18,13 @@ from tsdb.ml.data import DataLoaders
 class YOLOLoss(Enum):
     """
     Enum for the different loss types for the YOLO model. BL corresponds to box loss, BCE correspnds to
-    binary cross entropy, and DLF corresponds to Distribution Focal loss.
+    binary cross entropy, and DFL corresponds to Distribution Focal loss.
     For more info see: https://docs.ultralytics.com/reference/utils/loss/
     """
 
     BL = auto()
     BCE = auto()
-    DLF = auto()
+    DFL = auto()
 
 
 def _prepare_batch(
@@ -223,7 +223,7 @@ class YoloModelTrainer:
         """
         optimizer = cls.build_optimizer(
             model=model,
-            name="Adam",  # TODO: can be tuned by Optuna but is not right now
+            name="AdamW",  # TODO: can be tuned by Optuna but is not right now
             lr=hyperparameters.lr0,
             momentum=hyperparameters.momentum,
             decay=hyperparameters.weight_decay,
@@ -238,9 +238,9 @@ class YoloModelTrainer:
         # Freeze layers
         freeze_list = (
             freeze
-            if isinstance(self.args.freeze, list)
-            else range(self.args.freeze)
-            if isinstance(self.args.freeze, int)
+            if isinstance(freeze, list)
+            else range(freeze)
+            if isinstance(freeze, int)
             else []
         )
 
