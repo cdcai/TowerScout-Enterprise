@@ -398,7 +398,7 @@ class YoloModelTrainer:
             f"{name}_{Steps.TRAIN.name}": loss_items[i].item()
             for i, name in enumerate(self.loss_types)
         }
-
+        
         return loss_scores
 
     @torch.no_grad()
