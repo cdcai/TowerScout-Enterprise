@@ -46,7 +46,6 @@ class BaseTrainer:
             if uutils.torch_utils.TORCH_2_4
             else torch.cuda.amp.GradScaler(enabled=self.amp)
         )
-
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         self.loss_types = [loss.name for loss in YOLOLoss]
@@ -174,12 +173,11 @@ class BaseTrainer:
         """
         self.model.eval()
         minibatch = next(iter(dataloader))
-        minibatch = self.preprocess_val(minibatch)
 
         # Note: we are using the first image in the batch
         signature = infer_signature(
-            model_input=minibatch["img"][0].cpu().numpy(),
-            model_output=self.model(minibatch["img"])[0].detach().cpu().numpy(),
+            model_input=minibatch[0].cpu().numpy(),
+            model_output=self.model(minibatch)[0].detach().cpu().numpy(),
         )
 
         return signature
@@ -231,48 +229,37 @@ class BaseTrainer:
         """
 
         # training
+        num_batches = len(dataloaders.train)
+
         for epoch in range(self.epochs):
             last_optimizer_step = -1
-            
-            for train_interval, train_batch in enumerate(dataloaders.train):
+
+            # Train 
+            for batch_index, train_batch in enumerate(dataloaders.train):
+                step_number = batch_index + (num_batches * epoch)
                 metrics = self.training_step(minibatch=train_batch)
                 loss = metrics.pop("loss")
 
                 self.scaler.scale(loss).backward()
+                metrics["loss"] = loss.cpu().item()
 
-                metrics["loss"] = metrics["loss"].item()
-
-                if ni - last_optimizer_step >= self.accumulation:
+                if step_number - last_optimizer_step >= self.accumulation:
                     self.optimizer_step()
+                    last_otpimizer_step = step_number
 
-            metrics = {}
-            num_batches = len(dataloader)
+                if batch_index % report_interval == 0:
+                    mlflow.log_metrics(metrics, step=step_number)
+            
+            # Validation
+            for batch_index, val_batch in enumerate(dataloaders.val):
+                metrics = self.validation_step(minibatch=val_batch, step=Steps.VAL)
+                metrics["loss"] = loss.cpu().item()
 
-        for minibatch_num, minibatch in enumerate(dataloader):
-            metrics = step_func(minibatch=minibatch)
+                if minibatch_num % report_interval == 0:
+                    step_number = batch_index + (num_batches * epoch)
+                    mlflow.log_metrics(metrics, step=step_number)
 
-            if minibatch_num % report_interval == 0:
-                step_num = minibatch_num + (epoch_num * num_batches)
-                mlflow.log_metrics(metrics, step=step_num)
-
-        return metrics
-            train_metrics = self.perform_pass(
-                step_func=self.training_step,
-                dataloader=dataloaders.train,
-                report_interval=self.train_args.report_interval,
-                epoch_num=epoch,
-            )
-
-            if epoch % self.train_args.val_interval == 0:
-                # validation
-                val_metrics = self.perform_pass(
-                    step_func=self.validation_step,
-                    dataloader=dataloaders.val,
-                    # we want to run through whole validation dataloader and then log the metrics
-                    report_interval=len(dataloaders.val)-1,
-                    epoch_num=epoch,
-                )
-
+        # Done Training
         signature = self.get_signature(dataloaders.val)
 
         mlflow.pytorch.log_model(
@@ -289,31 +276,6 @@ class BaseTrainer:
 
     def save_model(self) -> None:  # pragma: no cover
         pass
-
-
-class ModelTrainerType(Protocol):  # pragma: no cover
-    """
-    A protocol that defines the interface for a model trainer
-    TODO: determine what other properties should be made required
-    """
-
-    @property
-    def model(self) -> nn.Module: 
-        # TODO: Correct the output type of this property
-        raise NotImplementedError
-
-    @property
-    def optimizer(self) -> torch.optim.Optimizer:
-        raise NotImplementedError
-    
-    def training_step(self, minibatch, **kwargs) -> dict[str, float]:
-        raise NotImplementedError
-
-    def validation_step(self, minibatch, **kwargs) -> dict[str, float]:
-        raise NotImplementedError
-    
-    def save_model(self) -> None:
-        raise NotImplementedError
 
 
 def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):  # pragma: no cover
@@ -335,19 +297,6 @@ def score(logits, labels, step: str, metrics: Metrics):  # pragma: no cover
         f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
         for metric in metrics
     }
-
-
-def forward_func(model, minibatch) -> tuple[Tensor,Tensor,Tensor]:  # pragma: no cover
-        images = minibatch["features"]
-        labels = minibatch["labels"]
-
-        if torch.cuda.is_available():
-            images = images.cuda()
-            labels = labels.cuda()
-
-        logits = model(images)
-
-        return logits, images, labels
     
 
 @torch.no_grad()
