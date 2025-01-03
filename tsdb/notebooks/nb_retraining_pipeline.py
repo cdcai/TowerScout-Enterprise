@@ -79,7 +79,7 @@ from functools import partial
 import joblib
 import mlflow
 import optuna
-
+from joblibspark import register_spark
 
 from tsdb.ml.train import objective
 
@@ -95,7 +95,10 @@ objective_with_args = partial(
     out_root_base=out_root_base_path
 )
 
-study.optimize(objective_with_args, n_trials=1)
+# add with mlflow context here to get nested structure for logging
+register_spark()
+with joblib.parallel_backend("spark", n_jobs=-1):
+    study.optimize(objective_with_args, n_trials=15)
 
 best_params = study.best_params
 
