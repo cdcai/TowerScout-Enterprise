@@ -214,7 +214,7 @@ class BaseTrainer:
         return metrics
 
     def train(
-        self, dataloaders: DataLoaders, model_name: str = "towerscout_model"
+        self, dataloaders: DataLoaders, model_name: str = "towerscout_model", trial: Trial = None
     ) -> dict[str, Any]:  # pragma: no cover
         """
         Trains a model with given hyperparameter values and returns the value
@@ -251,13 +251,22 @@ class BaseTrainer:
                     mlflow.log_metrics(metrics, step=step_number)
             
             # Validation
-            for batch_index, val_batch in enumerate(dataloaders.val):
-                metrics = self.validation_step(minibatch=val_batch, step=Steps.VAL)
-                metrics["loss"] = loss.cpu().item()
+            if epoch % self.train_args.val_interval == 0:
+                for batch_index, val_batch in enumerate(dataloaders.val):
+                    val_metrics = self.validation_step(minibatch=val_batch, step=Steps.VAL)
+                    val_metrics["loss"] = loss.cpu().item()
 
-                if minibatch_num % report_interval == 0:
-                    step_number = batch_index + (num_batches * epoch)
-                    mlflow.log_metrics(metrics, step=step_number)
+                    if minibatch_num % val_report_interval == 0:
+                        step_number = batch_index + (num_batches * epoch)
+                        mlflow.log_metrics(val_metrics, step=step_number)
+                
+                val_metric = val_metrics[f"{self.train_args.objective_metric}_VAL"] 
+                
+                if trial is not None:
+                    trial.report(val_metric)
+
+                    if trial.should_prune():
+                        raise optuna.TrialPruned()
 
         # Done Training
         signature = self.get_signature(dataloaders.val)
@@ -268,11 +277,7 @@ class BaseTrainer:
             signature=signature,
         )
 
-        metric = val_metrics[
-            f"{self.train_args.objective_metric}_VAL"
-        ]  # minimize loss on val set b/c we are tuning hyperparams
-
-        return metric
+        return val_metric
 
     def save_model(self) -> None:  # pragma: no cover
         pass
