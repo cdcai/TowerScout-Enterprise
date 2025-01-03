@@ -1,24 +1,13 @@
 import torch
 from torch import nn, optim
 from torch import Tensor
-from torchvision import transforms, datasets
-from efficientnet_pytorch import EfficientNet
-from enum import Enum
-from collections import namedtuple
-from typing import Protocol
+
+import optuna
+from mlflow.models.signature import infer_signature, ModelSignature
+import ultralytics.utils as uutils
 
 from tsdb.ml.efficientnet import EN_Classifier
-from tsdb.ml.utils import Steps
-from tsdb.ml.data_processing import transform_row, get_transform_spec, get_converter
-
-
-"""
-TODO: Adapt this file to be the EN model trainer
-"""
-
-
-class Metrics(Enum):
-    MSE = nn.MSELoss()
+from tsdb.ml.utils import Steps, Hyperparameters, TrainingArgs
 
 
 class BaseTrainer:
@@ -34,11 +23,13 @@ class BaseTrainer:
         optimizer: optim.Optimizer = None,
         train_args: TrainingArgs = None,
         epochs: int = 1,
+        accumulation: int = 3
     ):  # pragma: no cover
         self.model = model
         self.train_args = train_args
         self.optimizer = optimizer
         self.epochs = epochs
+        self.accumulation = accumulation
         self.args = self.model.args
         self.amp = self.args.amp
         self.scaler = (
@@ -155,7 +146,7 @@ class BaseTrainer:
         self.scaler.update()
         self.optimizer.zero_grad()
 
-    def training_step(self, minibatch: Union[Tensor, int, float, str]) -> dict:
+    def training_step(self, minibatch) -> dict:
         """
         TODO: test this
         """
@@ -163,7 +154,7 @@ class BaseTrainer:
 
     @torch.no_grad()
     def validation_step(
-        self, minibatch: Union[Tensor, int, float, str], step: Steps = Steps.VAL
+        self, minibatch, step: Steps = Steps.VAL
     ) -> dict:  # pragma: no cover
         raise NotImplementedError("Child class needs to implement validation_step")
 
@@ -214,7 +205,10 @@ class BaseTrainer:
         return metrics
 
     def train(
-        self, dataloaders: DataLoaders, model_name: str = "towerscout_model", trial: Trial = None
+        self, 
+        dataloaders: DataLoaders, 
+        model_name: str = "towerscout_model", 
+        trial: optuna.trial.Trial = None
     ) -> dict[str, Any]:  # pragma: no cover
         """
         Trains a model with given hyperparameter values and returns the value
