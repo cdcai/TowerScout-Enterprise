@@ -1,7 +1,3 @@
-# from ultralytics.utils.torch_utils import TORCH_2_4, autocast
-# uutils.metrics.ConfusionMatrix
-# uutils.ops
-# uutils.IterableSimpleNamespace
 import ultralytics.utils as uutils
 from ultralytics.nn.tasks import DetectionModel
 
@@ -199,6 +195,7 @@ class YoloModelTrainer:
         epochs: int = 1,
     ):  # pragma: no cover
         self.model = model
+        self.freeze_layers()
         self.train_args = train_args
         self.optimizer = optimizer
         self.epochs = epochs
@@ -233,6 +230,32 @@ class YoloModelTrainer:
         )
 
         return cls(model, optimizer, train_args, hyperparameters.epochs)
+
+    def freeze_layers(self, freeze=None):
+        """
+        Freezes layers of YOLO, always freezes dfl layers
+        """
+        # Freeze layers
+        freeze_list = (
+            freeze
+            if isinstance(self.args.freeze, list)
+            else range(self.args.freeze)
+            if isinstance(self.args.freeze, int)
+            else []
+        )
+
+        always_freeze_names = [".dfl"]  # always freeze these layers
+        freeze_layer_names = [f"model.{x}." for x in freeze_list] + always_freeze_names
+        for k, v in self.model.named_parameters():
+            if any(x in k for x in freeze_layer_names):
+                # LOGGER.info(f"Freezing layer '{k}'")
+                v.requires_grad = False
+            elif not v.requires_grad and v.dtype.is_floating_point:  # only floating point Tensor can require gradients
+                # LOGGER.info(
+                #     f"WARNING ⚠️ setting 'requires_grad=True' for frozen layer '{k}'. "
+                #     "See ultralytics.engine.trainer for customization of frozen layers."
+                # )
+                v.requires_grad = True
 
     @staticmethod
     def build_optimizer(
@@ -353,16 +376,17 @@ class YoloModelTrainer:
         """
         self.model.train()
 
-        # forward pass
-        minibatch = self.preprocess_train(minibatch)
+        with uutils.torch_utils.autocast(self.amp):
+            # forward pass
+            minibatch = self.preprocess_train(minibatch)
 
-        # Note: criterion is implemented as a class in ultralytics
-        preds = self.model(
-            minibatch["img"], augment=False
-        )  # can also get loss directly by passing whole dict
+            # Note: criterion is implemented as a class in ultralytics
+            preds = self.model(
+                minibatch["img"], augment=False
+            )  # can also get loss directly by passing whole dict
 
-        # Note: we are not including tloss variable b/c it seems to only be used for logging purposes
-        self.loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
+            # Note: we are not including tloss variable b/c it seems to only be used for logging purposes
+            self.loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
 
         # backward pass
         self.scaler.scale(self.loss).backward()
