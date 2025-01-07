@@ -36,6 +36,7 @@ import jwt
 import msal
 from datetime import timedelta
 
+
 from flask import (
     Flask,
     redirect,
@@ -155,7 +156,7 @@ app = Flask(__name__)
 
 
 # session = Session()
-# configure server-sise session
+# configure server-side session
 SESSION_TYPE = "filesystem"
 SESSION_PERMANENT = False
 app.config.from_object(__name__)
@@ -375,89 +376,45 @@ def get_objects_process_status(process_id):
     return jsonify(results)
 
 
-# def get_ms_entra_ID():
-
-# #     # user_id = request.headers.get('X-MS-CLIENT-PRINCIPAL-ID')
-# #     # return user_id
-# #     client_id = "6095d61a-3d9c-4499-a4c1-262709bc2044"
-# #     client_secret = "5fd05eaa-4b75-4ec1-96d5-8efb87e017b3"
-# #     tenant_id = "9ce70869-60db-44fd-abe8-d2767077fc8f"
-# #     redirect_url="https://intranet.cdc.gov"
-
-# #     oauth = OAuth(app)
-# #     oauth.register(
-# #     name='azure',
-# #     client_id=client_id,
-# #     client_secret=client_secret,
-# #     authorize_url=f'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize',
-# #     authorize_params=None,
-# #     access_token_url=f'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token',
-# #     refresh_token_url=None,
-# #     client_kwargs={'scope': 'openid profile email'},
-# # )
-# #     token = oauth.azure.authorize_access_token()
-
-#     # # Decode the ID Token to extract the user ID (sub claim)
-#     # user_info = oauth.azure.parse_id_token(token)
-#     # user_id = user_info['sub']  # User ID in Azure AD (subject claim)
-#     # return user_id
-#     # return jsonify(user_info)
-#     # Create a ConfidentialClientApplication instance
-#     app.config['MSAL_CLIENT'] = ConfidentialClientApplication(
-#         client_id=CLIENT_ID,
-#         client_credential=CLIENT_SECRET,
-#         authority='https://login.microsoftonline.com/9ce70869-60db-44fd-abe8-d2767077fc8f'
-#     )
-#     auth_code = request.args.get('authorization')
-
-#      # Use the authorization code to acquire an access token and ID token
-#     result = app.config['MSAL_CLIENT'].acquire_token_by_authorization_code(
-#          auth_code,
-#          scopes=['User.Read'],
-#          redirect_uri='https://intranet.cdc.gov'
-#      )
-
-#     resultstring =json.dumps(result)
-#     app.logger.info("result{resultstring}")
-#     # logging.info("result{resultstring}")
-#     print(json.dumps(resultstring))
-#      # Extract and return the user ID from the ID token claims
-#     user_id = result.get("id_token_claims", {}).get("sub")
-#     return user_id
-
-
 # detection route
 @app.route("/getobjects", methods=["POST"])
 def get_objects():
     try:
+        # Create a response object
+        response = Response("Starting long task...", status=200)
+
+        # Set the connection headers to keep it open
+        response.headers['Connection'] = 'keep-alive'
+        response.headers['Keep-Alive'] = 'timeout=600, max=100'  # Keep alive for 10 minutes, max 100 requests
+
         print(" session:", id(session))
         # print("session(user_id)",session['user'])
         # id_token = request.headers.get('X-MS-TOKEN-AAD-ID-TOKEN')
         # logging.info("id_token:{id_token}")
-        auth_code = request.args.get("code")
-        print("auth_code:", auth_code)
-        # user_id = get_ms_entra_ID(auth_code)
-        # logging.info(f"user_id:{user_id}")
-        # Get the token from the Authorization header
-        auth_header = request.headers.get("Authorization")
-        print("auth_header", auth_header)
-        if auth_header:
-            # Extract the token (after 'Bearer ' prefix)
-            token = auth_header.split(" ")[1]
+        # auth_code = request.args.get("code")
+        # print("auth_code:", auth_code)
+        # # user_id = get_ms_entra_ID(auth_code)
+        # # logging.info(f"user_id:{user_id}")
+        # # Get the token from the Authorization header
+        # auth_header = request.headers.get("Authorization")
+        # print("auth_header", auth_header)
+        # if auth_header:
+        #     # Extract the token (after 'Bearer ' prefix)
+        #     token = auth_header.split(" ")[1]
 
-            # Get the user ID from the token
-            user_id = get_user_id_from_token(token)
-            session["user_id"] = user_id
-            if user_id:
-                print(
-                    jsonify(
-                        {"message": "Welcome to the Home page!", "user_id": user_id}
-                    )
-                )
-            else:
-                print(jsonify({"error": "Unable to extract user ID"}), 400)
-        else:
-            print(jsonify({"error": "Authorization header missing"}), 401)
+        #     # Get the user ID from the token
+        #     user_id = get_user_id_from_token(token)
+        #     session["user_id"] = user_id
+        #     if user_id:
+        #         print(
+        #             jsonify(
+        #                 {"message": "Welcome to the Home page!", "user_id": user_id}
+        #             )
+        #         )
+        #     else:
+        #         print(jsonify({"error": "Unable to extract user ID"}), 400)
+        # else:
+        #     print(jsonify({"error": "Authorization header missing"}), 401)
         # check whether this session is over its limit
         if "tiles" not in session:
             session["tiles"] = 0
@@ -472,19 +429,19 @@ def get_objects():
         # engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
-        id_token = request.headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
-        access_token = request.headers.get("X-MS-TOKEN-AAD-ACCESS-TOKEN")
-        user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
-        user_name = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
-        print("id_token:", id_token)
-        print("access_token:", access_token)
-        print("user_id:", user_id)
-        print("user_name:", user_name)
-        print("incoming detection request:")
-        print(" bounds:", bounds)
-        # print(" engine:", engine)
-        print(" map provider:", provider)
-        print(" polygons:", polygons)
+        # id_token = request.headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
+        # access_token = request.headers.get("X-MS-TOKEN-AAD-ACCESS-TOKEN")
+        # user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
+        # user_name = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
+        # print("id_token:", id_token)
+        # print("access_token:", access_token)
+        # print("user_id:", user_id)
+        # print("user_name:", user_name)
+        # print("incoming detection request:")
+        # print(" bounds:", bounds)
+        # # print(" engine:", engine)
+        # print(" map provider:", provider)
+        # print(" polygons:", polygons)
 
         # cropping
         crop_tiles = False
@@ -515,6 +472,8 @@ def get_objects():
 
         # divide the map into 640x640 parts
         tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
+        timeoutseconds = len(tiles) * 120 # 2 minutes for tile
+        response.headers['Keep-Alive'] = f'timeout={timeoutseconds}, max=100'  # Keep alive for 10 minutes, max 100 requests
         print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
         # print(" Tile centers:")
         # for c in tiles:
@@ -549,30 +508,22 @@ def get_objects():
             print("cleaned up tmp dir", session["tmpdirname"])
             del session["tmpdirname"]
 
-         # Generate a temporary file name (but don't create the file)
+        # Generate a temporary file name (but don't create the file)
         temp_name = tempfile.mktemp()
 
         # Extract the filename from the full path
         fname = os.path.basename(temp_name)
+        
+        session["user_id"] = get_current_user()
+        user_id = session["user_id"]
 
-        # make a new tempdir name and attach to session
-        tmpdir = tempfile.TemporaryDirectory()
-        tmpdirname = tmpdir.name
-        # tmpfilename = tmpdirname[tmpdirname.rindex("/")+1:]
-        tmpfilename = get_file_name(tmpdirname)
-        print("creating tmp dir", tmpdirname)
-        session["tmpdirname"] = tmpdirname
-        tmpdir.cleanup()  # yeah this is asinine but I need the tmpdir to survive to I will create it manually next
-        os.mkdir(tmpdirname)
-        print("created tmp dir", tmpdirname)
+        # augment tiles with retrieved filenames
+        for i, tile in enumerate(tiles):
+            tile['filename'] = user_id+"/"+fname+str(i)+".jpeg"
 
-        # Images get uploaded to datalake witha unique directory name
-        # databricks feature - autoloader - writes detections with labels to Silver
-        # retrieve tiles and metadata if available
-        # user_id = get_ms_entra_ID()
-        # print({user_id})
-        meta = map.get_sat_maps(tiles, loop, tmpdirname, tmpfilename)
+        meta, request_id = map.get_sat_maps(tiles, loop, fname, user_id)
         session["metadata"] = meta
+       
         print(" asynchronously retrieved", len(tiles), "files")
 
         # check for abort
@@ -581,9 +532,8 @@ def get_objects():
             exit_events.free(id(session))
             return "[]"
 
-        # augment tiles with retrieved filenames
-        for i, tile in enumerate(tiles):
-            tile["filename"] = tmpdirname + "/" + tmpfilename + str(i) + ".jpeg"
+            
+        session["tilesinsession"] = tiles #save_tiles_in_session(tiles)
         # Temporary code
         # return tiles
 
@@ -599,28 +549,31 @@ def get_objects():
         results_raw = stInstance.get_bboxesfortiles(
             tiles, exit_events, id(session), request_id, user_id
         )
+        logging.info("get_bboxesfortiles completed")
         # abort if signaled
         if exit_events.query(id(session)):
             print(" client aborted request.")
             exit_events.free(id(session))
             return "[]"
 
-        # read metadata if present
+         # read metadata if present
         for tile in tiles:
             if meta:
-                filename = (
-                    tmpdirname + "/" + tmpfilename + str(tile["id"]) + ".meta.txt"
-                )
+                filename = user_id+"/"+fname+str(tile['id'])+".meta.txt"
                 with open(filename) as f:
-                    tile["metadata"] = map.get_date(f.read())
+                    tile['metadata'] = map.get_date(f.read())
                     # print(" metadata: "+tile['metadata'])
                     f.close
             else:
-                tile["metadata"] = ""
-
+                tile['metadata'] = ""
+        print("Before make_persistable_tile_results towerscout.py line 553")
         # record some results in session for later saving if desired
         session["detections"] = make_persistable_tile_results(tiles)
-        print(f"tile results: {results_raw}")
+        print("After make_persistable_tile_results towerscout.py line 556")
+        # # Only for localhost - Azure app services
+        # for chunk in results_raw:
+        #     if chunk:
+        #         print(f"tile results chunk: {chunk}")
         # post-process the results
         results = []
         for result, tile in zip(results_raw, tiles):
@@ -698,13 +651,393 @@ def get_objects():
         # print()
 
         exit_events.free(id(session))
-        # Read and return the data (just to show the file is written correctly)
+        print("Before results = json.dumps(results) towerscout.py line 638")
+        # with open('large_results_data.json', 'r') as f:
+        #     results = json.load(f)  # You could use ijson if the file is too large
+        # print("After results = json.dumps(results) towerscout.py line 640")  
+        # session["results"] = results
+        # # Return the loaded data as JSON response
+        # return jsonify(results)
         results = json.dumps(results)
+        print("After results = json.dumps(results) towerscout.py line 640")
         session["results"] = results
         return results
     except Exception as e:
-        logging.error("Error at %s", "division", exc_info=e)
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
 
+@app.route("/uploadTileImages", methods=["POST"])
+def uploadTileImages():
+    try:
+        print(" session:", id(session))
+        # print("session(user_id)",session['user'])
+        # id_token = request.headers.get('X-MS-TOKEN-AAD-ID-TOKEN')
+        # logging.info("id_token:{id_token}")
+        # auth_code = request.args.get("code")
+        # print("auth_code:", auth_code)
+        # # user_id = get_ms_entra_ID(auth_code)
+        # # logging.info(f"user_id:{user_id}")
+        # # Get the token from the Authorization header
+        # auth_header = request.headers.get("Authorization")
+        # print("auth_header", auth_header)
+        # if auth_header:
+        #     # Extract the token (after 'Bearer ' prefix)
+        #     token = auth_header.split(" ")[1]
+
+        #     # Get the user ID from the token
+        #     user_id = get_user_id_from_token(token)
+        #     session["user_id"] = user_id
+        #     if user_id:
+        #         print(
+        #             jsonify(
+        #                 {"message": "Welcome to the Home page!", "user_id": user_id}
+        #             )
+        #         )
+        #     else:
+        #         print(jsonify({"error": "Unable to extract user ID"}), 400)
+        # else:
+        #     print(jsonify({"error": "Authorization header missing"}), 401)
+        # check whether this session is over its limit
+        if "tiles" not in session:
+            session["tiles"] = 0
+
+        print("tiles queried in session:", session["tiles"])
+        if session["tiles"] > MAX_TILES_SESSION:
+            return "-1"
+
+        
+        bounds = request.form.get("bounds")
+        # engine = request.form.get("engine")
+        provider = request.form.get("provider")
+        polygons = request.form.get("polygons")
+        # id_token = request.headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
+        # access_token = request.headers.get("X-MS-TOKEN-AAD-ACCESS-TOKEN")
+        # user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
+        # user_name = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
+        # print("id_token:", id_token)
+        # print("access_token:", access_token)
+        # print("user_id:", user_id)
+        # print("user_name:", user_name)
+        # print("incoming detection request:")
+        # print(" bounds:", bounds)
+        # # print(" engine:", engine)
+        # print(" map provider:", provider)
+        # print(" polygons:", polygons)
+
+        # cropping
+        crop_tiles = False
+
+        # make the polygons
+        polygons = json.loads(polygons)
+        # print(" parsed polygons:", polygons)
+        polygons = [ts_imgutil.make_boundary(p) for p in polygons]
+        print(" Shapely polygons:", polygons)
+
+        # # get the proper detector
+        # det = get_engines(engine)
+
+        
+        # create a map provider object
+        map = None
+        if provider == "bing":
+            map = BingMap(bing_api_key)
+        elif provider == "google":
+            map = GoogleMap(google_api_key)
+        elif provider == "azure":
+            map = AzureMap(azure_api_key)
+
+        if map is None:
+            print(" could not instantiate map provider:", provider)
+
+        # divide the map into 640x640 parts
+        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
+        print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
+        # print(" Tile centers:")
+        # for c in tiles:
+        #   print("  ",c)
+
+        tiles = [t for t in tiles if ts_maps.check_tile_against_bounds(t, bounds)]
+        tiles = [t for t in tiles if ts_imgutil.tileIntersectsPolygons(t, polygons)]
+        for i, tile in enumerate(tiles):
+            tile["id"] = i
+        print(" tiles left after viewport and polygon filter:", len(tiles))
+
+        if request.form.get("estimate") == "yes":
+            # reset abort flag
+            exit_events.alloc(id(session))  # todo: might leak some of these
+            print(" returning number of tiles")
+
+            # + ("" if len(tiles) > MAX_TILES else " (exceeds limit)")
+            return str(len(tiles))
+
+        if len(tiles) > MAX_TILES:
+            print(" ---> request contains too many tiles")
+            exit_events.free(id(session))
+            return "[]"
+        else:
+            # tally the new request
+            session["tiles"] += len(tiles)
+
+        # main processing: Uploading Tile images
+        # first, clean out the old tempdir
+        if "tmpdirname" in session:
+            rmtree(session["tmpdirname"], ignore_errors=True, onerror=None)
+            print("cleaned up tmp dir", session["tmpdirname"])
+            del session["tmpdirname"]
+
+        # Generate a temporary file name (but don't create the file)
+        temp_name = tempfile.mktemp()
+        
+        # Extract the filename from the full path
+        fname = os.path.basename(temp_name)
+
+        session["user_id"] = get_current_user()
+        user_id = session["user_id"]
+        meta, unique_direcotry = map.get_sat_maps(tiles, loop, fname, user_id)
+        logging.info("get_sat_maps completed")
+        session['metadata'] = meta
+        print(" asynchronously retrieved", len(tiles), "files")
+        logging.info("images uploaded....")
+        # check for abort
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+        print(" augment tiles with retrieved filenames")
+        # augment tiles with retrieved filenames
+        for i, tile in enumerate(tiles):
+            tile['filename'] = user_id+"/"+fname+str(i)+".jpeg"
+        
+        session["tilesinsession"] = tiles
+        print(" tilesinsession:",str(session["tilesinsession"]))
+        print(" tilesinsession:",session["tilesinsession"])
+        print(" tiles:",tiles)
+
+        return jsonify({"user_id": user_id, "request_id": unique_direcotry, "tiles_count": len(tiles)})
+    except Exception as e:
+        logging.error("Error at %s", "uploadTileImages towerscout.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "uploadTileImages towerscout.py", exc_info=e)
+    except SyntaxError as e:
+        logging.error("Error at %s", "uploadTileImages ts_maps.py", exc_info=e)
+
+@app.route("/pollSilverTable", methods=["POST"])
+def pollSilverTable():
+    try:
+        
+        print(" session:", id(session))
+        
+        # # Need to Add code to read results from EDAV
+        stInstance = SilverTable()
+        user_id = request.form.get("user_id")
+        request_id = request.form.get("request_id")
+        tilescount = int(request.form.get("tiles_count"))
+        jobDone = stInstance.poll_SilverTableJobDone(request_id, user_id, tilescount, 10)
+        logging.info("pollSilverTable completed")
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+         
+        return jsonify({"jobDone": jobDone})
+    except Exception as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+
+@app.route("/fetchBoundingBoxResults", methods=["POST"])
+def fetchBoundingBoxResults():
+    try:
+        print(" session:", id(session))
+        
+        tiles = []
+        start = time.time()
+        user_id = request.form.get("user_id")
+        request_id = request.form.get("request_id")
+        bounds = request.form.get("bounds")
+        polygons = request.form.get("polygons")
+        stInstance = SilverTable()
+
+        # cropping
+        crop_tiles = False
+
+        # make the polygons
+        polygons = json.loads(polygons)
+        # print(" parsed polygons:", polygons)
+        polygons = [ts_imgutil.make_boundary(p) for p in polygons]
+        print(" Shapely polygons:", polygons)
+        
+        provider = request.form.get("provider")
+        # empty results
+        results = []
+
+        # create a map provider object
+        map = None
+        if provider == "bing":
+            map = BingMap(bing_api_key)
+        elif provider == "google":
+            map = GoogleMap(google_api_key)
+        elif provider == "azure":
+            map = AzureMap(azure_api_key)
+
+        if map is None:
+            print(" could not instantiate map provider:", provider)
+
+         # divide the map into 640x640 parts
+        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
+        print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
+        # print(" Tile centers:")
+        # for c in tiles:
+        #   print("  ",c)
+       
+        tiles = [t for t in tiles if ts_maps.check_tile_against_bounds(t, bounds)]
+        tiles = [t for t in tiles if ts_imgutil.tileIntersectsPolygons(t, polygons)]
+        for i, tile in enumerate(tiles):
+            tile["id"] = i
+            
+        results_raw = stInstance.get_bboxesfortilesWithoutPolling(
+            tiles, exit_events, id(session), request_id, user_id
+        )
+        
+        logging.info("get_bboxesfortiles completed")
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+
+         # read metadata if present
+        for tile in tiles:
+            # if meta:
+            #     filename = user_id+"/"+fname+str(tile['id'])+".meta.txt"
+            #     with open(filename) as f:
+            #         tile['metadata'] = map.get_date(f.read())
+            #         # print(" metadata: "+tile['metadata'])
+            #         f.close
+            # else:
+            tile['metadata'] = ""
+        print("Before make_persistable_tile_results towerscout.py line 553")
+        # record some results in session for later saving if desired
+        session["detections"] = make_persistable_tile_results(tiles)
+        print("After make_persistable_tile_results towerscout.py line 556")
+        # # Only for localhost - Azure app services
+        # for chunk in results_raw:
+        #     if chunk:
+        #         print(f"tile results chunk: {chunk}")
+        # post-process the results
+               
+        results = []
+        for result, tile in zip(results_raw, tiles):
+            # print(f"tile['lng']: {tile['lng']}")
+            # print(f"tile['w']: {tile['w']}")
+            # print(f"tile['lat']: {tile['lat']}")
+            # print(f"tile['h']: {tile['h']}")
+            # adjust xyxy normalized results to lat, long pairs
+            for i, object in enumerate(result):
+                # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
+                object["x1"] = tile["lng"] - 0.5 * tile["w"] + object["x1"] * tile["w"]
+                object["x2"] = tile["lng"] - 0.5 * tile["w"] + object["x2"] * tile["w"]
+                object["y1"] = tile["lat"] + 0.5 * tile["h"] - object["y1"] * tile["h"]
+                object["y2"] = tile["lat"] + 0.5 * tile["h"] - object["y2"] * tile["h"]
+                object["tile"] = tile["id"]
+                object["id_in_tile"] = i
+                object["selected"] = object["secondary"] >= 0.35
+                # print(f"object['x1']: {object['x1']}")
+                # print(f"object['y1']: {object['y1']}")
+                # print(f"object['y2']: {object['y2']}")
+                # print(f"object['x1']: {object['x1']}")
+                # # print(" output:",str(object))
+            results += result
+
+        # mark results out of bounds or polygon
+        for o in results:
+            o["inside"] = ts_imgutil.resultIntersectsPolygons(
+                o["x1"], o["y1"], o["x2"], o["y2"], polygons
+            ) and ts_maps.check_bounds(o["x1"], o["y1"], o["x2"], o["y2"], bounds)
+            # print("in " if o['inside'] else "out ", end="")
+
+        # sort the results by lat, long, conf
+        results.sort(key=lambda x: x["y1"] * 2 * 180 + 2 * x["x1"] + x["conf"])
+
+        # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
+        if len(results) > 1:
+            i = 0
+            while i < len(results) - 1:
+                if (
+                    ts_maps.get_distance(
+                        results[i]["x1"],
+                        results[i]["y1"],
+                        results[i + 1]["x1"],
+                        results[i + 1]["y1"],
+                    )
+                    < 1
+                ):
+                    print(" removing 1 duplicate result")
+                    results.remove(results[i + 1])
+                else:
+                    i += 1
+
+        # prepend a pseudo-result for each tile, for debugging
+        tile_results = []
+        for tile in tiles:
+            tile_results.append(
+                {
+                    "x1": tile["lng"] - 0.5 * tile["w"],
+                    "y1": tile["lat"] + 0.5 * tile["h"],
+                    "x2": tile["lng"] + 0.5 * tile["w"],
+                    "y2": tile["lat"] - 0.5 * tile["h"],
+                    "class": 1,
+                    "class_name": "tile",
+                    "conf": 1,
+                    "metadata": tile["metadata"],
+                    "url": tile["url"],
+                    "selected": True,
+                }
+            )
+
+        # all done
+        selected = str(reduce(lambda a, e: a + (e["selected"]), results, 0))
+        print(
+            " request complete,"
+            + str(len(results))
+            + " detections ("
+            + selected
+            + " selected), elapsed time: ",
+            (time.time() - start),
+        )
+        results = tile_results + results
+        # print()
+
+        exit_events.free(id(session))
+        print("Before results = json.dumps(results) towerscout.py line 638")
+        # with open('large_results_data.json', 'r') as f:
+        #     results = json.load(f)  # You could use ijson if the file is too large
+        # print("After results = json.dumps(results) towerscout.py line 640")  
+        # session["results"] = results
+        # # Return the loaded data as JSON response
+        exit_events.free(id(session))
+        # return jsonify(results)
+        results = json.dumps(results)
+        print("After results = json.dumps(results) towerscout.py line 640")
+        session["results"] = results
+        return results
+    except Exception as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+
+def get_current_user():
+   #Implementing for azure app services
+    user_id = request.headers.get('X-MS-CLIENT-PRINCIPAL-ID')
+    return f"{user_id}"
 
 def get_file_name(file_path):
     file_name_and_extension = os.path.basename(file_path)
@@ -780,9 +1113,9 @@ def getazmaptransactions():
 
         return result
     except Exception as e:
-        logging.error(e)
+        logging.error("Error at %s", "getazmaptransactions towerscout.py", exc_info=e)
     except RuntimeError as e:
-        logging.error(e)
+        logging.error("Error at %s", "getazmaptransactions towerscout.py", exc_info=e)
 
 
 # download results as dataset for formal training /testing
@@ -818,6 +1151,13 @@ def send_dataset():
     filenames = []
     for i, tile in enumerate(tiles):
         filenames += write_labels(i, tile, keep_detections, additions, not meta)
+    # make a new tempdir name and attach to session
+    tmpdir = tempfile.TemporaryDirectory()
+    tmpdirname = tmpdir.name
+    session["tmpdirname"] = tmpdirname
+    tmpdir.cleanup() 
+    os.mkdir(tmpdirname)
+    logging.info("created tmp dir:{tmpdirname}")
 
     # write a contents file so we can load this again some time
     write_contents_file(
@@ -879,6 +1219,19 @@ def make_persistable_tile_results(tiles):
         for tile in tiles
     ]
 
+# get a portion of the tiles in serializable form to attach to the session
+def save_tiles_in_session(tiles):
+
+    return [
+        {
+            # "filename": tile["filename"],
+            # "labelfilename": tile["filename"][0:-4] + ".txt",
+            "metadata": tile["metadata"],
+            "url": tile["url"],
+            "index": tile["id"],
+        }
+        for tile in tiles
+    ]
 
 # write out the detections as label files (to download the dataset)
 # returns the names of img and label if detections were present, otherwise empty list
@@ -914,7 +1267,7 @@ def write_labels(tile_id, tile, keep, additions, double_res):
     size = 1280 if double_res else 640
 
     with open(name, "w") as f:
-        print(" writing file ", f.name, "...")
+        # print(" writing file ", f.name, "...")
         xml = "<annotation>\n"
         xml += "<size>\n"
         xml += "  <width>" + str(size) + "</width>\n"
@@ -1009,14 +1362,6 @@ def write_contents_file(tmpdirname, tiles, keep_ids, additions, meta):
         if len(additions) > 0:
             # make every this:
             #
-            # {"tile": 0, "centerx": 0.9099609375, "centery": 0.6593624174477392, "w": 0.034375, "h": 0.037459364023982526}
-            #
-            # into this:
-            #
-            # {"x1": -74.00627583990182, "y1": 40.71050060528311, "x2": -74.0062392291362, "y2": 40.71042470437244,
-            #  "conf": 1.0, "class": 0, "class_name": "ct", "secondary": 1..0,
-            #  "tile": 1, "id_in_tile": 11, "selected": true, "inside": true}
-
             pass  # todo!!!
 
         # write the whole "current result set", modified selections, additions and all
@@ -1024,84 +1369,6 @@ def write_contents_file(tmpdirname, tiles, keep_ids, additions, meta):
         f.write("," + ("false" if meta else "true"))
         f.write("]")
 
-app.permanent_session_lifetime = timedelta(minutes=60)  # Adjust this as needed
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
-app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False  # Disable pretty-printing for large JSON
-#
-#
-# upload dataset for further editing:
-#
-
-# @app.route('/uploaddataset', methods=['POST'])
-# def upload_dataset():
-#     print("Dataset upload")
-
-#     # make a temp dir as usual
-#     # first, clean out the old tempdir
-#     if "tmpdirname" in session:
-#         rmtree(session['tmpdirname'], ignore_errors=True, onerror=None)
-#         print(" cleaned up tmp dir", session['tmpdirname'])
-#         del session['tmpdirname']
-
-#     # make a new tempdir name and attach to session
-#     tmpdirname = tempfile.mkdtemp()
-#     print(" creating tmp dir", tmpdirname)
-#     session['tmpdirname'] = tmpdirname
-
-#     # check if the post request has the file part
-#     if 'dataset' not in request.files:
-#         print(" --- no file part in request")
-#         return None
-
-#     file = request.files['dataset']
-#     if file.filename == '':
-#         print(' --- no selected dataset file')
-#         return None
-
-#     if not file or not file.filename.endswith(".zip"):
-#         print(" --- invalid file or extension:", file.filename)
-#         return None
-
-#     filename = tmpdirname + "/" + file.filename
-#     file.save(filename)
-#     new_stem = tmpdirname[tmpdirname.rindex("/")+1:]
-
-#     # unzip dataset.zip
-#     # - "empty" tiles and labels right into "."
-#     # - "train" combine "images" and "labels" folders into "."
-#     # content.txt in "."
-#     with zipfile.ZipFile(filename) as zipf:
-#         # read previous results and tiles from content.txt and add to session
-#         # print(" zip contents:")
-#         filenames = zipf.namelist()
-#         old_stem = filenames[0][:filenames[0].index("/")]
-#         files = adapt_filenames(filenames, old_stem, new_stem)
-#         # print(files)
-#         for f_zip, f_new in zip(zipf.namelist(), files):
-#             print(" processing",f_zip,"to:",f_new)
-#             if not f_zip.endswith(".xml"):
-#                 with zipf.open(f_zip) as f:
-#                     with open(tmpdirname+"/"+f_new, "wb") as f_target:
-#                         print(" writing", tmpdirname+"/"+f_new)
-#                         f_target.write(f.read())
-
-#     # process contents file
-#     results = []
-#     print("parsing contents.txt in", tmpdirname)
-#     with open(tmpdirname+"/contents.txt") as f:
-#         results = json.loads(f.read())
-
-#     session['detections'] = adapt_tiles(
-#         results[0], tmpdirname, old_stem, new_stem)
-#     session['results'] = json.dumps(results[1])
-#     session['metadata'] = results[2]
-#     # print("Results:", results[1])
-#     # return previous results
-#     print(" dataset restored.")
-
-#     return session['results']
-
-# carefully unravel the zip structure we created in the dataset, and make it all flat
 
 
 def adapt_filenames(filenames, old_stem, new_stem):
@@ -1147,11 +1414,21 @@ if __name__ == "__main__":
         azure_api_key = f.readline().split()[0]
         bing_api_key = f.readline().split()[0]
         f.close
-    # app.run(debug = True)
-    # app.secret_key = 'super secret key'
-    # app.config['SESSION_TYPE'] = 'filesystem'
-    # get_custom_models()
-    # engine_default = sorted(engines.items(), key=lambda x: -x[1]["ts"])[0][0]
+    app.config['DEBUG'] = True
+    app.config['timeout'] = 3600
+    # logging.basicConfig(level=logging.DEBUG)
+    # app.logger.setLevel(logging.DEBUG)
+    app.permanent_session_lifetime = timedelta(minutes=60)  # Adjust this as needed
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
+    app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False  # Disable pretty-printing for large JSON
 
-    print("Tower Scout ready on port 5000...")
-    serve(app, host="0.0.0.0", port=5000)
+
+
+    # # This is for localhost only
+    # print("Tower Scout ready on port 5000...")
+    # serve(app, host="0.0.0.0", port=5000)
+    
+    # The following is for Azure app services
+    # Azure provides the port via the environment variable 'PORT'
+    port = int(os.environ.get('PORT', 5000))  # Default to 5000 if not set (useful for local testing)
+    app.run(host='0.0.0.0', port=port)  # Listen on all IP addresses
