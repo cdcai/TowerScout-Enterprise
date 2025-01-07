@@ -10,8 +10,8 @@ from enum import Enum, auto
 
 from mlflow.models.signature import infer_signature, ModelSignature
 
-from tsdb.ml.model_trainer import BaseTrainer
-from tsdb.ml.utils import Steps, TrainingArgs
+from tsdb.ml.model_trainer import BaseTrainer, TrainingArgs
+from tsdb.ml.utils import Steps
 
 
 class YOLOLoss(Enum):

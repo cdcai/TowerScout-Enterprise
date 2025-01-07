@@ -30,29 +30,6 @@ class ValidMetric(Enum):
     MSE = nn.MSELoss()
 
 
-def default_metrics() -> list[ValidMetric]:
-    return [ValidMetric.BCE.value, ValidMetric.MSE.value]
-
-
-@dataclass
-class TrainingArgs:
-    """
-    A class to represent model training arguements
-
-    Attributes:
-        objective_metric: The evaluation metric we want to optimize
-        epochs: Number of epochs to optimize model over
-        report_interval: Interval to log metrics during training
-        metrics: Various model evaluation metrics we want to track
-    """
-
-    objective_metric: str = "BCE"  # will be selected option for the drop down
-    epochs: int = 2
-    report_interval: int = 5
-    val_interval: int = 2
-    metrics: list[ValidMetric] = field(default_factory=default_metrics)  # make default_factory a function that returns some list of valid metrics
-
-
 @dataclass
 class PromotionArgs:
     """
@@ -103,6 +80,7 @@ class Hyperparameters:
     epochs: int
     prob_H_flip: float
     prob_V_flip: float
+    prob_mosaic: float = 1.0
 
     @classmethod
     def from_optuna_trial(cls, trial: Trial):
@@ -113,9 +91,10 @@ class Hyperparameters:
         batch_size = 2**batch_size_power
         prob_H_flip = trial.suggest_float("prob_H_flip", 0.3, 0.5)
         prob_V_flip = trial.suggest_float("prob_V_flip", 0.0, 0.5)
-        epochs = trial.suggest_int("epochs", 10, 10)
+        prob_mosaic = trial.suggest_float("prob_mosaic", 0.7, 0.9)
+        epochs = trial.suggest_int("epochs", 100, 100)
 
-        return cls(lr, momentum, weight_decay, batch_size, epochs, prob_H_flip, prob_V_flip)
+        return cls(lr, momentum, weight_decay, batch_size, epochs, prob_H_flip, prob_V_flip, prob_mosaic)
 
 
 

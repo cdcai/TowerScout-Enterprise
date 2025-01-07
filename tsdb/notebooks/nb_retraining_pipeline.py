@@ -89,7 +89,7 @@ mlflow.set_registry_uri("databricks-uc")
 
 out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=377"
 
-study = optuna.create_study(direction="maximize")
+study = optuna.create_study(direction="minimize", pruner=optuna.pruners.MedianPruner())
 objective_with_args = partial(
     objective,
     out_root_base=out_root_base_path
@@ -97,8 +97,10 @@ objective_with_args = partial(
 
 # add with mlflow context here to get nested structure for logging
 register_spark()
-with joblib.parallel_backend("spark", n_jobs=-1):
-    study.optimize(objective_with_args, n_trials=15)
+
+with mlflow.start_run():
+    with joblib.parallel_backend("spark", n_jobs=-1):
+        study.optimize(objective_with_args, n_trials=1)
 
 best_params = study.best_params
 

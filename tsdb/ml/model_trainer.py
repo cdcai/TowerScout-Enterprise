@@ -1,13 +1,37 @@
+from typing import Any
+from dataclasses import dataclass, field
+
 import torch
 from torch import nn, optim
 from torch import Tensor
+from torch.utils.data import DataLoader
 
 import optuna
+import mlflow
 from mlflow.models.signature import infer_signature, ModelSignature
 import ultralytics.utils as uutils
 
 from tsdb.ml.efficientnet import EN_Classifier
-from tsdb.ml.utils import Steps, Hyperparameters, TrainingArgs
+from tsdb.ml.utils import Steps, Hyperparameters
+from tsdb.ml.data import DataLoaders
+
+
+@dataclass
+class TrainingArgs:
+    """
+    A class to represent model training arguements
+
+    Attributes:
+        objective_metric: The evaluation metric we want to optimize
+        report_interval: Interval to log metrics during training
+        val_interval: Interval to evaluate the model
+        metrics: Various model evaluation metrics we want to track
+    """
+
+    objective_metric: str = "BCE"  # will be selected option for the drop down
+    report_interval: int = 5
+    val_interval: int = 1
+    metrics: Any = None
 
 
 class BaseTrainer:
@@ -39,7 +63,6 @@ class BaseTrainer:
         )
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
-        self.loss_types = [loss.name for loss in YOLOLoss]
 
     @classmethod
     def from_optuna_hyperparameters(
@@ -198,7 +221,7 @@ class BaseTrainer:
         for minibatch_num, minibatch in enumerate(dataloader):
             metrics = step_func(minibatch=minibatch)
 
-            if minibatch_num % report_interval == 0:
+            if minibatch_num % self.train_args.report_interval == 0:
                 step_num = minibatch_num + (epoch_num * num_batches)
                 mlflow.log_metrics(metrics, step=step_num)
 
@@ -235,29 +258,30 @@ class BaseTrainer:
                 loss = metrics.pop("loss")
 
                 self.scaler.scale(loss).backward()
-                metrics["loss"] = loss.cpu().item()
+                metrics["loss_TRAIN"] = loss.cpu().item()
 
                 if step_number - last_optimizer_step >= self.accumulation:
                     self.optimizer_step()
                     last_otpimizer_step = step_number
 
-                if batch_index % report_interval == 0:
+                if batch_index % self.train_args.report_interval == 0:
                     mlflow.log_metrics(metrics, step=step_number)
             
             # Validation
             if epoch % self.train_args.val_interval == 0:
+                val_report_interval = len(dataloaders.val)
                 for batch_index, val_batch in enumerate(dataloaders.val):
                     val_metrics = self.validation_step(minibatch=val_batch, step=Steps.VAL)
-                    val_metrics["loss"] = loss.cpu().item()
+                    val_metrics["loss_VAL"] = loss.cpu().item()
 
-                    if minibatch_num % val_report_interval == 0:
+                    if batch_index % val_report_interval == 0:
                         step_number = batch_index + (num_batches * epoch)
                         mlflow.log_metrics(val_metrics, step=step_number)
                 
                 val_metric = val_metrics[f"{self.train_args.objective_metric}_VAL"] 
                 
                 if trial is not None:
-                    trial.report(val_metric)
+                    trial.report(val_metric, step_number)
 
                     if trial.should_prune():
                         raise optuna.TrialPruned()
@@ -291,7 +315,7 @@ def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):  
     return optimizer
 
 
-def score(logits, labels, step: str, metrics: Metrics):  # pragma: no cover
+def score(logits, labels, step: str, metrics):  # pragma: no cover
     return {
         f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
         for metric in metrics
@@ -303,44 +327,3 @@ def inference_step(minibatch, model, metrics, step) -> dict:  # pragma: no cover
     model.eval()
     logits, _, labels = forward_func(model, minibatch)
     return score(logits, labels, step, metrics)
-
-
-class TowerScoutModelTrainer:  # pragma: no cover
-    def __init__(self, optimizer_args, metrics=None, criterion: str = "MSE"):
-        self.model = EN_Classifier()
-
-        if metrics is None:
-            metrics = [Metrics.MSE]
-        self.metrics = metrics
-
-        optimizer = self.get_optimizer()
-        self.optimizer = optimizer(self.model.parameters(), **optimizer_args)
-
-        self.criterion = nn.BCEWithLogitsLoss()
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, 0.95)
-        self.loss = 0
-        self.val_loss = 0
-        self.threshold = 0.5
-
-    @staticmethod
-    def get_optimizer():
-        return torch.optim.Adam
-
-    def training_step(self, minibatch, **kwargs) -> dict:
-        self.model.train()
-
-        logits, images, labels = forward_func(self.model, minibatch)
-        loss = self.criterion(logits, images)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        return score(logits, labels, Steps["TRAIN"].name, self.metrics)
-
-    @torch.no_grad()
-    def validation_step(self, minibatch, **kwargs) -> dict:
-        return inference_step(minibatch, self.model, self.metrics, Steps["VAL"].name)
-
-    def save_model(self):
-        pass
-
-

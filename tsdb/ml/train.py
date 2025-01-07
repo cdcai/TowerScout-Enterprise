@@ -13,11 +13,10 @@ from torch.utils.data import DataLoader
 from ultralytics.cfg import get_cfg
 from ultralytics.nn.tasks import attempt_load_one_weight, DetectionModel
 
-from tsdb.ml.utils import TrainingArgs, PromotionArgs, Hyperparameters
-from tsdb.ml.model_trainer import ModelTrainerType
+from tsdb.ml.utils import PromotionArgs, Hyperparameters, Steps
 from tsdb.ml.data import DataLoaders, data_augmentation
 from tsdb.ml.yolo_trainer import inference_step, YoloModelTrainer
-from tsdb.ml.utils import Steps
+from tsdb.ml.model_trainer import TrainingArgs
 
 
 def get_model(model_yaml: str, model_pt: str) -> DetectionModel:
@@ -52,7 +51,7 @@ def get_model(model_yaml: str, model_pt: str) -> DetectionModel:
 def objective(
     trial: Trial,
     out_root_base: str,
-    yolo_version: str = "yolov10n",
+    yolo_version: str = "yolov10x",
 ) -> float:  # pragma: no cover
     """
     Objective function for Optuna to optimize.
@@ -88,7 +87,7 @@ def objective(
     with mlflow.start_run(nested=True):
         # Create model and trainer
         mlflow.log_params(asdict(hyperparameters))  # convert dataclass to dict
-        metric = model_trainer.train(dataloaders, model_name="towerscout_model")
+        metric = model_trainer.train(dataloaders, model_name="towerscout_model", trial=trial)
 
     return metric
 
