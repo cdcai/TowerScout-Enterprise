@@ -72,10 +72,11 @@ def convert_to_mds(
     if columns is None:
         columns = {
             "image_path": "str",
-            "img": "ndarray:uint8:3,640,640",
+            "img": "ndarray:uint8:640,640,3",
             "bboxes": "ndarray:float32",
             "cls": "ndarray:float32",
-            "ori_shape": "ndarray:uint32"
+            "ori_shape": "ndarray:uint32",
+            "resized_shape": "ndarray:uint32",
         }
 
     pd_df = df.toPandas()
@@ -83,9 +84,13 @@ def convert_to_mds(
 
     for sample in samples:
         img = Image.open(sample["image_path"]).convert("RGB")
-        sample["img"] = np.array(img.resize((640, 640)))
-        sample["img"] = np.transpose(sample["img"], (2, 0, 1))  # convert from HWC to CHW 
         sample["ori_shape"] = np.array(img.size, dtype=np.uint32)
+        sample["img"] = np.array(img.resize((640, 640)))  # hardcode 640 for now
+        sample["resized_shape"] = np.array(sample["img"].shape[:2], dtype=np.uint32)
+        # Commenting transpose out because the Mosaic augmentation class expects the image to be in HWC format
+        # The model expectes CHW though so will likely have to transpose after data augmentation 
+        # but prior to forward pass
+        #sample["img"] = np.transpose(sample["img"], (2, 0, 1))  # convert from HWC to CHW 
 
     # Use `MDSWriter` to iterate through the input data and write to a collection of `.mds` files.
     # Note this has been unit tested here: https://github.com/mosaicml/streaming/blob/main/tests/test_writer.py

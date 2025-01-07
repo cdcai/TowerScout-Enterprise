@@ -74,16 +74,7 @@ def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str
     for index, element in enumerate(data):
         for key, value in element.items():
             if key == "img":
-                instances = Instances(
-                    bboxes=element["bboxes"].reshape(-1, 4),
-                    segments=np.array(
-                        [[[5, 5], [10, 10]], [[15, 15], [20, 20]]]
-                    ),  # dummy arg, remove later
-                    bbox_format="xyxy",
-                    normalized=True,
-                )
-                labels = {"img": value, "instances": instances}
-                labels = transforms(labels)
+                
                 bboxes = labels["instances"]._bboxes.bboxes
                 img = labels["img"]
                 result["bboxes"].append(bboxes)
