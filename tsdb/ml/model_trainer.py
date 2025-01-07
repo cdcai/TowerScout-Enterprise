@@ -32,6 +32,12 @@ class TrainingArgs:
     report_interval: int = 5
     val_interval: int = 1
     metrics: Any = None
+    nbs: float
+    momentum: float
+    warmup_momentum: float
+    warmup_bias_lr: float
+    lrf
+    cosine_lr: float
 
 
 class BaseTrainer:
@@ -47,22 +53,35 @@ class BaseTrainer:
         optimizer: optim.Optimizer = None,
         train_args: TrainingArgs = None,
         epochs: int = 1,
-        accumulation: int = 3
+        accumulate: int = 3,
+        batch_size: int 4,
+        lf: float = None,
+        scheduler: optim.lr_scheduler.LambdaLR = None
     ):  # pragma: no cover
+        # Model
         self.model = model
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model.to(self.device)
+        self.args = self.model.args
+        self.amp = self.args.amp
+
+        # Hyperparams and Args
         self.train_args = train_args
         self.optimizer = optimizer
         self.epochs = epochs
-        self.accumulation = accumulation
-        self.args = self.model.args
-        self.amp = self.args.amp
+        self.batch_size = batch_size
+        self.accumulate = accumulate
+        
+        # Gradients
         self.scaler = (
             torch.amp.GradScaler("cuda", enabled=self.amp)
             if uutils.torch_utils.TORCH_2_4
             else torch.cuda.amp.GradScaler(enabled=self.amp)
         )
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model.to(self.device)
+        
+        # Optimization
+        self.lf = None
+        self.scheduler = None
 
     @classmethod
     def from_optuna_hyperparameters(
@@ -82,7 +101,27 @@ class BaseTrainer:
             decay=hyperparameters.weight_decay,
         )
 
-        return cls(model, optimizer, train_args, hyperparameters.epochs)
+        return cls(
+            model,
+            optimizer,
+            train_args,
+            epochs=hyperparameters.epochs,
+            batch_size=hyperparameters.batch_size
+        )
+
+    def _setup_scheduler(self):
+        """
+        Initialize training learning rate scheduler. Taken from ultralytics
+        """
+        lrf = self.train_args.lrf
+        
+        if self.train_args.cos_lr:
+            self.lf = one_cycle(1, lrf, self.epochs)
+        else:
+            # Linear
+            self.lf = lambda x: max(1 - x / self.epochs, 0) * (1.0 - lrf) + lrf
+        
+        self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, self.lf)
 
     @staticmethod
     def build_optimizer(
@@ -227,6 +266,30 @@ class BaseTrainer:
 
         return metrics
 
+    def manual_warmup(self, num_warmup: int, step: int):
+        """
+        A manual warmup phase for the optimizer. This is taken from the source code of Ultralytics.
+        """
+        if step > num_warmup:
+            return
+        
+        x_i = [0, num_warmup]
+        self.accumulate = max(1, int(np.interp(step, x_i, [1, self.train_args.nbs / self.batch_size]).round()))
+
+        for index, param in enumerate(self.optimizer.param_groups):
+            param["lr"] = np.interp(
+                step, 
+                x_i, 
+                [self.train_args.warmup_bias_lr if index == 0 else 0.0, param["initial_lr"] * self.lf(self.epoch)]
+            )
+
+            if "momentum" in param:
+                param["momentum"] = np.interp(
+                    step,
+                    x_i,
+                    [self.train_args.warmup_momentum, self.train_args.momentum]
+                )
+
     def train(
         self, 
         dataloaders: DataLoaders, 
@@ -244,12 +307,20 @@ class BaseTrainer:
         Returns:
             dict[str, float] A dict containing the loss
         """
-
-        # training
         num_batches = len(dataloaders.train)
+        num_warmup = (
+            max(round(self.train_args.warmup_epochs * num_batches), 100) 
+            if self.train_args.warmup_epochs > 0 else -1
+        )
+
+        self.optimizer.zero_grad()
 
         for epoch in range(self.epochs):
             last_optimizer_step = -1
+            self.model.train()
+
+            # Manual Warmup
+            self.manual_warmup()
 
             # Train 
             for batch_index, train_batch in enumerate(dataloaders.train):
@@ -260,7 +331,7 @@ class BaseTrainer:
                 self.scaler.scale(loss).backward()
                 metrics["loss_TRAIN"] = loss.cpu().item()
 
-                if step_number - last_optimizer_step >= self.accumulation:
+                if step_number - last_optimizer_step >= self.accumulate:
                     self.optimizer_step()
                     last_otpimizer_step = step_number
 
@@ -269,6 +340,7 @@ class BaseTrainer:
             
             # Validation
             if epoch % self.train_args.val_interval == 0:
+                self.model.eval()
                 val_report_interval = len(dataloaders.val)
                 for batch_index, val_batch in enumerate(dataloaders.val):
                     val_metrics = self.validation_step(minibatch=val_batch, step=Steps.VAL)
