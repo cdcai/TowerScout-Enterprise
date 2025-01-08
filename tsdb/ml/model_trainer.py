@@ -6,6 +6,8 @@ from torch import nn, optim
 from torch import Tensor
 from torch.utils.data import DataLoader
 
+import numpy as np
+
 import optuna
 import mlflow
 from mlflow.models.signature import infer_signature, ModelSignature
@@ -55,7 +57,7 @@ class BaseTrainer:
         epochs: int = 1,
         momentum: float = 0.9,
         accumulate: int = 3,
-        batch_size: int 4,
+        batch_size: int = 4,
         lf: float = None,
         scheduler: optim.lr_scheduler.LambdaLR = None
     ):  # pragma: no cover
@@ -119,7 +121,7 @@ class BaseTrainer:
         lrf = self.train_args.lrf
         
         if self.train_args.cos_lr:
-            self.lf = one_cycle(1, lrf, self.epochs)
+            self.lf = uutils.torch_utils.one_cycle(1, lrf, self.epochs)
         else:
             # Linear
             self.lf = lambda x: max(1 - x / self.epochs, 0) * (1.0 - lrf) + lrf
@@ -263,7 +265,7 @@ class BaseTrainer:
         for minibatch_num, minibatch in enumerate(dataloader):
             metrics = step_func(minibatch=minibatch)
 
-            if minibatch_num % self.train_args.report_interval == 0:
+            if minibatch_num % report_interval == 0:
                 step_num = minibatch_num + (epoch_num * num_batches)
                 mlflow.log_metrics(metrics, step=step_num)
 
@@ -323,7 +325,7 @@ class BaseTrainer:
             self.model.train()
 
             # Manual Warmup
-            self.manual_warmup()
+            #self.manual_warmup(num_warmup, epoch * num_batches)
 
             # Train 
             for batch_index, train_batch in enumerate(dataloaders.train):

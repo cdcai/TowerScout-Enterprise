@@ -51,7 +51,7 @@ def get_model(model_yaml: str, model_pt: str) -> DetectionModel:
 def objective(
     trial: Trial,
     out_root_base: str,
-    yolo_version: str = "yolov10x",
+    yolo_version: str = "yolov10n",
 ) -> float:  # pragma: no cover
     """
     Objective function for Optuna to optimize.
@@ -80,7 +80,7 @@ def objective(
     dataloaders = DataLoaders.from_mds(
         cache_dir,
         mds_dir=out_root_base,
-        batch_size=hyperparameters.batch_size,
+        hyperparams=hyperparameters,
         transforms=transforms,
     )
 
