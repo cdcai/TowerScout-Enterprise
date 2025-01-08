@@ -103,74 +103,67 @@ best_params = study.best_params
 
 # COMMAND ----------
 
-try:
-    best_run, challenger_test_metric, best_params = tune_hyperparams(
-        fmin_args, train_args
-    )
-    logger.info(
-        f"Best model has {train_args.objective_metric} of {challenger_test_metric}"
-    )
-    logger.debug("Hyperparameter tuning completed.")
-except ValueError as e:
-    logger.error(f"Invalid hyperparameter tuning arguments: {e}")
-except RuntimeError as e:
-    logger.error(f"Error during hyperparameter tuning: {e}")
-except Exception as e:
-    logger.error(f"Unexpected error during hyperparameter tuning: {e}")
+# try:
+#     best_run, challenger_test_metric, best_params = tune_hyperparams(
+#         fmin_args, train_args
+#     )
+#     logger.info(
+#         f"Best model has {train_args.objective_metric} of {challenger_test_metric}"
+#     )
+#     logger.debug("Hyperparameter tuning completed.")
+# except ValueError as e:
+#     logger.error(f"Invalid hyperparameter tuning arguments: {e}")
+# except RuntimeError as e:
+#     logger.error(f"Error during hyperparameter tuning: {e}")
+# except Exception as e:
+#     logger.error(f"Unexpected error during hyperparameter tuning: {e}")
 
 # COMMAND ----------
 
-logger.info(
-    f"Testing metric ({train_args.objective_metric}) value of best run: {challenger_test_metric}"
-)
+# logger.info(
+#     f"Testing metric ({train_args.objective_metric}) value of best run: {challenger_test_metric}"
+# )
 
 # COMMAND ----------
 
 # DBTITLE 1,Register challenger model
-run_id = best_run.run_id
-model_name = f"{catalog}.{schema}.towerscout_model"  # model name
-alias = dbutils.widgets.get("stage")
+# run_id = best_run.run_id
+# model_name = f"{catalog}.{schema}.towerscout_model"  # model name
+# alias = dbutils.widgets.get("stage")
 
-challenger_model_metadata = mlflow.register_model(
-    model_uri=f"runs:/{run_id}/ts-model-mlflow",  # path to logged artifact folder called models
-    name=model_name,  # name for model in catalog
-)
-logger.info(
-    f"Registered model {model_name} with version {challenger_model_metadata.version}"
-)
-
-# COMMAND ----------
-
-promo_args = PromotionArgs(
-    objective_metric=train_args.objective_metric,
-    batch_size=train_args.batch_size,
-    metrics=train_args.metrics,
-    model_version=challenger_model_metadata.version,
-    model_name=model_name,
-    challenger_metric_value=challenger_test_metric,
-    alias=alias,
-    test_conv=split_convs.test,
-    client=client,
-    logger=logger,
-)
+# challenger_model_metadata = mlflow.register_model(
+#     model_uri=f"runs:/{run_id}/ts-model-mlflow",  # path to logged artifact folder called models
+#     name=model_name,  # name for model in catalog
+# )
+# logger.info(
+#     f"Registered model {model_name} with version {challenger_model_metadata.version}"
+# )
 
 # COMMAND ----------
 
-try:
-    model_promotion(promo_args)
-    logger.debug("Promotion completed.")
-except Exception as e:
-    logger.error(f"Error during model promotion: {e}")
+# promo_args = PromotionArgs(
+#     objective_metric=train_args.objective_metric,
+#     batch_size=train_args.batch_size,
+#     metrics=train_args.metrics,
+#     model_version=challenger_model_metadata.version,
+#     model_name=model_name,
+#     challenger_metric_value=challenger_test_metric,
+#     alias=alias,
+#     test_conv=split_convs.test,
+#     client=client,
+#     logger=logger,
+# )
 
 # COMMAND ----------
 
-# DBTITLE 1,Delete converters
-converter_train.delete()
-converter_val.delete()
-converter_test.delete()
+# try:
+#     model_promotion(promo_args)
+#     logger.debug("Promotion completed.")
+# except Exception as e:
+#     logger.error(f"Error during model promotion: {e}")
 
 # COMMAND ----------
 
-# Close the handler to ensure the file is properly closed
-handler.close()
-logger.removeHandler(handler)
+# # Close the handler to ensure the file is properly closed
+# handler.close()
+# logger.removeHandler(handler)

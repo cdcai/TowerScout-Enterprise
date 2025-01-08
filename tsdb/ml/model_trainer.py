@@ -71,6 +71,7 @@ class BaseTrainer:
         # Hyperparams and Args
         self.train_args = train_args
         self.optimizer = optimizer
+        self.epoch = -1
         self.epochs = epochs
         self.batch_size = batch_size
         self.accumulate = accumulate
@@ -86,6 +87,8 @@ class BaseTrainer:
         # Optimization
         self.lf = None
         self.scheduler = None
+
+        self._setup_scheduler()
 
     @classmethod
     def from_optuna_hyperparameters(
@@ -324,11 +327,13 @@ class BaseTrainer:
         self.optimizer.zero_grad()
 
         for epoch in range(self.epochs):
+            self.epoch = epoch
             last_optimizer_step = -1
             self.model.train()
+            self.scheduler.step()
 
             # Manual Warmup
-            #self.manual_warmup(num_warmup, epoch * num_batches)
+            self.manual_warmup(num_warmup, epoch * num_batches)
 
             # Train 
             for batch_index, train_batch in enumerate(dataloaders.train):
