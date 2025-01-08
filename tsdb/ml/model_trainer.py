@@ -32,12 +32,12 @@ class TrainingArgs:
     report_interval: int = 5
     val_interval: int = 1
     metrics: Any = None
-    nbs: float
-    momentum: float
-    warmup_momentum: float
-    warmup_bias_lr: float
-    lrf
-    cosine_lr: float
+    nbs: int = 64 # nominal batch size
+    warmup_epochs: float = 3.0 # fractions ok
+    warmup_momentum: float = 0.8
+    warmup_bias_lr: float = 0.1
+    lrf: float = 0.01
+    cos_lr: bool = False # maybe tune
 
 
 class BaseTrainer:
@@ -53,6 +53,7 @@ class BaseTrainer:
         optimizer: optim.Optimizer = None,
         train_args: TrainingArgs = None,
         epochs: int = 1,
+        momentum: float = 0.9,
         accumulate: int = 3,
         batch_size: int 4,
         lf: float = None,
@@ -71,6 +72,7 @@ class BaseTrainer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.accumulate = accumulate
+        self.momentum = momentum
         
         # Gradients
         self.scaler = (
@@ -106,7 +108,8 @@ class BaseTrainer:
             optimizer,
             train_args,
             epochs=hyperparameters.epochs,
-            batch_size=hyperparameters.batch_size
+            batch_size=hyperparameters.batch_size,
+            momentum=hyperparameters.momentum,
         )
 
     def _setup_scheduler(self):
@@ -287,7 +290,7 @@ class BaseTrainer:
                 param["momentum"] = np.interp(
                     step,
                     x_i,
-                    [self.train_args.warmup_momentum, self.train_args.momentum]
+                    [self.train_args.warmup_momentum, self.momentum]
                 )
 
     def train(
