@@ -40,7 +40,8 @@ const reviewCheckBox = document.getElementById("review");
 confSlider.oninput = adjustConfidence;
 reviewCheckBox.onchange = changeReviewMode;
 const DEFAULT_CONFIDENCE = 0.35
-
+let startTime = performance.now();
+var formData;
 
 
 
@@ -181,7 +182,7 @@ class AzureMap extends TSMap {
     super();
     this.map = new atlas.Map('azureMap', {
       center: [nyc[0], nyc[1]], // Reverse Bing
-      zoom: 19,
+      zoom: 18,
       maxZoom: 20,
       disableStreetside: true,
       authOptions: {
@@ -413,7 +414,7 @@ class AzureMap extends TSMap {
         [b[2], b[3]]  // Northeast
       ],
       padding: 0,
-      zoom: 19
+      zoom: 18
     });
   }
 
@@ -1202,7 +1203,7 @@ class PlaceRect {
     }
     else if (currentUI.value === 'azure') {
       azureMap.setCenter([(this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2]);
-      azureMap.setZoom(19);
+      azureMap.setZoom(18);
     }
 
   }
@@ -1394,7 +1395,7 @@ class Detection extends PlaceRect {
       firstDet.maxP2 = Math.max(det.p2, firstDet.maxP2)
       det.firstDet = firstDet; // record block header
       det.indexInList = count;
-      det.update();
+      // det.update();
       count++;
     }
     boxes += "</li></ul>";
@@ -1662,7 +1663,7 @@ function getObjects(estimate) {
       let nt = Number(result);
       enableProgress(nt);
       setProgress(0);
-      let startTime = performance.now();
+      startTime = performance.now();
 
       // now, the actual request
       console.log("Detecting Cooling Towers ....");
@@ -1683,7 +1684,290 @@ function getObjects(estimate) {
     });
 
   getazmapTransactioncountjs(2);
+  disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
 }
+function ProcessUserRequest(estimate)
+{
+  try
+  {
+    
+    if (Detection_detections.length > 0) {
+      if (!window.confirm("This will erase current detections. Proceed?")) {
+      // erase the previous set of towers and tiles
+      currentMap.clearAll();
+      return;
+      }
+    }
+
+    let engine = $('input[name=model]:checked', '#engines').val()
+    let provider = $('input[name=provider]:checked', '#providers').val()
+    provider = provider.substring(0, provider.length - 9);
+
+
+    // now get the boundaries ready to ship
+    let bounds = currentMap.getBoundsUrl();
+
+    if (currentMap.boundaries.length === 0) {
+    if (currentMap.hasShapes()) {
+      drawnBoundary();
+    }
+    }
+
+    let boundaries = currentMap.getBoundariesStr();
+    if (estimate) {
+      console.log("Estimate request in progress ....");
+    } else {
+      console.log("Detection request in progress ....");
+    }
+
+    // erase the previous set of towers and tiles
+    Detection.resetAll();
+    // Tile.resetAll();
+
+  // first, play the request, but get an estimate of the number of tiles
+    formData = new FormData();
+    formData.append('bounds', bounds);
+    formData.append('engine', engine);
+    formData.append('provider', provider);
+    formData.append('polygons', boundaries);
+    formData.append('estimate', "yes");
+    
+
+    fetch("/uploadTileImages", { method: "POST", body: formData, })
+      .then(result => result.text())
+      .then(result => {
+        if (Number(result) === -1) {
+        fatalError("Tile limit for this session exceeded. Please close browser to continue.")
+        return;
+        }
+        console.log("Number of tiles: " + result + ", estimated time: "
+          + (Math.round(Number(result) * secsPerTile * 10) / 10) + " s");
+        // Get from Dev  Key Vault by default. Need to create secrets in the Prod Key Vault
+
+        // let nt = estimateNumTiles(currentMap.getZoom());
+        // console.log("  Estimated tiles:" + nt);
+        if (estimate) {
+          return;
+        }
+
+        // actual retrieval process starts here
+        nt = Number(result);
+        enableProgress(nt);
+        setProgress(0);
+        startTime = performance.now();
+
+        // now, the actual request
+        
+        Detection.resetAll();
+        formData.delete("estimate");
+        fetch("/uploadTileImages", { method: "POST", body: formData })
+          .then(response => response.json())
+          .then(result => {
+            console.log("Images uploaded ....");
+            formData.append('user_id', result.user_id);
+            formData.append('request_id', result.request_id);
+            formData.append('tiles_count', result.tiles_count);
+            console.log("Polling Silver Table for detections....");
+            pollSilverTable();
+            })  
+          .catch(e => {
+            console.log(e + ": "); disableProgress(0, 0);
+          });
+      });
+      
+      getazmapTransactioncountjs(2);
+    } catch (error) {
+      console.error('Error during main ProcessRequest:', error);
+      disableProgress(0, 0);
+  }
+
+}
+
+function pollSilverTableOld() {
+  // Create an AbortController instance to cancel the request after 5 minutes
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();  // Abort the request after 5 minutes
+    console.log("Request timed out after 4.9 minutes");
+    restartRequest();  // Restart the cycle after timeout
+  }, 290000);  // 4.9 minutes (290000 ms)
+
+  // Send the fetch request with the AbortController
+  fetch('/pollSilverTable', { signal: controller.signal, method: "POST", body: formData, })
+    .then(response => response.json())
+    .then(data => {
+      // If the response is true, stop the cycle
+      if (data === true) {
+        console.log("Condition met, stopping the cycle.");
+        clearTimeout(timeoutId);  // Clear timeout to prevent restart
+      } else {
+        console.log("Condition not met, restarting...");
+
+        restartRequest();  // Restart the cycle if condition is not met
+      }
+    })
+    .catch(error => {
+      // Handle any errors, including request timeout
+      if (error.name === 'AbortError') {
+        console.log('Fetch request was aborted due to timeout');
+      } else {
+        console.error('Error:', error);
+      }
+
+      // Restart the cycle in case of timeout or any error
+      restartRequest();
+    });
+}
+async function pollSilverTableRepeating() {
+  // Define the timeout duration (in milliseconds)
+  const TIMEOUT_DURATION = 290000; // 4.8 minutes
+  // Create an AbortController instance
+  const controller = new AbortController();
+  // Set a timeout to abort the request after the specified duration
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_DURATION);
+  try {
+    // Send the HTTP request
+    const response = await fetch('/pollSilverTable', { signal: controller.signal, method: "POST", body: formData, });  // API URL
+    const data = await response.json();  // Parse JSON response
+
+    console.log('Response:', data);
+
+    // Check if the response is true (e.g., based on a specific value in the response)
+    if (data.jobdone === true) {
+      // If the response is true, log and stop the loop
+      console.log('Request successful. Response:', data);
+      clearTimeout(timeoutId); // Clear the timeout if the request is successful
+      return true;  // End the function and stop further requests
+    } else {
+      // If the response is not successful, wait for 5 minutes and restart the request
+      console.log('Response not successful. Retrying 10 seconds ...');
+      restartRequest();  // Retry after 10 seconds
+    }
+  } catch (error) {
+    console.log('Error during request:', error);
+    // In case of error, wait for 10 seconds before retrying
+    clearTimeout(timeoutId); // Clear the timeout
+    restartRequest();  // Retry after 10 seconds
+  }
+}
+async function fetchWithTimeout(url, options, timeoutDuration) {
+  const controller = new AbortController();  // Create an AbortController instance
+  const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);  // Set the timeout for the request
+
+  try {
+    // Send the HTTP request with the AbortController signal
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    
+    // If the request was successful, parse the response
+    const data = await response.json();
+    console.log('Data received:', data);
+    
+    // Clear the timeout when the request completes
+    clearTimeout(timeoutId);
+
+    return data; // Return the response data
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('fetchWithTimeout - Request timed out');
+    } else {
+      console.error('fetchWithTimeout - Fetch error:', error);
+    }
+  }
+}
+
+async function pollSilverTable() {
+  const url = '/pollSilverTable';  // Endpoint URL
+  const options = { method: 'POST', body: formData };  // Request body
+
+  const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
+  const RESTART_DELAY = 10000;  // Restart delay in milliseconds (e.g., 10 seconds)
+  try {
+    while (true) {
+      // console.log('Making request...');
+      const result = await fetchWithTimeout(url, options, TIMEOUT_DURATION);
+      if (result.status === 502) {
+        console.log('Error during pollSilverTable request:' + error);
+        // In case of error, wait for 10 seconds before retrying
+        console.log('Waiting for 10 seconds before retrying...');
+        await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+        return pollSilverTable();
+      }
+      if (result) {
+        console.log('Detections found in the Silver Table. Request completed successfully');
+        console.log("Reverse geocoding and drawing bounding boxes ....");
+        drawBoundingBoxes();
+        return true;
+      } else {
+        console.log('Polling Silver Table - Request failed or timed out');
+      }
+
+      // Wait before sending another request (restart cycle after 10 seconds)
+      console.log('Waiting for 10 seconds before retrying...');
+      await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+      return pollSilverTable();
+
+  }
+} catch (error) {
+  console.log('Error during pollSilverTable request:' + error);
+  // In case of error, wait for 10 seconds before retrying
+  console.log('Waiting for 10 seconds before retrying...');
+  await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+  return pollSilverTable();
+}
+}
+
+
+async function pollSilverTableSimple() {
+ 
+  try {
+    // Send the HTTP request
+    const response = await fetch('/pollSilverTable', {method: "POST", body: formData, });  // API URL
+    const data = await response.json();  // Parse JSON response
+
+    console.log('Response:', data);
+
+    // Check if the response is true (e.g., based on a specific value in the response)
+    if (data.jobdone === true) {
+      // If the response is true, log and stop the loop
+      console.log('Request successful. Response:', data);
+      // clearTimeout(timeoutId); // Clear the timeout if the request is successful
+      return true;  // End the function and stop further requests
+    } else {
+      // If the response is not successful, wait for 5 minutes and restart the request
+      console.log('Response not successful. Retrying 10 seconds ...');
+      // restartRequest();  // Retry after 10 seconds
+    }
+  } catch (error) {
+    console.log('Error during request:', error);
+    // // In case of error, wait for 10 seconds before retrying
+    // clearTimeout(timeoutId); // Clear the timeout
+    // restartRequest();  // Retry after 10 seconds
+  }
+}
+// Function to restart the request cycle after each attempt
+function restartRequest() {
+  setTimeout(pollSilverTable, 10000);  // Restart the cycle every 10 seconds
+}
+function drawBoundingBoxes(){
+  try{
+    formData.delete("estimate");
+    fetch("/fetchBoundingBoxResults", { method: "POST", body: formData })
+          .then(response => response.json())
+          .then(result => {
+            console.log("Processing ....");
+            processObjects(result, startTime);
+          })
+          .catch(e => {
+            console.log(e + " - drawBoundingBoxes: "); disableProgress(0, 0);
+          });
+        }
+    catch (error) {
+    console.log('Error during drawBoundingBoxes:', error);
+    
+    }  
+}
+// // Start the cycle when the script first loads
+// checkCondition();
 
 //get Azure map transaction count for the current month
 function getazmapTransactioncountjs(intEnv) {
@@ -1726,10 +2010,7 @@ function processObjects(result, startTime) {
   //console.log("" + Detection_detections.length + " detections.")
   disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
   augmentDetections();
-  // if (boundaries != "[]") {
-  //   googleMap.showBoundaries();
-  //   bingMap.showBoundaries();
-  // }
+
 }
 
 function cancelRequest() {
@@ -2056,7 +2337,6 @@ function augmentDetections() {
     });
   }
 }
-
 function afterAugment() {
   // wait for the last one
   if (Detection_detectionsAugmented !== Detection_detections.length) {
