@@ -172,16 +172,11 @@ def inference_step(
     return score(minibatch, pred, step, device, model.args)
 
 
-"""
-Model trainer class for the YOLO object detection model (DetectionModel class) from Ultralytics.
-Note that we have removed the torch.nn.parallel.DistributedDataParallel (DDP) usage that was present in 
-Ultralytics since we use Hyperopt for distributed tuning and it's not clear how nicely they will interact with each other.
-"""
 class YoloModelTrainer(BaseTrainer):
     """
-    TODO: Add perform_pass as a STATIC method so that we dont need
-    to instantiate the class to use it
-    also create ModelTrainer ABC that this class will inheret from.
+    Model trainer class for the YOLO object detection model (DetectionModel class) from Ultralytics.
+    Note that we have removed the torch.nn.parallel.DistributedDataParallel (DDP) usage that was present in 
+    Ultralytics since we use Hyperopt for distributed tuning and it's not clear how nicely they will interact with each other.
     """
 
     def __init__(
@@ -190,6 +185,7 @@ class YoloModelTrainer(BaseTrainer):
         optimizer: torch.optim.Optimizer = None,
         train_args: TrainingArgs = None,
         epochs: int = 1,
+        **kwargs
     ):  # pragma: no cover
         super().__init__(model, optimizer, train_args, epochs)
         self.freeze_layers()

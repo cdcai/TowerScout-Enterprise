@@ -92,7 +92,8 @@ out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_split
 study = optuna.create_study(direction="minimize", pruner=optuna.pruners.MedianPruner())
 objective_with_args = partial(
     objective,
-    out_root_base=out_root_base_path
+    out_root_base=out_root_base_path,
+    yolo_version="yolov10n"
 )
 
 # add with mlflow context here to get nested structure for logging

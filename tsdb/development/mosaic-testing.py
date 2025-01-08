@@ -14,8 +14,9 @@ from uuid import uuid4
 import torch
 import torchvision
 
+import PIL
+
 import numpy as np
-import cv2
 
 from ultralytics.data.augment import Mosaic, Compose
 from ultralytics.utils.instance import Instances
@@ -27,17 +28,27 @@ from tsdb.ml.data import data_augmentation, ToTensor
 
 # COMMAND ----------
 
-class TowerScoutMosaic(Mosaic):
-    def __init__(self, dataset, imgsz, p, n):
-        super().__init__(dataset=dataset, imgsz=imgsz, p=p, n=n)
+class ModifiedMosaic(Mosaic):
+    """
+    A modified Mosaic augmentation object that inherets from the Mosaic class from Ultralytics.
+    The sole modification is the removal of the 'buffer' parameter from the Mosaic class
+    so that the 'buffer' is always the entire dataset.
+    """
+    def __init__(self, dataset, image_size, p, n):
+        """
+        NOTE: image_size determines the size of the images *comprising* the mosaic.
+        So for an image size of DxD and for a mosaic of 4 images (2 x 2 grid of images)
+        the output mosaic image will have a size of 2D x 2D.
+        """
+        super().__init__(dataset=dataset, imgsz=image_size, p=p, n=n)
 
-    def get_indexes(self):
+    def get_indexes(self) -> list[int]:
         """
         Returns a list of random indexes from the dataset for mosaic augmentation.
         This implementation removes the 'buffer' parameter and always uses the entire dataset
 
-        This method selects random image indexes either from a buffer or from the entire dataset, depending on
-        the 'buffer' parameter. It is used to choose images for creating mosaic augmentations.
+        This method selects random image indexes from the entire dataset.
+        It is used to choose images for creating mosaic augmentations.
 
         Returns:
             (List[int]): A list of random image indexes. The length of the list is n-1, where n is the number
@@ -48,18 +59,32 @@ class TowerScoutMosaic(Mosaic):
             >>> indexes = mosaic.get_indexes()
             >>> print(len(indexes))  # Output: 3
         """
-        # select any images
+        # select from any images in dataset
         return [random.randint(0, len(self.dataset) - 1) for _ in range(self.n - 1)]
 
 
 class YoloDataset(StreamingDataset):
+    """
+    A dataset object that inherets from the StreamingDataset class with
+    modifications to be compatible with the Ultralytics Mosaic 
+    (not to be confused with MosaicML and its associated streaming library) augmentation object.
+    See https://docs.mosaicml.com/projects/streaming/en/stable/how_to_guides/cifar10.html#Loading-the-Data
+    for more details on working with custom MosaicML Streaming datasets.
+
+    Args:
+        remote: Remote path or directory to download the dataset from.
+        local: str,
+        shuffle: bool,
+        hyperparameters: Hyperparameters,
+        image_size: image size used to create the mosaic augmentation object
+    """
     def __init__(
         self,
         remote: str,
         local: str,
         shuffle: bool,
         hyperparameters: Hyperparameters,
-        image_size: int = 640,
+        image_size: int,
     ):
         super().__init__(
             local=local,
@@ -67,38 +92,50 @@ class YoloDataset(StreamingDataset):
             shuffle=shuffle,
             batch_size=hyperparameters.batch_size,
         )
-        mosaic_aug = TowerScoutMosaic(
-            self, imgsz=image_size, p=hyperparameters.prob_mosaic, n=4
+
+        mosaic_aug = ModifiedMosaic(
+            self, image_size=image_size, p=hyperparameters.prob_mosaic, n=4
         )
+
         flips = data_augmentation(
             prob_H_flip=hyperparameters.prob_H_flip,
             prob_V_flip=hyperparameters.prob_V_flip,
         )
-        #self.transforms = Compose([mosaic_aug] + flips + [ToTensor()])
+
+        # compose Ultralytics transforms
         self.transforms = Compose([mosaic_aug] + flips + [ToTensor()])
 
     def __getitem__(self, index: int) -> Any:
         labels = self.get_image_and_label(index)
-        labels = self.transforms(labels)
-        return labels
+        return self.transforms(labels)
 
     def get_image_and_label(self, index: int) -> Any:
-        """Get and return image & label information from the dataset."""
+        """
+        Get and return image & label information from the dataset.
+        This function is added because the Ultralytics augmentation objects
+        like Mosaic require the dataset object to have a method called
+        get_image_and_label.
+        (We add this to align with the protocol of the Ultralytics Mosiac object)
+        """
         label = super().__getitem__(index)  # get row from dataset
+
+        # move bboxes from "bboxes" key to "instances" key
         instances = Instances(
-            bboxes=deepcopy(label["bboxes"]).reshape(-1, 4),
-            segments=np.zeros((0, 1000, 2), dtype=np.float32),  # dummy arg, remove later. seems like overloading will be needed
+            bboxes=deepcopy(label.pop("bboxes")).reshape(-1, 4),
+            # See: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/dataset.py#L227
+            # We set this value
+            segments=np.zeros((0, 1000, 2), dtype=np.float32),
             bbox_format="xyxy",
             normalized=True,
         )
-
         # from https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/base.py#L295
         label["ratio_pad"] = (
             label["resized_shape"][0] / label["ori_shape"][0],
             label["resized_shape"][1] / label["ori_shape"][1],
         )  # for evaluation
 
-        label["im_file"] = label["image_path"]
+        # rename "image_path" key to "im_file"
+        label["im_file"] = label.pop("image_path")
         label["instances"] = instances
         return label
 
@@ -115,31 +152,29 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
         transforms: Ultralytics transforms applied to the np array images
     Returns: A dictionary containing the collated data in the formated
             expected by the Ultralytics DetectionModel class
-
-    TODO: DELETE HERE
     """
     result = defaultdict(list)
 
     for index, element in enumerate(data):
-        bboxes = element["instances"]._bboxes.bboxes
+        element["instances"].convert_bbox(format="xyxy")
+        bboxes = element.pop("instances")._bboxes.bboxes
         result["bboxes"].append(bboxes)
+
         for key, value in element.items():
             result[key].append(value)
 
         num_boxes = len(element["cls"])
-
         for _ in range(num_boxes):
-            result["batch_idx"].append(
-                float(index)
-            )  # yolo dataloader has this as a float not int
+            # yolo dataloader has this as a float not int
+            result["batch_idx"].append(float(index))
 
     result["img"] = torch.stack(result["img"], dim=0)
     result["batch_idx"] = torch.tensor(result["batch_idx"])
 
-    # Shape of resulting tensor should be (num_bboxes_in_batch, 4)
+    # Shape of resulting tensor should be (num bboxes in batch, 4)
     result["bboxes"] = torch.tensor(np.concatenate(result["bboxes"]))
 
-    # Shape of resulting tensor should be (num_bboxes_in_batch, 1)
+    # Shape of resulting tensor should be (num bboxes in batch, 1)
     # Call np.concatenate to avoid calling tensor on a list of np arrays but instead just one 2d np array
     result["cls"] = torch.tensor(np.concatenate(result["cls"])).reshape(-1, 1)
 
@@ -155,34 +190,115 @@ hyperparams = Hyperparameters(
     lr0=0.1,
     momentum=0.9,
     weight_decay=0.1,
-    batch_size=3,
+    batch_size=1,
     epochs=2,
-    prob_H_flip=0.9,
-    prob_V_flip=0.9,
-    prob_mosaic=.0,
+    prob_H_flip=1.0,
+    prob_V_flip=1.0,
+    prob_mosaic=1.0,
 )
 
 
 cache_dir = "/local/cache/path/" + str(uuid4())
 remote_dir = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=377/train"
+
 dataset = YoloDataset(
-    local=cache_dir, remote=remote_dir, shuffle=True, hyperparameters=hyperparams, image_size=640
+    local=cache_dir,
+    remote=remote_dir,
+    shuffle=True,
+    hyperparameters=hyperparams,
+    image_size=320,
 )
 
-dataloader = DataLoader(dataset=dataset, batch_size=hyperparams.batch_size, collate_fn=collate_fn_img)
+dataloader = DataLoader(
+    dataset=dataset, batch_size=hyperparams.batch_size, collate_fn=collate_fn_img
+)
 
 for i, batch in enumerate(dataloader):
     print(f"Image batch looks like: {batch['img'].shape}")
     print(f"Bboxes batch looks like: {batch['bboxes'].shape}")
+    print(batch)
     to_pil_image = torchvision.transforms.ToPILImage()
     img = to_pil_image(batch["img"][0].transpose(0, 2))
-    if i == 1:
+    if i == 0:
         break
 
 # COMMAND ----------
 
-import PIL
-display(PIL.ImageOps.invert(img))  # for some reason output images are invereted in color?
+from torchvision.utils import draw_bounding_boxes
+from torchvision.transforms.functional import to_pil_image
+
+class BoundingBox:
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+
+def denormalize_bounding_boxes(
+    item: BoundingBox, width: int=640, height: int=640
+) -> tuple[float, float, float, float]:
+    return (
+        item["x1"] * width,
+        item["y1"] * height,
+        item["x2"] * width,
+        item["y2"] * height
+    )
+
+
+image_index = 0
+selected_image = batch["img"][image_index]
+
+image = batch["img"][image_index].to(torch.uint8).permute(2,0,1)
+print(image.size())
+bboxes = batch["bboxes"] 
+print(bboxes)
+
+test_image = draw_bounding_boxes(image, bboxes, colors="red")
+display(to_pil_image(test_image))
+
+# COMMAND ----------
+
+cache_dir = "/local/cache/path/" + str(uuid4())
+
+dataset = YoloDataset(
+    local=cache_dir,
+    remote=remote_dir,
+    shuffle=False,
+    hyperparameters=hyperparams,
+    image_size=320,
+)
+
+dataloader = DataLoader(
+    dataset=dataset, batch_size=1, collate_fn=collate_fn_img, shuffle=False
+)
+
+data_iter = iter(dataloader)
+for i in range(1):
+    batch = next(data_iter)
+
+print(f"Image batch looks like: {batch}")
+
+# COMMAND ----------
+
+import matplotlib.pyplot as plt
+
+data = dataset.get_item(2)
+to_tens = ToTensor()
+#data = to_tens(data)
+#print(data["img"].dtype)
+to_pil_image = torchvision.transforms.ToPILImage()
+data["img"] = torch.tensor(np.ascontiguousarray(data["img"])).float() #/ 255
+new_img = to_pil_image(data["img"].permute(2,0,1))
+plt.imshow(new_img)
+#display(new_img)  # for some reason output images are invereted in color? 
+
+# COMMAND ----------
+
+data = dataset.__getitem__(0)
+#data = dataset.get_item(0)
+#print(data)
+print(data["instances"].convert_bbox(format="xyxy"))
+print("Boxes", data["instances"]._bboxes.bboxes)
 
 # COMMAND ----------
 
