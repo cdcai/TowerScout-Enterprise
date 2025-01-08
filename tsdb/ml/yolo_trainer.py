@@ -102,7 +102,7 @@ def score(
     NOTE: preds must be outputs from the model when it is in eval() mode NOT train() mode.
     """
     conf_mat = uutils.metrics.ConfusionMatrix(
-        nc=1, task="detect"
+        nc=1, task="detect", conf=args.conf
     )  # only 1 class: cooling towers
 
     height, width = minibatch["img"].shape[2:]
@@ -284,7 +284,8 @@ class YoloModelTrainer(BaseTrainer):
         metrics = score(minibatch, preds, step.name, self.device, self.model.args)
 
         if step.name == "VAL":
-            _, loss_items = self.model.loss(batch=minibatch, preds=preds)
+            loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
+            metrics["loss_VAL"] = loss.cpu().item()
             loss_scores = {
                 f"{name}_{step.name}": loss_items[i].item()
                 for i, name in enumerate(self.loss_types)

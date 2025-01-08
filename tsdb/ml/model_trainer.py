@@ -358,7 +358,6 @@ class BaseTrainer:
                 val_report_interval = len(dataloaders.val)
                 for batch_index, val_batch in enumerate(dataloaders.val):
                     val_metrics = self.validation_step(minibatch=val_batch, step=Steps.VAL)
-                    val_metrics["loss_VAL"] = loss.cpu().item()
 
                     if batch_index % val_report_interval == 0:
                         step_number = batch_index + (num_batches * epoch)
