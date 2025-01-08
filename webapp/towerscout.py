@@ -796,7 +796,7 @@ def uploadTileImages():
 
         session["user_id"] = get_current_user()
         user_id = session["user_id"]
-        meta, unique_direcotry = map.get_sat_maps(tiles, loop, fname, user_id)
+        meta, unique_direcotry, user_id = map.get_sat_maps(tiles, loop, fname, user_id)
         logging.info("get_sat_maps completed")
         session['metadata'] = meta
         print(" asynchronously retrieved", len(tiles), "files")
