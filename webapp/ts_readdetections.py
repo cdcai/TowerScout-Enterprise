@@ -1,7 +1,6 @@
 from databricks import sql
 from requests.exceptions import Timeout, RequestException
 import os, time, logging
-from tenacity import retry, wait_exponential, stop_after_attempt
 from databricks.sql.exc import RequestError
 
 
