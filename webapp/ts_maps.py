@@ -36,36 +36,48 @@ from datetime import datetime
 from azure.identity import DefaultAzureCredential
 import logging, ts_secrets
 from flask import request
+import getpass
 
 current_directory = os.getcwd()
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
-timeout = aiohttp.ClientTimeout(total=60)  # Set the timeout to 60 seconds
+timeout = aiohttp.ClientTimeout(total=600)  # Set the timeout to 6 minutes
 
 class Map:
 
     def __init__(self):
         self.has_metadata = False
 
-    def get_sat_maps(self, tiles, loop, dir, fname):
-        ssl._create_default_https_context = ssl._create_unverified_context
-        urls = []
-        for tile in tiles:
-            # ask provider for this specific url
-            url = self.get_url(tile)
-            urls.append(url)
-            tile["url"] = url
-            # print(urls[-1])
-            if self.has_metadata:
-                urls.append(self.get_meta_url(tile))
-                tile["metaurl"] = self.get_meta_url(tile)
+    def get_sat_maps(self, tiles, loop, fname, user_id):
+        try:
+            ssl._create_default_https_context = ssl._create_unverified_context
+            if user_id == 'None':
+                user_id = getpass.getuser()  # Get the username for local
+            self.user_id = user_id
+            urls = []
+            for tile in tiles:
+                # ask provider for this specific url
+                url = self.get_url(tile)
+                urls.append(url)
+                tile["url"] = url
+                # print(urls[-1])
+                if self.has_metadata:
+                    urls.append(self.get_meta_url(tile))
+                    tile["metaurl"] = self.get_meta_url(tile)
 
-        # tilesMetaData = self.getTilesMetaData(tiles=tiles)
-        # execute
-        loop.run_until_complete(
-            gather_urls(urls, dir, fname, self.has_metadata, self.mapType, tiles, self)
-        )
-        return self.has_metadata
-
+            # tilesMetaData = self.getTilesMetaData(tiles=tiles)
+            # execute
+            unique_directory = generate_unique_directory_name(self)
+            loop.run_until_complete(
+                gather_urls(urls, fname, self.has_metadata, self.mapType, tiles, unique_directory, self)
+            )
+            return self.has_metadata, self.request_id, self.user_id
+            
+        except Exception as e:
+            logging.error("Error at %s", "get_sat_maps ts_maps.py", exc_info=e)
+        except RuntimeError as e:
+            logging.error("Error at %s", "get_sat_maps ts_maps.py", exc_info=e) 
+        except SyntaxError as e:
+            logging.error("Error at %s", "get_sat_maps ts_maps.py", exc_info=e)
     #
     # adapted from https://stackoverflow.com/users/6099211/anton-ovsyannikov
     # correct for both bing and GMaps
@@ -175,168 +187,240 @@ def convert_to_data_uri(image_content):
     return img_str
 
 
-async def gather_urls(urls, dir, fname, metadata, mapType, tilesMetaData, self):
-    # execute
-    unique_directory = generate_unique_directory_name(self)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        await fetch_all(
-            session,
-            urls,
-            dir,
-            fname,
-            metadata,
-            mapType,
-            unique_directory,
-            tilesMetaData,
-        )
-
+async def gather_urls(urls, fname, metadata, mapType, tilesMetaData, unique_directory, self):
+    try:
+        # execute
+         # Start performance logging
+        start_time = time.time()
+        
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            await fetch_all(
+                session,
+                urls,
+                fname,
+                metadata,
+                mapType,
+                unique_directory,
+                tilesMetaData
+            )
+            # End performance logging
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"Gathering URLs took {elapsed_time:.2f} seconds.")
+        
+    except Exception as e:
+        logging.error("Error at %s", "gather_urls ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "gather_urls ts_maps.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "gather_urls ts_maps.py", exc_info=e) 
 
 async def rate_limited_fetch(
-    session, url, dir, fname, i, index, mapType, unique_directory, tile
+    session, url, fname, i, mapType, unique_directory, tile, blob_service_client
 ):
     # if ( mapType == 'azure'):
         #Azure has more payload. Instead of increasing the sleep time exponentially, by changing it to 1 second per tile 
         # has avoided the error aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed. This change will not have
         # much impact on the time factor, especially with large number of tiles, when compared with exponentially increasing the time based on the
         # number of tiles
-    await asyncio.sleep(index * (1))
-    # else:
-    #     await asyncio.sleep(index * (1 / 3))
-    await asyncio.sleep(index * (1))
-    # else:
-    #     await asyncio.sleep(index * (1 / 3))
-    await fetch(session, url, dir, fname, i, mapType, unique_directory, tile)
+    try:
+        # await asyncio.sleep(index * (1/50))
+        # else:
+        await asyncio.sleep(i * (1 / 10))
+        await fetch(session, url, fname, i, mapType, unique_directory, tile, blob_service_client)
+    except Exception as e:
+        logging.error("Error at %s", "rate_limited_fetch ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "rate_limited_fetch ts_maps.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "rate_limited_fetch ts_maps.py", exc_info=e)  
 
 
-async def fetch(session, url, dir, fname, i, mapType, unique_directory, tile):
+async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_service_client):
+    try:
+        meta = False
+        if url.endswith(" (meta)"):
+            url = url[0:-7]
+            meta = True
 
-    meta = False
-    if url.endswith(" (meta)"):
-        url = url[0:-7]
-        meta = True
+        async with session.get(url,timeout=600) as response:
+            if response.status != 200:
+                print(f"Error: HTTP status code {response.status}")
+                error_text = await response.text()
+                print(f"Error response: {error_text}")
+                # response.raise_for_status()
+            # #Extract metadata keys from the tile to append to the image
+            tileMetadata = getTileMetaData(tile, mapType)
 
-    async with session.get(url) as response:
-        if response.status != 200:
-            print(f"Error: HTTP status code {response.status}")
-            error_text = await response.text()
-            print(f"Error response: {error_text}")
-            # response.raise_for_status()
-        # #Extract metadata keys from the tile to append to the image
-        tileMetadata = getTileMetaData(tile, mapType)
+            # write the file
+            filename = unique_directory+"/"+fname+str(i)+(".meta.txt" if meta else ".jpeg")
+            blobname = fname+str(i)+(".meta.txt" if meta else ".jpeg")
 
-        # write the file
-        filename = dir + "/" + fname + str(i) + (".meta.txt" if meta else ".jpeg")
-        blobname = fname + str(i) + (".meta.txt" if meta else ".jpeg")
-
-        if (
-            response.headers.get("Content-Type", "").lower()
-            == "application/vnd.mapbox-vector-tile"
-        ):
-            #    async with aiofiles.open(filename, mode='rb') as f:
-            #         azurevector_tile_data = await response.read()
-            #         azurevectortogeojson = vector_tile_to_geojson(azurevector_tile_data)
-            # print("Printing Content type " + response.headers.get('Content-Type', '').lower())
-            tile_data = await response.read()
-            tile = mapbox_vector_tile.decode(tile_data)
-            # print(json.dumps(tile, indent=2))
-            json_data = {}
-            for layer_name, layer in tile.items():
-                json_data[layer_name] = {"features": []}
-                for feature in layer["features"]:
-                    json_data[layer_name]["features"].append(
-                        {
-                            "geometry": feature["geometry"],
-                            "properties": feature["properties"],
-                        }
-                    )
-            with open(filename, "w") as f:
-                json.dump(json_data, f)
-                f.close()
-
-        else:
-            # Create a unique container
-            imageConfigFile = config_dir + "/config.imagedirectory.json"
-            with open(imageConfigFile, "r") as file:
-                data = json.load(file)  # Load the JSON data into a Python dictionary
-
-                upload_dir = data["upload_dir"]
-            directoryname = upload_dir + unique_directory
-
-            content = await response.read()
-
-            # Code to write to Temp directory - This is required for now as there are other processes using these files
-            # Need to change all the processes to read from the AIX Team's container later
-            # async with aiofiles.open(filename, mode='wb') as f:
-            content_type = response.headers.get("Content-Type", "")
-            if (content_type.startswith("image/")) and (
-                Image.open(BytesIO(content)).mode != "RGB"
+            if (
+                response.headers.get("Content-Type", "").lower()
+                == "application/vnd.mapbox-vector-tile"
             ):
-                content = await response.read()
-                # converting to RGB
-                rgbimg = Image.open(BytesIO(content)).convert("RGB")
-                # append metadata to image
-                contentmeta = appendMetadatatoImg(rgbimg, tileMetadata, mapType)
-                blob_url = asyncio.create_task(
-                    uploadImagetodirUnqFileName(
-                        contentmeta, "ddphss-csels", directoryname, blobname
-                    )
-                )
-                # await f.write(contentmeta)
-                # await f.close()
+                #    async with aiofiles.open(filename, mode='rb') as f:
+                #         azurevector_tile_data = await response.read()
+                #         azurevectortogeojson = vector_tile_to_geojson(azurevector_tile_data)
+                # print("Printing Content type " + response.headers.get('Content-Type', '').lower())
+                tile_data = await response.read()
+                tile = mapbox_vector_tile.decode(tile_data)
+                # print(json.dumps(tile, indent=2))
+                json_data = {}
+                for layer_name, layer in tile.items():
+                    json_data[layer_name] = {"features": []}
+                    for feature in layer["features"]:
+                        json_data[layer_name]["features"].append(
+                            {
+                                "geometry": feature["geometry"],
+                                "properties": feature["properties"],
+                            }
+                        )
+                with open(filename, "w") as f:
+                    json.dump(json_data, f)
+                    f.close()
+
             else:
-                if content_type.startswith("image/"):
+                # Create a unique container
+                imageConfigFile = config_dir + "/config.imagedirectory.json"
+                with open(imageConfigFile, "r") as file:
+                    data = json.load(file)  # Load the JSON data into a Python dictionary
 
+                    upload_dir = data["upload_dir"]
+                directoryname = upload_dir + unique_directory
+
+                content = await response.read()
+
+                # Code to write to Temp directory - This is required for now as there are other processes using these files
+                # Need to change all the processes to read from the AIX Team's container later
+                # async with aiofiles.open(filename, mode='wb') as f:
+                content_type = response.headers.get("Content-Type", "")
+                if (content_type.startswith("image/")) and (
+                    Image.open(BytesIO(content)).mode != "RGB"
+                ):
                     content = await response.read()
-                    # convert response to image
-                    imgobject = Image.open(io.BytesIO(content))
-
+                    # converting to RGB
+                    rgbimg = Image.open(BytesIO(content)).convert("RGB")
                     # append metadata to image
-                    contentmeta = appendMetadatatoImg(imgobject, tileMetadata, mapType)
+                    contentmeta = appendMetadatatoImg(rgbimg, tileMetadata, mapType)
                     blob_url = asyncio.create_task(
                         uploadImagetodirUnqFileName(
-                            contentmeta, "ddphss-csels", directoryname, blobname
+                            contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
                         )
                     )
                     # await f.write(contentmeta)
                     # await f.close()
                 else:
-                    # Code to add the .txt file
-                    # Adding code to write to the AIX container directory
-                    blob_url = asyncio.create_task(
-                        uploadImagetodirUnqFileName(
-                            content, "ddphss-csels", directoryname, blobname
+                    if content_type.startswith("image/"):
+
+                        content = await response.read()
+                        # convert response to image
+                        imgobject = Image.open(io.BytesIO(content))
+
+                        # append metadata to image
+                        contentmeta = appendMetadatatoImg(imgobject, tileMetadata, mapType)
+                        blob_url = asyncio.create_task(
+                            uploadImagetodirUnqFileName(
+                                contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
+                            )
                         )
-                    )
-                
+                        # await f.write(contentmeta)
+                        # await f.close()
+                    else:
+                        # Code to add the .txt file
+                        # Adding code to write to the AIX container directory
+                        blob_url = asyncio.create_task(
+                            uploadImagetodirUnqFileName(
+                                content, "ddphss-csels", directoryname, blobname
+                            )
+                        )
+    except Exception as e:
+        logging.error("Error at %s", "fetch ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "fetch ts_maps.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "fetch ts_maps.py", exc_info=e)            
+
+async def fetchimagemetadata(session, fname, i, mapType, unique_directory, tile, blob_service_client):
+    try:
+      
+        # write the file
+        blobname = fname+str(i)+(".meta.txt")
+
+        # Get the unique container
+        imageConfigFile = config_dir + "/config.imagedirectory.json"
+        with open(imageConfigFile, "r") as file:
+            data = json.load(file)  # Load the JSON data into a Python dictionary
+
+            upload_dir = data["upload_dir"]
+            directoryname = upload_dir + unique_directory
+
+        content = json.dumps(getTileMetaDatatoUpload(tile,mapType))
+
+        # Code to add the .txt file
+            
+        blob_url = asyncio.create_task(
+            uploadImagetodirUnqFileName(
+                content, "ddphss-csels", directoryname, blobname, blob_service_client
+            )
+        )
+    except Exception as e:
+        logging.error("Error at %s", "fetchimagemetadata ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "fetchimagemetadata ts_maps.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "fetchimagemetadata ts_maps.py", exc_info=e)            
+
 
 async def fetch_all(
-    session, urls, dir, fname, metadata, mapType, unique_directory, tilesMetaData
+    session, urls, fname, metadata, mapType, unique_directory, tilesMetaData
 ):
-    tasks = []
-    for i, tile in enumerate(tilesMetaData):
-        suffix = i
-        task = rate_limited_fetch(
-            session, tile["url"], dir, fname, suffix, i, mapType, unique_directory, tile
-        )
-        tasks.append(task)
-        if metadata:
+    try:
+        blob_service_client = createBlobServiceClient()
+        tasks = []
+        for (i, tile) in enumerate(tilesMetaData):
             task = rate_limited_fetch(
-                session,
-                tile["metaurl"],
-                dir,
-                fname,
-                suffix,
-                i,
-                mapType,
-                unique_directory,
-                tile,
+                session, tile["url"], fname, i, mapType, unique_directory, tile, blob_service_client
             )
             tasks.append(task)
+            # # Upload metadata .txt
+            # # if metadata:
+            # task = fetchimagemetadata(
+            #     session,
+            #     fname,
+            #     i,
+            #     mapType,
+            #     unique_directory,
+            #     tile,
+            #     blob_service_client
+            #     )
+            # tasks.append(task)
 
-    results = await asyncio.gather(*tasks)
-    return results
+        results = await asyncio.gather(*tasks)
+        return results
+    except Exception as e:
+        logging.error("Error at %s", "fetch_all ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "fetch_all ts_maps.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "fetch_all ts_maps.py", exc_info=e)
 
+def createBlobServiceClient():
+    # Replace with your Azure Storage account details
+    # Get the token using DefaultAzureCredential
+        credential = DefaultAzureCredential()
 
+        # Initialize the BlobServiceClient
+        storage_account_name = "davsynapseanalyticsdev"
+        
+        storageconnectionstring = ts_secrets.devSecrets.getSecret(
+            "TOWERSCOUTDEVSTORAGECONNSTR"
+        )
+        blob_service_client = BlobServiceClient.from_connection_string(
+            storageconnectionstring
+        )
+        return blob_service_client
 #
 # radian conversion and Haversine distance
 #
@@ -359,63 +443,75 @@ def get_distance(x1, y1, x2, y2):
     return d
     # returns the distance in meters
 def getTileMetaData(tile, mapType):
-    columns_to_extract = ["id", "lat", "lng", "h", "w"]
-    tileMetadata = {}
+    try:
+        columns_to_extract = ["id", "lat", "lng", "h", "w"]
+        tileMetadata = {}
 
-    for key in columns_to_extract:
-        tileMetadata[key] = tile.get(key)
-    tileMetadata["mapProvider"] = mapType
-    formatted_datetime = datetime.now().strftime("%Y:%m:%d %H:%M:%S")
-    tileMetadata["requestDate"] = formatted_datetime
-    return tileMetadata
+        for key in columns_to_extract:
+            tileMetadata[key] = tile.get(key)
+        tileMetadata["mapProvider"] = mapType
+        formatted_datetime = datetime.now().strftime("%Y:%m:%d %H:%M:%S")
+        tileMetadata["requestDate"] = formatted_datetime
+        return tileMetadata
+    except Exception as e:
+        logging.error("Error at %s", "getTileMetaData ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "getTileMetaData ts_maps.py", exc_info=e)
 
-
-def getTilesMetaData(tiles, mapType):
-    # Specify the columns you want to extract
-    columns_to_extract = ["id", "lat", "lng", "h", "w"]
-    # Extract the specified columns
-    # Extracting the specified columns into a new list of dictionaries
-    extracted_data = [
-        {key: item[key] for key in columns_to_extract if key in item} for item in tiles
-    ]
-    extracted_data["mapType"] = mapType
-    return extracted_data
+def getTileMetaDatatoUpload(tile, mapType):
+    try:
+        # Specify the columns you want to extract
+        columns_to_extract = ["lat", "lat_for_url", "lng", "h", "w", "id", "col", "row", "url", "filename"]
+        # Extract the specified columns
+        # Extracting the specified columns into a new list of dictionaries
+        extracted_data = {key: tile[key] for key in columns_to_extract if key in tile}
+         
+        extracted_data["mapType"] = mapType
+        return extracted_data
+    except Exception as e:
+        logging.error("Error at %s", "getTilesMetaData ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "getTilesMetaData ts_maps.py", exc_info=e)
 
 
 def appendMetadatatoImg(img, tileMetaData, mapType):
-    # Assign image object to a local variable
-    imgImage = img
+    try:
+        # Assign image object to a local variable
+        imgImage = img
 
-    # Get the existing EXIF data from the image
-    exif_data = imgImage._getexif() if hasattr(imgImage, "_getexif") else None
+        # Get the existing EXIF data from the image
+        exif_data = imgImage._getexif() if hasattr(imgImage, "_getexif") else None
 
-    if exif_data != None:
-        exif_data = imgImage._getexif()
-        exif_dict = piexif.load(exif_data)
-        exif_dict["Exif"] = {**exif_dict["Exif"], **tileMetaData}
-        # print(f"exif_dict: {exif_dict}")
-    else:
-        # Create a datetime object for the current time
-        now = datetime.now()
-        # Convert datetime to string format recognized by EXIF
-        formatted_datetime = now.strftime("%Y:%m:%d %H:%M:%S")
-        # Convert the custom metadata to EXIF format
-        exif_dict = {"Exif": {}}
-        exif_dict["Exif"][piexif.ExifIFD.UserComment] = str(tileMetaData).encode(
-            "utf-8"
-        )
-        # print(f"exif_dict: {exif_dict}")
-    # Encode the EXIF data as bytes
-    exif_bytes = piexif.dump(exif_dict)
-    #
-    exif_bytes = piexif.dump(exif_dict)
-    # Save updated metadata back to a byte stream using BytesIO
-    # Save the modified image with updated EXIF data to a variable
-    image_bytes = io.BytesIO()
-    imgImage.save(image_bytes, format="JPEG", exif=exif_bytes)
-    # Get the byte data from BytesIO object
-    return image_bytes.getvalue()
-
+        if exif_data != None:
+            exif_data = imgImage._getexif()
+            exif_dict = piexif.load(exif_data)
+            exif_dict["Exif"] = {**exif_dict["Exif"], **tileMetaData}
+            # print(f"exif_dict: {exif_dict}")
+        else:
+            # Create a datetime object for the current time
+            now = datetime.now()
+            # Convert datetime to string format recognized by EXIF
+            formatted_datetime = now.strftime("%Y:%m:%d %H:%M:%S")
+            # Convert the custom metadata to EXIF format
+            exif_dict = {"Exif": {}}
+            exif_dict["Exif"][piexif.ExifIFD.UserComment] = str(tileMetaData).encode(
+                "utf-8"
+            )
+            
+        # Encode the EXIF data as bytes
+        exif_bytes = piexif.dump(exif_dict)
+        #
+        exif_bytes = piexif.dump(exif_dict)
+        # Save updated metadata back to a byte stream using BytesIO
+        # Save the modified image with updated EXIF data to a variable
+        image_bytes = io.BytesIO()
+        imgImage.save(image_bytes, format="JPEG", exif=exif_bytes)
+        # Get the byte data from BytesIO object
+        return image_bytes.getvalue()
+    except Exception as e:
+        logging.error("Error at %s", "appendMetaDatatoImg ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "appendMetaDatatoImg ts_maps.py", exc_info=e)
 
 def check_bounds(x1, y1, x2, y2, bounds):
     south, west, north, east = [float(x) for x in bounds.split(",")]
@@ -433,58 +529,31 @@ def check_tile_against_bounds(t, bounds):
 
 
 async def uploadImagetodirUnqFileName(
-    blobcontent, containername, directoryname, filename
+    blobcontent, containername, directoryname, filename, blob_service_client
 ):
+    try:
+        
+        container_name = containername
+        container_client = blob_service_client.get_container_client(container_name)
 
-    # Replace with your Azure Storage account details
-    # Get the token using DefaultAzureCredential
-    credential = DefaultAzureCredential()
+        # Define the directory where the file will be uploaded
+        directory_name = directoryname
 
-    # Initialize the BlobServiceClient
-    storage_account_name = "davsynapseanalyticsdev"
-    blob_service_client = BlobServiceClient(
-        account_url=f"https://{storage_account_name}.blob.core.windows.net/",
-        credential=credential,
-    )
-    storageconnectionstring = ts_secrets.devSecrets.getSecret(
-        "TOWERSCOUTDEVSTORAGECONNSTR"
-    )
-    blob_service_client = BlobServiceClient.from_connection_string(
-        storageconnectionstring
-    )
-    container_name = containername
-    container_client = blob_service_client.get_container_client(container_name)
+        # Generate a unique file name using UUID
+        unique_file_name = f"{uuid.uuid4()}_{filename}"
+        # Create a BlobClient for the unique file in the directory
+        blob_name = f"{directory_name}{unique_file_name}"
+        blob_client = container_client.get_blob_client(blob_name)
 
-    # Define the directory where the file will be uploaded
-    directory_name = directoryname
-
-    # Generate a unique file name using UUID
-    unique_file_name = f"{uuid.uuid4()}_{filename}"
-    # Create a BlobClient for the unique file in the directory
-    blob_name = f"{directory_name}{unique_file_name}"
-    blob_client = container_client.get_blob_client(blob_name)
-
-    blob_client.upload_blob(blobcontent, overwrite=True, timeout=60)
-    return blob_client.url
-
-    # uploadimagecontent = readimagecontent(local_file_path)
-
-    # container_client.upload_blob(name=blob_name, data=uploadimagecontent)
+        blob_client.upload_blob(blobcontent, overwrite=True, timeout=600)
+        return blob_client.url
+    except Exception as e:
+        logging.error("Error at %s", "uploadImagetodirUnqFileName ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "uploadImagetodirUnqFileName ts_maps.py", exc_info=e)
 
 
 def generate_unique_directory_name(self):
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     self.request_id = str(uuid.uuid4())[:8]  # Take first 8 characters of UUID
-    self.user_id = get_current_user()
-
     return f"/{self.user_id}/{self.request_id}/"
 
-
-import getpass
-
-
-def get_current_user():
-    username = getpass.getuser()  # Get the username
-    # Optionally, you can also get the domain
-    domain = os.getenv("USERDOMAIN") or os.getenv("COMPUTERNAME")
-    return f"{username}"
