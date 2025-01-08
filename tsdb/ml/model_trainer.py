@@ -198,6 +198,9 @@ class BaseTrainer:
             {"params": g[1], "weight_decay": 0.0}
         )  # add g1 (BatchNorm2d weights)
 
+        for param_group in optimizer.param_groups:
+            param_group["initial_lr"] = param_group["lr"]
+
         return optimizer
 
     def optimizer_step(self):  # pragma: no cover

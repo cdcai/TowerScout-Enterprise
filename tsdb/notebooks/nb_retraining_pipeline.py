@@ -46,10 +46,6 @@ else:
 
 # COMMAND ----------
 
-# set registry to be UC model registry
-
-# COMMAND ----------
-
 # from tsdb.preprocessing.preprocess import build_mds_by_splits
 
 # out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits"
