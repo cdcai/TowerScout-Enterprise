@@ -332,12 +332,13 @@ class BaseTrainer:
             self.model.train()
             self.scheduler.step()
 
-            # Manual Warmup
-            self.manual_warmup(num_warmup, epoch * num_batches)
-
             # Train 
             for batch_index, train_batch in enumerate(dataloaders.train):
                 step_number = batch_index + (num_batches * epoch)
+
+                # Manual Warmup
+                self.manual_warmup(num_warmup, step_number)
+
                 metrics = self.training_step(minibatch=train_batch)
                 loss = metrics.pop("loss")
 
