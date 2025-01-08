@@ -70,7 +70,7 @@ class Map:
             loop.run_until_complete(
                 gather_urls(urls, fname, self.has_metadata, self.mapType, tiles, unique_directory, self)
             )
-            return self.has_metadata, self.request_id
+            return self.has_metadata, self.request_id, self.user_id
             
         except Exception as e:
             logging.error("Error at %s", "get_sat_maps ts_maps.py", exc_info=e)
