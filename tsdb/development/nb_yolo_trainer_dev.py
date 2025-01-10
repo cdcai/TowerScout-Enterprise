@@ -1,6 +1,7 @@
 # Databricks notebook source
 # %pip install ultralytics
 # %pip install efficientnet_pytorch
+# %pip install optuna
 
 # COMMAND ----------
 
@@ -8,12 +9,12 @@ from ultralytics.data import build_dataloader, build_yolo_dataset
 from ultralytics.data.utils import check_det_dataset
 from ultralytics.cfg import get_cfg
 from ultralytics.nn.tasks import attempt_load_one_weight, DetectionModel
-from tsdb.ml.utils import OptimizerArgs
+# from tsdb.ml.utils import OptimizerArgs
 from tsdb.ml.yolo_trainer import YoloModelTrainer
 
 # COMMAND ----------
 
-optimizer_args = OptimizerArgs(optimizer_name="Adam", lr0=0.002, momentum=0.9)
+# optimizer_args = OptimizerArgs(optimizer_name="Adam", lr0=0.002, momentum=0.9)
 
 # COMMAND ----------
 
@@ -46,20 +47,20 @@ model = get_model(model_yaml, model_pt, data)
 
 # COMMAND ----------
 
-import torch
-isinstance(model, torch.nn.Module)
+# import torch
+# isinstance(model, torch.nn.Module)
 
 # COMMAND ----------
 
-model.args.single_cls = True # set to False when using coco dataset since it has 80 classes
+# model.args.single_cls = True # set to False when using coco dataset since it has 80 classes
 
 # COMMAND ----------
 
-yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model, train_args=None)
+# yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model, train_args=None)
 
 # COMMAND ----------
 
-batch_size = 3
+batch_size = 2
 
 # seems like confusion matrix methods only work when the dataset is built with
 # mode="val" or else the minibatches wont have the key "ratio_pad" that is needed by some functions
@@ -74,10 +75,12 @@ loader = build_dataloader(dataset, batch_size, workers=4)
 
 # COMMAND ----------
 
-for image_batch in loader:
-    #print(image_batch)
-    print(image_batch['bboxes'].shape)
-    print(image_batch['cls'].shape)
+for i, image_batch in enumerate(loader):
+    print(f"BATCH {i} image paths: {image_batch['im_file']}")
+    print(f"BATCH {i} image shape: {image_batch['img'].shape}")
+    print(f"BATCH {i} boxes: {image_batch['bboxes']}")
+    print(f"BATCH {i} classes: {image_batch['cls']}")
+    print(f"BATCH {i} batch indexes: {image_batch['batch_idx']}\n")
 
 # COMMAND ----------
 
