@@ -187,7 +187,7 @@ class YoloModelTrainer(BaseTrainer):
         epochs: int = 1,
         **kwargs
     ):  # pragma: no cover
-        super().__init__(model, optimizer, train_args, epochs)
+        super().__init__(model, optimizer, train_args, epochs, **kwargs)
         self.freeze_layers()
         self.loss_types = [loss.name for loss in YOLOLoss]
 

@@ -34,12 +34,13 @@ class TrainingArgs:
     report_interval: int = 5
     val_interval: int = 1
     metrics: Any = None
-    nbs: int = 64 # nominal batch size
-    warmup_epochs: float = 3.0 # fractions ok
+    nbs: int = 64  # nominal batch size
+    warmup_epochs: float = 3.0  # fractions ok
     warmup_momentum: float = 0.8
     warmup_bias_lr: float = 0.1
     lrf: float = 0.01
-    cos_lr: bool = False # maybe tune
+    cos_lr: bool = False  # maybe tune
+    patience: int = 20
 
 
 class BaseTrainer:
@@ -59,7 +60,8 @@ class BaseTrainer:
         accumulate: int = 3,
         batch_size: int = 4,
         lf: float = None,
-        scheduler: optim.lr_scheduler.LambdaLR = None
+        scheduler: optim.lr_scheduler.LambdaLR = None,
+        patience: int = 15
     ):  # pragma: no cover
         # Model
         self.model = model
@@ -76,19 +78,25 @@ class BaseTrainer:
         self.batch_size = batch_size
         self.accumulate = accumulate
         self.momentum = momentum
-        
+        self.patience = train_args.patience
+
         # Gradients
         self.scaler = (
             torch.amp.GradScaler("cuda", enabled=self.amp)
             if uutils.torch_utils.TORCH_2_4
             else torch.cuda.amp.GradScaler(enabled=self.amp)
         )
-        
+
         # Optimization
         self.lf = None
         self.scheduler = None
 
         self._setup_scheduler()
+
+        # Early stopping
+        self.stopper = uutils.torch_utils.EarlyStopping(patience=self.patience)
+        self.stop = False
+        
 
     @classmethod
     def from_optuna_hyperparameters(
@@ -115,6 +123,7 @@ class BaseTrainer:
             epochs=hyperparameters.epochs,
             batch_size=hyperparameters.batch_size,
             momentum=hyperparameters.momentum,
+            patience=hyperparameters.patience,
         )
 
     def _setup_scheduler(self):
@@ -122,13 +131,13 @@ class BaseTrainer:
         Initialize training learning rate scheduler. Taken from ultralytics
         """
         lrf = self.train_args.lrf
-        
+
         if self.train_args.cos_lr:
             self.lf = uutils.torch_utils.one_cycle(1, lrf, self.epochs)
         else:
             # Linear
             self.lf = lambda x: max(1 - x / self.epochs, 0) * (1.0 - lrf) + lrf
-        
+
         self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, self.lf)
 
     @staticmethod
@@ -283,29 +292,35 @@ class BaseTrainer:
         """
         if step > num_warmup:
             return
-        
+
         x_i = [0, num_warmup]
-        self.accumulate = max(1, int(np.interp(step, x_i, [1, self.train_args.nbs / self.batch_size]).round()))
+        self.accumulate = max(
+            1,
+            int(
+                np.interp(step, x_i, [1, self.train_args.nbs / self.batch_size]).round()
+            ),
+        )
 
         for index, param in enumerate(self.optimizer.param_groups):
             param["lr"] = np.interp(
-                step, 
-                x_i, 
-                [self.train_args.warmup_bias_lr if index == 0 else 0.0, param["initial_lr"] * self.lf(self.epoch)]
+                step,
+                x_i,
+                [
+                    self.train_args.warmup_bias_lr if index == 0 else 0.0,
+                    param["initial_lr"] * self.lf(self.epoch),
+                ],
             )
 
             if "momentum" in param:
                 param["momentum"] = np.interp(
-                    step,
-                    x_i,
-                    [self.train_args.warmup_momentum, self.momentum]
+                    step, x_i, [self.train_args.warmup_momentum, self.momentum]
                 )
 
     def train(
-        self, 
-        dataloaders: DataLoaders, 
-        model_name: str = "towerscout_model", 
-        trial: optuna.trial.Trial = None
+        self,
+        dataloaders: DataLoaders,
+        model_name: str = "towerscout_model",
+        trial: optuna.trial.Trial = None,
     ) -> dict[str, Any]:  # pragma: no cover
         """
         Trains a model with given hyperparameter values and returns the value
@@ -320,8 +335,9 @@ class BaseTrainer:
         """
         num_batches = len(dataloaders.train)
         num_warmup = (
-            max(round(self.train_args.warmup_epochs * num_batches), 100) 
-            if self.train_args.warmup_epochs > 0 else -1
+            max(round(self.train_args.warmup_epochs * num_batches), 100)
+            if self.train_args.warmup_epochs > 0
+            else -1
         )
 
         self.optimizer.zero_grad()
@@ -332,7 +348,7 @@ class BaseTrainer:
             self.model.train()
             self.scheduler.step()
 
-            # Train 
+            # Train
             for batch_index, train_batch in enumerate(dataloaders.train):
                 step_number = batch_index + (num_batches * epoch)
 
@@ -351,25 +367,32 @@ class BaseTrainer:
 
                 if batch_index % self.train_args.report_interval == 0:
                     mlflow.log_metrics(metrics, step=step_number)
-            
+
             # Validation
             if epoch % self.train_args.val_interval == 0:
                 self.model.eval()
                 val_report_interval = len(dataloaders.val)
                 for batch_index, val_batch in enumerate(dataloaders.val):
-                    val_metrics = self.validation_step(minibatch=val_batch, step=Steps.VAL)
+                    val_metrics = self.validation_step(
+                        minibatch=val_batch, step=Steps.VAL
+                    )
 
                     if batch_index % val_report_interval == 0:
-                        step_number = batch_index + (num_batches * epoch)
+                        step_number = epoch#batch_index + (num_batches * epoch)
                         mlflow.log_metrics(val_metrics, step=step_number)
-                
-                val_metric = val_metrics[f"{self.train_args.objective_metric}_VAL"] 
-                
+
+                val_metric = val_metrics[f"{self.train_args.objective_metric}_VAL"]
+
                 if trial is not None:
                     trial.report(val_metric, step_number)
 
                     if trial.should_prune():
                         raise optuna.TrialPruned()
+                
+                # check early stopping
+                self.stop |= self.stopper(self.epoch + 1, val_metric)
+                if self.stop:
+                    break
 
         # Done Training
         signature = self.get_signature(dataloaders.val)
@@ -386,7 +409,9 @@ class BaseTrainer:
         pass
 
 
-def set_optimizer(model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4):  # pragma: no cover
+def set_optimizer(
+    model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4
+):  # pragma: no cover
     params_to_update = []
     for name, param in model.named_parameters():
         if "_bn" in name:
@@ -405,7 +430,7 @@ def score(logits, labels, step: str, metrics):  # pragma: no cover
         f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
         for metric in metrics
     }
-    
+
 
 @torch.no_grad()
 def inference_step(minibatch, model, metrics, step) -> dict:  # pragma: no cover

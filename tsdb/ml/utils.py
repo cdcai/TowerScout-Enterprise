@@ -72,6 +72,7 @@ class Hyperparameters:
         epochs: number of epochs
         prob_H_flip: probablity of horizontally flipping image
         prob_V_flip: probability of vertically flipping image
+        patience: number of epochs to wait for validation metric improvement before early stopping
     """
     lr0: float
     momentum: float
@@ -81,6 +82,7 @@ class Hyperparameters:
     prob_H_flip: float
     prob_V_flip: float
     prob_mosaic: float = 1.0
+    patience: int = 15
 
     @classmethod
     def from_optuna_trial(cls, trial: Trial):
@@ -91,10 +93,11 @@ class Hyperparameters:
         batch_size = 2**batch_size_power
         prob_H_flip = trial.suggest_float("prob_H_flip", 0.3, 0.5)
         prob_V_flip = trial.suggest_float("prob_V_flip", 0.0, 0.5)
-        prob_mosaic = trial.suggest_float("prob_mosaic", 0.1, 0.1)
-        epochs = trial.suggest_int("epochs", 50, 50)
+        prob_mosaic = trial.suggest_float("prob_mosaic", 0.0, 0.0)
+        epochs = trial.suggest_int("epochs", 15, 15)
+        patience = trial.suggest_int("patience", 5, 5)
 
-        return cls(lr, momentum, weight_decay, batch_size, epochs, prob_H_flip, prob_V_flip, prob_mosaic)
+        return cls(lr, momentum, weight_decay, batch_size, epochs, prob_H_flip, prob_V_flip, prob_mosaic, patience)
 
 
 

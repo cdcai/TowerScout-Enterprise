@@ -85,11 +85,12 @@ mlflow.set_registry_uri("databricks-uc")
 
 out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=377"
 
-study = optuna.create_study(direction="minimize", pruner=optuna.pruners.MedianPruner())
+study = optuna.create_study(direction="maximize", pruner=optuna.pruners.MedianPruner())
 objective_with_args = partial(
     objective,
     out_root_base=out_root_base_path,
-    yolo_version="yolov10n"
+    yolo_version="yolov10n",
+    objective_metric="f1"
 )
 
 # add with mlflow context here to get nested structure for logging

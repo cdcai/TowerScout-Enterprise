@@ -64,7 +64,12 @@ class YoloDataset(StreamingDataset):
 
     def __getitem__(self, index: int) -> Any:
         labels = self.get_image_and_label(index)
-        return self.transforms(labels)
+        
+        # Account for the case where the image has no labels (null image)
+        if len(label["cls"]) < 1:
+            return labels
+        else:
+            return self.transforms(labels)
 
     def get_image_and_label(self, index: int) -> Any:
         """
@@ -76,11 +81,13 @@ class YoloDataset(StreamingDataset):
         """
         label = super().__getitem__(index)  # get row from dataset
 
+        bboxes = deepcopy(label.pop("bboxes")).reshape(-1, 4)
         # move bboxes from "bboxes" key to "instances" key
         instances = Instances(
-            bboxes=deepcopy(label.pop("bboxes")).reshape(-1, 4),
+            bboxes=bboxes,
             # See: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/dataset.py#L227
-            # We set this value
+            # We set this value as the calcuations some class methods of Instance perform 
+            # require it to not be the default value of None
             segments=np.zeros((0, 1000, 2), dtype=np.float32),
             bbox_format="xyxy",
             normalized=True,
@@ -199,6 +206,16 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
     result = defaultdict(list)
 
     for index, element in enumerate(data):
+        # This accounts for null images 
+        # (images with no cooling towers)
+        if len(element["cls"]) < 1:
+           result["img"].append(element["img"])
+           result["im_file"].append(element["im_file"])
+           result["ori_shape"].append(element["ori_shape"])
+           result["resized_shape"].append(element["resized_shape"])
+           result["ratio_pad"].append(element["ratio_pad"])
+           continue
+
         element["instances"].convert_bbox(format="xyxy")
         bboxes = element.pop("instances")._bboxes.bboxes
         result["bboxes"].append(bboxes)

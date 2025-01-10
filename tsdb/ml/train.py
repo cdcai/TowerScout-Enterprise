@@ -52,6 +52,7 @@ def objective(
     trial: Trial,
     out_root_base: str,
     yolo_version: str = "yolov10n",
+    objective_metric: str = "f1",
 ) -> float:  # pragma: no cover
     """
     Objective function for Optuna to optimize.
@@ -66,8 +67,7 @@ def objective(
     """
     model = get_model(f"{yolo_version}.yaml", f"{yolo_version}.pt")
     hyperparameters = Hyperparameters.from_optuna_trial(trial)
-    train_args = TrainingArgs()
-
+    train_args = TrainingArgs(objective_metric=objective_metric)
     model_trainer = YoloModelTrainer.from_optuna_hyperparameters(
         hyperparameters, model, train_args
     )
