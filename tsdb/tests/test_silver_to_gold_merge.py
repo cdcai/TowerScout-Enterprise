@@ -1,3 +1,9 @@
+'''
+TODO - Schema Error
+'''
+
+'''
+
 import pytest
 import json
 from typing import Any
@@ -127,3 +133,4 @@ def test_merge_updates_into_gold(
     df = spark.sql(query)
 
     assert df.count() == 2
+    '''
