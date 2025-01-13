@@ -66,7 +66,7 @@ class YoloDataset(StreamingDataset):
         labels = self.get_image_and_label(index)
         
         # Account for the case where the image has no labels (null image)
-        if len(label["cls"]) < 1:
+        if len(labels["cls"]) < 1:
             return labels
         else:
             return self.transforms(labels)

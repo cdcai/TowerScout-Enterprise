@@ -83,7 +83,12 @@ def convert_to_mds(
     samples = pd_df.to_dict("records")
 
     for sample in samples:
-        img = Image.open(sample["image_path"]).convert("RGB")
+        try:
+            img = Image.open(sample["image_path"]).convert("RGB")
+        except:
+            print(f"Error reading image {sample['image_path']}. Skipping row.")
+            continue
+
         sample["ori_shape"] = np.array(img.size, dtype=np.uint32)
         sample["img"] = np.array(img.resize((640, 640)))  # hardcode 640 for now
         sample["resized_shape"] = np.array(sample["img"].shape[:2], dtype=np.uint32)
@@ -98,10 +103,11 @@ def convert_to_mds(
         out=out_root, columns=columns, compression=compression, **kwargs
     ) as out:
         for sample in samples:
-            try:
-                out.write(sample)
-            except:
-                print(sample)
+            if "ori_shape" in sample:
+                try:
+                    out.write(sample)
+                except:
+                    print(sample)
 
 
 def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: str) -> None:

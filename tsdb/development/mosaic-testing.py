@@ -28,6 +28,28 @@ from tsdb.ml.data import data_augmentation, ToTensor
 
 # COMMAND ----------
 
+np.zeros((0, 4))
+
+# COMMAND ----------
+
+np.array([[]])
+
+# COMMAND ----------
+
+empty_boxes = np.array([])
+instances = Instances(
+            bboxes=empty_boxes.reshape(-1, 4),
+            # See: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/dataset.py#L227
+            # We set this value
+            segments=np.zeros((0, 1000, 2), dtype=np.float32),
+            bbox_format="xyxy",
+            normalized=True,
+        )
+
+instances.fliplr(w=640)
+
+# COMMAND ----------
+
 class ModifiedMosaic(Mosaic):
     """
     A modified Mosaic augmentation object that inherets from the Mosaic class from Ultralytics.

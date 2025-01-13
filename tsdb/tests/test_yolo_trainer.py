@@ -41,7 +41,7 @@ def sample_batch():
         ),
         "ori_shape": ((1500, 1500), (1500, 1500)),
         "resized_shape": ((1500, 1500), (1500, 1500)),
-        "ratio_pad": (((2.0,), (1.1, 1.1)), ((2.0,), (1.1, 1.1))),
+        "ratio_pad": (None, None),
         "img": torch.randint(0, 256, shape, dtype=torch.uint8),
         "cls": tensor([[0.0], [0.0], [0.0], [0.0], [0.0]]),  # class labels
         "bboxes": tensor(
@@ -96,10 +96,15 @@ def pred_unprepared(pred_prepared: torch.Tensor, sample_batch: torch.Tensor, si:
     """
 
     pred = pred_prepared.clone()
-    ratio_pad = sample_batch["ratio_pad"][si]
-    gain = ratio_pad[0][0]
-    pad = ratio_pad[1][0]
-    pred[:, :, :4] += pad / 2
+    #ratio_pad = sample_batch["ratio_pad"][si]
+    img1_shape = sample_batch["ori_shape"][si]
+    img0_shape = sample_batch["resized_shape"][si]
+    gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new 
+    pad = (
+            round((img1_shape[1] - img0_shape[1] * gain) / 2 - 0.1),
+            round((img1_shape[0] - img0_shape[0] * gain) / 2 - 0.1),
+        )
+    pred[:, :, :4] += pad[0] / 2
     pred[:, :, :4] *= gain
 
     return pred
