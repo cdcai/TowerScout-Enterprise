@@ -91,6 +91,8 @@ def test_perform_pass(
     """
     Tests the tsdb.ml.train.perform_pass function
     perform_pass() performs a single pass (epcoh) over the data accessed by the converter
+
+    TODO: update this test with new static perform_pass method from BaseTrainer class
     """
     converter_length = len(mock_converter)
     steps_per_epoch = converter_length // sample_context_args["batch_size"] # 10 // 2 = 5
