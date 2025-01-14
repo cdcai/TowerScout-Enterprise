@@ -5,6 +5,10 @@
 
 # COMMAND ----------
 
+from torchvision.utils import draw_bounding_boxes
+from torchvision.transforms.functional import to_pil_image
+
+from ultralytics.utils.ops import xywh2xyxy
 from ultralytics.data import build_dataloader, build_yolo_dataset
 from ultralytics.data.utils import check_det_dataset
 from ultralytics.cfg import get_cfg
@@ -76,11 +80,19 @@ loader = build_dataloader(dataset, batch_size, workers=4)
 # COMMAND ----------
 
 for i, image_batch in enumerate(loader):
-    print(f"BATCH {i} image paths: {image_batch['im_file']}")
-    print(f"BATCH {i} image shape: {image_batch['img'].shape}")
-    print(f"BATCH {i} boxes: {image_batch['bboxes']}")
-    print(f"BATCH {i} classes: {image_batch['cls']}")
-    print(f"BATCH {i} batch indexes: {image_batch['batch_idx']}\n")
+    idx = image_batch["batch_idx"] == 0
+    bboxes = xywh2xyxy(image_batch["bboxes"][idx]) * 640
+    image = image_batch["img"][0]
+    print(image_batch["img"])
+    print(bboxes)
+    test_image = draw_bounding_boxes(image, bboxes, colors="red")
+    #display(to_pil_image(test_image))
+    break
+    # print(f"BATCH {i} image paths: {image_batch['im_file']}")
+    # print(f"BATCH {i} image shape: {image_batch['img'].shape}")
+    # print(f"BATCH {i} boxes: {image_batch['bboxes']}")
+    # print(f"BATCH {i} classes: {image_batch['cls']}")
+    # print(f"BATCH {i} batch indexes: {image_batch['batch_idx']}\n")
 
 # COMMAND ----------
 

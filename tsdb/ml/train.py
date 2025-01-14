@@ -41,9 +41,9 @@ def get_model(model_yaml: str, model_pt: str) -> DetectionModel:
     model.names = ["ct"]  # attach class names to model
     model.args = args
     # Note that this isn't set in cfg/default.yaml so must set it ourselves
-    model.args.conf = 0.01
+    model.args.conf = 0.0011
     # Set to true for towerscout since there's only 1 class
-    model.args.single_cls = True
+    model.args.single_cls = False
 
     return model
 

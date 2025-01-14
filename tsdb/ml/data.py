@@ -15,6 +15,7 @@ from streaming import StreamingDataset
 import ultralytics
 from ultralytics.utils.instance import Instances
 from ultralytics.data.augment import RandomFlip, Mosaic
+from ultralytics.utils.ops import xyxy2xywh
 
 from tsdb.ml.utils import Hyperparameters
 
@@ -82,6 +83,7 @@ class YoloDataset(StreamingDataset):
         label = super().__getitem__(index)  # get row from dataset
 
         bboxes = deepcopy(label.pop("bboxes")).reshape(-1, 4)
+        bboxes = xyxy2xywh(bboxes)
         # move bboxes from "bboxes" key to "instances" key
         instances = Instances(
             bboxes=bboxes,
@@ -89,7 +91,7 @@ class YoloDataset(StreamingDataset):
             # We set this value as the calcuations some class methods of Instance perform 
             # require it to not be the default value of None
             segments=np.zeros((0, 1000, 2), dtype=np.float32),
-            bbox_format="xyxy",
+            bbox_format="xywh",
             normalized=True,
         )
         # from https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/base.py#L295
@@ -153,23 +155,20 @@ class ToTensor:
     transformation does i.e. a dict with keys "img" and "instances".
     """
 
-    def __init__(self, half: bool = False):
+    def __init__(self):
         """
         Initializes the ToTensor object for converting images to PyTorch tensors.
 
         This class is designed to be used as part of a transformation pipeline for image preprocessing in the
-        Ultralytics YOLO framework. It converts numpy arrays or PIL Images to PyTorch tensors, with an option
-        for half-precision (float16) conversion.
+        Ultralytics YOLO framework.
         """
         super().__init__()
-        self.half = half
 
     def __call__(
         self, labels: dict[str, np.ndarray | Instances]
     ) -> dict[str, torch.Tensor | Instances]:
         labels["img"] = torch.tensor(np.ascontiguousarray(labels["img"]))
-        labels["img"] = labels["img"].half() if self.half else labels["img"].float()
-        labels["img"] /= 255
+        labels["img"] = labels["img"].to(torch.uint8)
         return labels
 
 
@@ -213,10 +212,11 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
            result["im_file"].append(element["im_file"])
            result["ori_shape"].append(element["ori_shape"])
            result["resized_shape"].append(element["resized_shape"])
-           result["ratio_pad"].append(element["ratio_pad"])
            continue
 
-        element["instances"].convert_bbox(format="xyxy")
+        #element["instances"].convert_bbox(format="xyxy")
+        w, h = 640, 640
+        #element["instances"].denormalize(w, h)
         bboxes = element.pop("instances")._bboxes.bboxes
         result["bboxes"].append(bboxes)
 
