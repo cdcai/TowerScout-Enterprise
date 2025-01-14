@@ -83,7 +83,7 @@ from tsdb.ml.train import objective
 
 mlflow.set_registry_uri("databricks-uc")
 
-out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=391"
+out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=397"
 
 study = optuna.create_study(direction="maximize", pruner=optuna.pruners.MedianPruner())
 objective_with_args = partial(

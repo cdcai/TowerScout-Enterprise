@@ -39,7 +39,7 @@ def _prepare_batch(
     ori_shape = batch["ori_shape"][si]
     imgsz = batch["img"].shape[2:]
     # set this to None to have scale_boxes compute for us
-    ratio_pad = None
+    ratio_pad = None #batch["ratio_pad"][si]
     if len(cls):
         bbox = (
             uutils.ops.xywh2xyxy(bbox)
@@ -150,10 +150,14 @@ def score(
     precision = tp / (tp + fp + 1e-10)
     recall = tp / (tp + fn)
     metrics = {
-        f"accuracy_{step}": acc,
-        f"f1_{step}": f1,
-        f"recall_{step}": recall,
-        f"precision_{step}": precision,
+        f"{step}/accuracy": acc,
+        f"{step}/f1": f1,
+        f"{step}/recall": recall,
+        f"{step}/precision": precision,
+        f"cm/tp": tp,
+        f"cm/fp": fp,
+        f"cm/fn": fn,
+        f"cm/tn": tn,
     }
 
     return metrics
@@ -264,7 +268,7 @@ class YoloModelTrainer(BaseTrainer):
             self.loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
 
         loss_scores = {
-            f"{name}_{Steps.TRAIN.name}": loss_items[i].item()
+            f"{Steps.TRAIN.name}/{name}": loss_items[i].item()
             for i, name in enumerate(self.loss_types)
         }
 
@@ -287,7 +291,7 @@ class YoloModelTrainer(BaseTrainer):
             loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
             metrics["loss_VAL"] = loss.cpu().item()
             loss_scores = {
-                f"{name}_{step.name}": loss_items[i].item()
+                f"{step.name}/{name}": loss_items[i].item()
                 for i, name in enumerate(self.loss_types)
             }
             metrics = {**metrics, **loss_scores}

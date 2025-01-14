@@ -91,6 +91,7 @@ def convert_to_mds(
 
         sample["ori_shape"] = np.array(img.size, dtype=np.uint32)
         sample["img"] = np.array(img.resize((640, 640)))  # hardcode 640 for now
+        # sample["img"] = sample["img"][:, :, ::-1]  # convert RGB to BGR
         sample["resized_shape"] = np.array(sample["img"].shape[:2], dtype=np.uint32)
         # Commenting transpose out because the Mosaic augmentation class expects the image to be in HWC format
         # The model expectes CHW though so will likely have to transpose after data augmentation 
@@ -106,8 +107,8 @@ def convert_to_mds(
             if "ori_shape" in sample:
                 try:
                     out.write(sample)
-                except:
-                    print(sample)
+                except Exception as e:
+                    print(e)
 
 
 def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: str) -> None:

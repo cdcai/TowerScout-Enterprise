@@ -68,7 +68,7 @@ class BaseTrainer:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         self.args = self.model.args
-        self.amp = self.args.amp
+        self.amp = False #self.args.amp  # TODO: Change back later
 
         # Hyperparams and Args
         self.train_args = train_args
@@ -381,7 +381,7 @@ class BaseTrainer:
                         step_number = epoch#batch_index + (num_batches * epoch)
                         mlflow.log_metrics(val_metrics, step=step_number)
 
-                val_metric = val_metrics[f"{self.train_args.objective_metric}_VAL"]
+                val_metric = val_metrics[f"VAL/{self.train_args.objective_metric}"]
 
                 if trial is not None:
                     trial.report(val_metric, step_number)
