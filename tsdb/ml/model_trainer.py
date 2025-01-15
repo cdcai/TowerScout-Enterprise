@@ -68,7 +68,7 @@ class BaseTrainer:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         self.args = self.model.args
-        self.amp = False #self.args.amp  # TODO: Change back later
+        self.amp = self.args.amp  
 
         # Hyperparams and Args
         self.train_args = train_args

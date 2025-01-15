@@ -1,6 +1,6 @@
 # Databricks notebook source
-# MAGIC %pip install mosaicml-streaming
-# MAGIC %pip install optuna
+# %pip install mosaicml-streaming
+# %pip install optuna
 
 # COMMAND ----------
 
@@ -34,7 +34,7 @@ hyperparams = Hyperparameters(
     lr0=0.1,
     momentum=0.9,
     weight_decay=0.1,
-    batch_size=1,
+    batch_size=2,
     epochs=2,
     prob_H_flip=0.5,
     prob_V_flip=0.0,
@@ -43,17 +43,16 @@ hyperparams = Hyperparameters(
 
 
 cache_dir = "/local/cache/path/" + str(uuid4())
-remote_dir = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=391/train"
+remote_dir = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=397/train"
 
 dataloader = get_dataloader(cache_dir, remote_dir, hyperparams)
 
 for i, image_batch in enumerate(dataloader):
     idx = image_batch["batch_idx"] == 0
     bboxes = xywh2xyxy(image_batch["bboxes"][idx]) * 640
-    image = image_batch["img"][0]
-    # print(image_batch["img"].shape)
-    # print(bboxes)
+    image = image_batch["img"][0]  #.permute(0,1,2)
     test_image = draw_bounding_boxes(image, bboxes, colors="red")
+    #display(to_pil_image(image.permute(0,1,2)))
     display(to_pil_image(test_image))
     break
 

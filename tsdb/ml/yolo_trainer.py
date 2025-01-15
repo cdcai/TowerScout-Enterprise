@@ -1,5 +1,6 @@
 import ultralytics.utils as uutils
 from ultralytics.nn.tasks import DetectionModel
+from ultralytics.nn.autobackend import AutoBackend
 
 import torch
 from torch import nn  # nn.
@@ -227,9 +228,9 @@ class YoloModelTrainer(BaseTrainer):
         """
         Preprocesses a batch of images by scaling and converting to float.
         Code adapted from preprocess_batch method in: ultralytics/models/yolo/detect/train.py
+        Note: We didn't include the self.args.multi_scale if statement from the source code
         """
         batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
-        # didn't include self.args.multi_scale if statement from source code
         return batch
 
     def preprocess_val(
@@ -238,7 +239,7 @@ class YoloModelTrainer(BaseTrainer):
         """
         Preprocesses a batch of images for validation.
         Code adapted from preprocess method in: ultralytics/models/yolo/detect/val.py
-        Note: We didn't include the self.args.multi_scale if statement from the source code
+        Note: We didn't include the self.args.save_hybrid if statement from the source code
         """
         batch["img"] = batch["img"].to(self.device, non_blocking=True)
         batch["img"] = (
@@ -284,8 +285,8 @@ class YoloModelTrainer(BaseTrainer):
         # NOTE: moved inference_step logic into this function, added no_grad decorator to this
         self.model.eval()
         # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
-        preds = self.model(minibatch["img"])
-        metrics = score(minibatch, preds, step.name, self.device, self.model.args)
+        preds = model(minibatch["img"], augment=False)
+        metrics = score(minibatch, preds, step.name, self.device, self.args)
 
         if step.name == "VAL":
             loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
