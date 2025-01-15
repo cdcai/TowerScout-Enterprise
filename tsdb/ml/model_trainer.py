@@ -96,6 +96,9 @@ class BaseTrainer:
         # Early stopping
         self.stopper = uutils.torch_utils.EarlyStopping(patience=self.patience)
         self.stop = False
+
+        # EMA
+        self.ema = uutils.torch_utils.ModelEMA(self.model)
         
 
     @classmethod
@@ -227,6 +230,8 @@ class BaseTrainer:
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.optimizer.zero_grad()
+        if self.ema:
+            self.ema.update(self.model)
 
     def training_step(self, minibatch) -> dict:
         """
@@ -364,6 +369,8 @@ class BaseTrainer:
                 if step_number - last_optimizer_step >= self.accumulate:
                     self.optimizer_step()
                     last_otpimizer_step = step_number
+
+                self.ema.update_attr(self.model, include=["yaml", "nc", "args", "names", "stride", "class_weights"])
 
                 if batch_index % self.train_args.report_interval == 0:
                     mlflow.log_metrics(metrics, step=step_number)

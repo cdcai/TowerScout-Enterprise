@@ -283,13 +283,16 @@ class YoloModelTrainer(BaseTrainer):
     ) -> dict:  # pragma: no cover
         minibatch = self.preprocess_val(minibatch)
         # NOTE: moved inference_step logic into this function, added no_grad decorator to this
-        self.model.eval()
+        model = self.ema.ema or self.model
+        model = model.half() if self.args.half else model.float()
+        model.eval()
         # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
+        #model.warmup(imgsz=(1 if self.model.pt else self.args.batch, 3, imgsz, imgsz))  # warmup
         preds = model(minibatch["img"], augment=False)
         metrics = score(minibatch, preds, step.name, self.device, self.args)
 
         if step.name == "VAL":
-            loss, loss_items = self.model.loss(batch=minibatch, preds=preds)
+            loss, loss_items = model.loss(batch=minibatch, preds=preds)
             metrics["loss_VAL"] = loss.cpu().item()
             loss_scores = {
                 f"{step.name}/{name}": loss_items[i].item()
