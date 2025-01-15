@@ -14,7 +14,7 @@ from streaming import StreamingDataset
 
 import ultralytics
 from ultralytics.utils.instance import Instances
-from ultralytics.data.augment import RandomFlip, Mosaic
+from ultralytics.data.augment import RandomFlip, Mosaic, Format, Albumentations
 from ultralytics.utils.ops import xyxy2xywh
 
 from tsdb.ml.utils import Hyperparameters
@@ -59,15 +59,29 @@ class YoloDataset(StreamingDataset):
         mosaic_aug = ModifiedMosaic(
             self, image_size=image_size, p=hyperparameters.prob_mosaic, n=4
         )
+    
+        albumentation = Albumentations(p=1.0)
+
+        format = Format(
+                bbox_format="xywh",
+                normalize=True,
+                return_mask=False,
+                return_keypoint=False,
+                return_obb=False,
+                batch_idx=False,
+                mask_ratio=4,
+                mask_overlap=True,
+                bgr=0.0,  # Always return BGR, not RGB. Value from default.yaml
+            )
 
         # prepend mosaic augmentation to input Ultralytics transforms
-        self.transforms = ultralytics.data.augment.Compose([mosaic_aug] + transform)
+        self.transforms = ultralytics.data.augment.Compose([mosaic_aug, albumentation] + transform)
+        self.transforms.append(format)
 
     def __getitem__(self, index: int) -> Any:
         labels = self.get_image_and_label(index)
-        
         # Account for the case where the image has no labels (null image)
-        if len(labels["cls"]) < 1:
+        if len(labels["cls"]) == 0:
             return labels
         else:
             return self.transforms(labels)
@@ -207,17 +221,14 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
     for index, element in enumerate(data):
         # This accounts for null images 
         # (images with no cooling towers)
-        if len(element["cls"]) < 1:
+        if len(element["cls"]) == 0:
            result["img"].append(element["img"])
            result["im_file"].append(element["im_file"])
            result["ori_shape"].append(element["ori_shape"])
            result["resized_shape"].append(element["resized_shape"])
            continue
 
-        #element["instances"].convert_bbox(format="xyxy")
-        w, h = 640, 640
-        #element["instances"].denormalize(w, h)
-        bboxes = element.pop("instances")._bboxes.bboxes
+        bboxes = element.pop("bboxes") #._bboxes.bboxes
         result["bboxes"].append(bboxes)
 
         for key, value in element.items():
@@ -232,7 +243,8 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
     # because model expected channel first format
     # however the mosaic augmentation expects channel last
     # hence the reshape is done here.
-    result["img"] = torch.stack(result["img"], dim=0).permute(0,3,1,2)
+    # NOTE: No need to call permute here because we now have Format augmentatoin
+    result["img"] = torch.stack(result["img"], dim=0) #.permute(0,3,1,2)
     result["batch_idx"] = torch.tensor(result["batch_idx"])
 
     # Shape of resulting tensor should be (num bboxes in batch, 4)
@@ -274,9 +286,9 @@ def get_dataloader(
     """
 
     if transforms is None:
-        transform = [ToTensor()]
+        transform = [] #[ToTensor()]
     else:
-        transform = transforms + [ToTensor()]
+        transform = transforms #+ [ToTensor()]
 
     # Note that StreamingDataset is unit tested here:
     # https://github.com/mosaicml/streaming/blob/main/tests/test_streaming.py
