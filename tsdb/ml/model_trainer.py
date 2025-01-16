@@ -1,4 +1,5 @@
 from typing import Any
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 import torch
@@ -360,6 +361,8 @@ class BaseTrainer:
             self.scheduler.step()
 
             # Train
+            train_metrics = defaultdict(float)
+
             for batch_index, train_batch in enumerate(dataloaders.train):
                 step_number = batch_index + (num_batches * epoch)
 
@@ -370,7 +373,11 @@ class BaseTrainer:
                 loss = metrics.pop("loss")
 
                 self.scaler.scale(loss).backward()
-                metrics["loss_TRAIN"] = loss.cpu().item()
+
+                for metric, value in metrics.items():
+                    train_metrics[metric] += value
+                
+                train_metrics["TRAIN/loss"] += loss.cpu().item()
 
                 if step_number - last_optimizer_step >= self.accumulate:
                     self.optimizer_step()
@@ -378,8 +385,11 @@ class BaseTrainer:
 
                 self.ema.update_attr(self.model, include=["yaml", "nc", "args", "names", "stride", "class_weights"])
 
-                if batch_index % self.train_args.report_interval == 0:
-                    mlflow.log_metrics(metrics, step=step_number)
+            # End Epoch, average metrics and log to MLflow
+            for metric in train_metrics.keys():
+                train_metrics[metric] /= num_batches
+
+            mlflow.log_metrics(train_metrics, step=step_number)
 
             # Validation
             if epoch % self.train_args.val_interval == 0:
