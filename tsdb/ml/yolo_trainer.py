@@ -1,6 +1,7 @@
+from copy import copy
+
 import ultralytics.utils as uutils
 from ultralytics.nn.tasks import DetectionModel
-from ultralytics.nn.autobackend import AutoBackend
 
 import torch
 from torch import nn  # nn.
@@ -13,7 +14,7 @@ from mlflow.models.signature import infer_signature, ModelSignature
 
 from tsdb.ml.model_trainer import BaseTrainer, TrainingArgs
 from tsdb.ml.utils import Steps
-
+from tsdb.ml.yolo_validator import ModifiedDetectionValidator
 
 class YOLOLoss(Enum):
     """
@@ -222,6 +223,23 @@ class YoloModelTrainer(BaseTrainer):
                 # )
                 v.requires_grad = True
 
+    def get_validator(self, val_dataloader: DataLoader) -> ModifiedDetectionValidator:
+        self.loss_names = "box_loss", "cls_loss", "dfl_loss"
+        return  ModifiedDetectionValidator(val_dataloader, save_dir=None, args=copy(self.args), _callbacks=None)
+
+    def label_loss_items(self, loss_items=None, prefix="VAL"):
+        """
+        Returns a loss dict with labelled training loss items tensor.
+
+        Not needed for classification but necessary for segmentation & detection
+        """
+        keys = [f"{prefix}/{x}" for x in self.loss_names]
+        if loss_items is not None:
+            loss_items = [round(float(x), 5) for x in loss_items]  # convert tensors to 5 decimal place floats
+            return dict(zip(keys, loss_items))
+        else:
+            return keys
+
     def preprocess_train(
         self, batch: dict[str, Union[Tensor, int, float, str]]
     ):  # pragma: no cover
@@ -275,7 +293,7 @@ class YoloModelTrainer(BaseTrainer):
 
         loss_scores["loss"] = self.loss
         
-        return loss_scores
+        return loss_scores, loss_items
 
     @torch.no_grad()
     def validation_step(
@@ -287,7 +305,6 @@ class YoloModelTrainer(BaseTrainer):
         model = model.half() if self.args.half else model.float()
         model.eval()
         # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
-        #model.warmup(imgsz=(1 if self.model.pt else self.args.batch, 3, imgsz, imgsz))  # warmup
         preds = model(minibatch["img"], augment=False)
         metrics = score(minibatch, preds, step.name, self.device, self.args)
 

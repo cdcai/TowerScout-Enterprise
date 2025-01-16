@@ -38,7 +38,7 @@ def get_model(model_yaml: str, model_pt: str) -> DetectionModel:
     weights, _ = attempt_load_one_weight(model_pt)
     model.load(weights)
     model.nc = 1  # attach number of classes to model
-    model.names = ["ct"]  # attach class names to model
+    model.names = {0:"ct"}  # attach class names to model
     model.args = args
     # Note that this isn't set in cfg/default.yaml so must set it ourselves
     model.args.conf = 0.0011

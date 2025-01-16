@@ -108,11 +108,6 @@ class YoloDataset(StreamingDataset):
             bbox_format="xywh",
             normalized=True,
         )
-        # from https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/base.py#L295
-        label["ratio_pad"] = (
-            label["resized_shape"][0] / label["ori_shape"][0],
-            label["resized_shape"][1] / label["ori_shape"][1],
-        )  # for evaluation
 
         # rename "image_path" key to "im_file"
         label["im_file"] = label.pop("image_path")
@@ -217,8 +212,11 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
             expected by the Ultralytics DetectionModel class
     """
     result = defaultdict(list)
-
     for index, element in enumerate(data):
+        # set ratio_pad to None to have Ultralytics
+        # methods compute it for us
+        result["ratio_pad"].append(None)
+
         # This accounts for null images 
         # (images with no cooling towers)
         if len(element["cls"]) == 0:
