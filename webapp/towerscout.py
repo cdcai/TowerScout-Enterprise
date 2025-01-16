@@ -521,7 +521,7 @@ def get_objects():
         for i, tile in enumerate(tiles):
             tile['filename'] = user_id+"/"+fname+str(i)+".jpeg"
 
-        meta, request_id = map.get_sat_maps(tiles, loop, fname, user_id)
+        meta, request_id, user_id = map.get_sat_maps(tiles, loop, fname, user_id)
         session["metadata"] = meta
        
         print(" asynchronously retrieved", len(tiles), "files")
@@ -835,7 +835,8 @@ def pollSilverTable():
         user_id = request.form.get("user_id")
         request_id = request.form.get("request_id")
         tilescount = int(request.form.get("tiles_count"))
-        jobDone = stInstance.poll_SilverTableJobDone(request_id, user_id, tilescount, 10)
+        max_retries = tilescount*2
+        jobDone = stInstance.poll_SilverTableJobDone(request_id, user_id, tilescount, max_retries, 10)
         logging.info("pollSilverTable completed")
         # abort if signaled
         if exit_events.query(id(session)):
