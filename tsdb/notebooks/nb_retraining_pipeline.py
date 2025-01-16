@@ -3,23 +3,23 @@
 
 # COMMAND ----------
 
-# Purpose: Check if the global view 'global_temp_towerscout_configs' exists and extract configuration values from it. 
-# If the view does not exist, exit the notebook with an error message.
+# # Purpose: Check if the global view 'global_temp_towerscout_configs' exists and extract configuration values from it. 
+# # If the view does not exist, exit the notebook with an error message.
 
-# Check if the global view exists
-if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
-    # Query the global temporary view and collect the first row
-    result = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+# # Check if the global view exists
+# if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
+#     # Query the global temporary view and collect the first row
+#     result = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
     
-    # Extract values from the result row
-    env = result['env']
-    catalog = result['catalog_name']
-    schema = result['schema_name']
-    debug_mode = result['debug_mode'] == "true"
-    unit_test_mode = result['unit_test_mode'] == "true"
-else:
-    # Exit the notebook with an error message if the global view does not exist
-    dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
+#     # Extract values from the result row
+#     env = result['env']
+#     catalog = result['catalog_name']
+#     schema = result['schema_name']
+#     debug_mode = result['debug_mode'] == "true"
+#     unit_test_mode = result['unit_test_mode'] == "true"
+# else:
+#     # Exit the notebook with an error message if the global view does not exist
+#     dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 # COMMAND ----------
 

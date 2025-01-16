@@ -129,6 +129,9 @@ class BaseTrainer:
             patience=hyperparameters.patience,
         )
 
+    def get_validator(self, dataloader: DataLoader):
+        raise NotImplementedError("Child class needs to implement get_validator")
+
     def _setup_scheduler(self):
         """
         Initialize training learning rate scheduler. Taken from ultralytics
@@ -338,6 +341,9 @@ class BaseTrainer:
         Returns:
             dict[str, float] A dict containing the loss
         """
+        # Validator
+        validator = self.get_validator(dataloaders.val)
+
         num_batches = len(dataloaders.train)
         num_warmup = (
             max(round(self.train_args.warmup_epochs * num_batches), 100)
@@ -360,7 +366,7 @@ class BaseTrainer:
                 # Manual Warmup
                 self.manual_warmup(num_warmup, step_number)
 
-                metrics = self.training_step(minibatch=train_batch)
+                metrics, self.loss_items = self.training_step(minibatch=train_batch)
                 loss = metrics.pop("loss")
 
                 self.scaler.scale(loss).backward()
@@ -377,18 +383,21 @@ class BaseTrainer:
 
             # Validation
             if epoch % self.train_args.val_interval == 0:
-                self.model.eval()
-                val_report_interval = len(dataloaders.val)
-                for batch_index, val_batch in enumerate(dataloaders.val):
-                    val_metrics = self.validation_step(
-                        minibatch=val_batch, step=Steps.VAL
-                    )
+                metrics = validator(self)
+                mlflow.log_metrics(metrics, step=epoch)
+                #print(f"Metrics are {metrics}")
+                # self.model.eval()
+                # val_report_interval = len(dataloaders.val)
+                # for batch_index, val_batch in enumerate(dataloaders.val):
+                #     val_metrics = self.validation_step(
+                #         minibatch=val_batch, step=Steps.VAL
+                #     )
 
-                    if batch_index % val_report_interval == 0:
-                        step_number = epoch#batch_index + (num_batches * epoch)
-                        mlflow.log_metrics(val_metrics, step=step_number)
+                #     if batch_index % val_report_interval == 0:
+                #         step_number = epoch#batch_index + (num_batches * epoch)
+                #         mlflow.log_metrics(val_metrics, step=step_number)
 
-                val_metric = val_metrics[f"VAL/{self.train_args.objective_metric}"]
+                val_metric = -1 #val_metrics[f"VAL/{self.train_args.objective_metric}"]
 
                 if trial is not None:
                     trial.report(val_metric, step_number)
