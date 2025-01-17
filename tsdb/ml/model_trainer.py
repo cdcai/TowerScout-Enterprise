@@ -62,14 +62,14 @@ class BaseTrainer:
         batch_size: int = 4,
         lf: float = None,
         scheduler: optim.lr_scheduler.LambdaLR = None,
-        patience: int = 15
+        patience: int = 15,
     ):  # pragma: no cover
         # Model
         self.model = model
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         self.args = self.model.args
-        self.amp = self.args.amp  
+        self.amp = self.args.amp
 
         # Hyperparams and Args
         self.train_args = train_args
@@ -100,7 +100,6 @@ class BaseTrainer:
 
         # EMA
         self.ema = uutils.torch_utils.ModelEMA(self.model)
-        
 
     @classmethod
     def from_optuna_hyperparameters(
@@ -131,7 +130,12 @@ class BaseTrainer:
         )
 
     @staticmethod
-    def get_validator(dataloader: DataLoader, training: bool, device: str, args: uutils.IterableSimpleNamespace):
+    def get_validator(
+        dataloader: DataLoader,
+        training: bool,
+        device: str,
+        args: uutils.IterableSimpleNamespace,
+    ):
         """
         A static method to create a validator for the given dataloader. The validator computes
         valdiation metrics (and losses if trianing is True).
@@ -154,7 +158,12 @@ class BaseTrainer:
 
     @staticmethod
     def build_optimizer(
-        model, name="auto", lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5
+        model: torch.nn.Module,
+        name: str = "auto",
+        lr: float = 0.001,
+        momentum: float = 0.9,
+        decay: float = 1e-5,
+        iterations: int = 1e5,
     ):
         """
         Code adapted from the build_optimizer method in: ultralytics/models/yolo/train.py
@@ -269,37 +278,6 @@ class BaseTrainer:
 
         return signature
 
-    @staticmethod
-    def perform_pass(
-        step_func: callable,
-        dataloader: DataLoader,
-        report_interval: int,
-        epoch_num: int = 0,
-    ) -> dict[str, float]:
-        """
-        Performs a single pass (epoch) over the data accessed by the dataloader
-
-        Args:
-            step_func: A callable that performs either a training or inference step
-            dataloader: The torch dataloader
-            report_interval: How often to report metrics during pass
-            epoch_num: The current epoch number for logging metrics across epochs
-        Returns:
-            dict[str, float] A dict containing values of various metrics for the epoch
-        """
-
-        metrics = {}
-        num_batches = len(dataloader)
-
-        for minibatch_num, minibatch in enumerate(dataloader):
-            metrics = step_func(minibatch=minibatch)
-
-            if minibatch_num % report_interval == 0:
-                step_num = minibatch_num + (epoch_num * num_batches)
-                mlflow.log_metrics(metrics, step=step_num)
-
-        return metrics
-
     def manual_warmup(self, num_warmup: int, step: int):
         """
         A manual warmup phase for the optimizer. This is taken from the source code of Ultralytics.
@@ -348,7 +326,12 @@ class BaseTrainer:
             dict[str, float] A dict containing the loss
         """
         # Validator
-        self.validator = self.get_validator(dataloader=dataloaders.val, training=True, device=self.device, args=self.args)
+        self.validator = self.get_validator(
+            dataloader=dataloaders.val,
+            training=True,
+            device=self.device,
+            args=self.args,
+        )
 
         num_batches = len(dataloaders.train)
         num_warmup = (
@@ -381,14 +364,17 @@ class BaseTrainer:
 
                 for metric, value in metrics.items():
                     train_metrics[metric] += value
-                
+
                 train_metrics["TRAIN/loss"] += loss.cpu().item()
 
                 if step_number - last_optimizer_step >= self.accumulate:
                     self.optimizer_step()
                     last_otpimizer_step = step_number
 
-                self.ema.update_attr(self.model, include=["yaml", "nc", "args", "names", "stride", "class_weights"])
+                self.ema.update_attr(
+                    self.model,
+                    include=["yaml", "nc", "args", "names", "stride", "class_weights"],
+                )
 
             # End Epoch, average metrics and log to MLflow
             for metric in train_metrics.keys():
@@ -398,17 +384,19 @@ class BaseTrainer:
 
             # Validation
             if epoch % self.train_args.val_interval == 0:
-                val_metrics =  self.validation_step(loss_items, step="VAL")
+                val_metrics = self.validation_step(loss_items, step="VAL")
                 mlflow.log_metrics(val_metrics, step=epoch)
 
-                val_metric = val_metrics[f"metrics/{self.train_args.objective_metric}(B)"]
+                val_metric = val_metrics[
+                    f"metrics/{self.train_args.objective_metric}(B)"
+                ]
 
                 if trial is not None:
                     trial.report(val_metric, epoch)
 
                     if trial.should_prune():
                         raise optuna.TrialPruned()
-                
+
                 # check early stopping
                 self.stop |= self.stopper(self.epoch + 1, val_metric)
                 if self.stop:

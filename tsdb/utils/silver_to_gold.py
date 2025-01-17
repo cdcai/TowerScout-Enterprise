@@ -67,7 +67,7 @@ def create_updates_view_query(
             {values}
         )
         
-        SELECT from_json(temp.bboxes, 'array<struct<`class`:int,`x1`:float,`y1`:float,`x2`:float,`y2`:float,`conf`:float>>') as bboxes, temp.uuid, temp.image_hash, silver.request_id, silver.user_id, silver.image_path, temp.split_label
+        SELECT from_json(temp.bboxes, 'array<struct<`class_name`:string,`secondary`:float,`class`:int,`x1`:float,`y1`:float,`x2`:float,`y2`:float,`conf`:float>>') as bboxes, temp.uuid, temp.image_hash, silver.request_id, silver.user_id, silver.image_path, temp.split_label
         FROM {catalog}.{schema}.{silver_table} AS silver
         JOIN temp_data AS temp
         ON silver.uuid = temp.uuid
