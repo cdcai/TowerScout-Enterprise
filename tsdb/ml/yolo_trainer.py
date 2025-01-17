@@ -16,6 +16,7 @@ from tsdb.ml.model_trainer import BaseTrainer, TrainingArgs
 from tsdb.ml.utils import Steps
 from tsdb.ml.yolo_validator import ModifiedDetectionValidator
 
+
 class YOLOLoss(Enum):
     """
     Enum for the different loss types for the YOLO model. BL corresponds to box loss, BCE correspnds to
@@ -28,160 +29,10 @@ class YOLOLoss(Enum):
     DFL = auto()
 
 
-def _prepare_batch(
-    si: int, batch: Tensor, device: str
-) -> dict[str, Union[Tensor, int, float, str]]:
-    """
-    Prepares a batch of images and annotations for validation.
-    This is a method from the DectionValidator class see: ultralytics/models/yolo/detect/val.py
-    """
-    idx = batch["batch_idx"] == si
-    cls = batch["cls"][idx].squeeze(-1)
-    bbox = batch["bboxes"][idx]
-    ori_shape = batch["ori_shape"][si]
-    imgsz = batch["img"].shape[2:]
-    # set this to None to have scale_boxes compute for us
-    ratio_pad = None #batch["ratio_pad"][si]
-    if len(cls):
-        bbox = (
-            uutils.ops.xywh2xyxy(bbox)
-            * torch.tensor(imgsz, device=device)[[1, 0, 1, 0]]
-        )  # target boxes
-        uutils.ops.scale_boxes(
-            imgsz, bbox, ori_shape, ratio_pad=ratio_pad
-        )  # native-space labels
-    return {
-        "cls": cls,
-        "bbox": bbox,
-        "ori_shape": ori_shape,
-        "imgsz": imgsz,
-        "ratio_pad": ratio_pad,
-    }
-
-
-def _prepare_pred(
-    pred: Tensor, pbatch: dict[str, Union[Tensor, int, float, str]]
-) -> Tensor:
-    """
-    Prepares a batch of images and annotations for validation.
-    This is a method from the DectionValidator class see: ultralytics/models/yolo/detect/val.py
-    """
-    predn = pred.clone()
-    uutils.ops.scale_boxes(
-        pbatch["imgsz"], predn[:, :4], pbatch["ori_shape"], ratio_pad=None
-    )  # native-space pred
-    return predn
-
-
-def postprocess(
-    preds: Tensor, args: uutils.IterableSimpleNamespace, lb: list[Tensor]
-) -> Tensor:
-    """
-    Apply Non-maximum suppression to prediction outputs.
-    This is a method from the DectionValidator class see: ultralytics/models/yolo/detect/val.py
-    """
-    return uutils.ops.non_max_suppression(
-        preds,
-        args.conf,
-        args.iou,
-        labels=lb,
-        multi_label=True,
-        agnostic=args.single_cls or args.agnostic_nms,
-        max_det=args.max_det,
-    )
-
-
-def score(
-    minibatch: dict[str, Union[Tensor, int, float, str]],
-    preds: Tensor,
-    step: str,
-    device: str,
-    args: uutils.IterableSimpleNamespace,
-) -> dict[str, float]:  # pragma: no cover
-    """
-    Returns a dictionary of metrics to be logged.
-    Code adapted from the update_metrics method in: ultralytics/models/yolo/detect/val.py
-    NOTE: preds must be outputs from the model when it is in eval() mode NOT train() mode.
-    """
-    conf_mat = uutils.metrics.ConfusionMatrix(
-        nc=1, task="detect", conf=args.conf
-    )  # only 1 class: cooling towers
-
-    height, width = minibatch["img"].shape[2:]
-    nb = len(minibatch["img"])
-    bboxes = minibatch["bboxes"] * torch.tensor(
-        (width, height, width, height), device=device
-    )
-
-    def _concat(index):
-        selected = minibatch["batch_idx"] == index
-        items = [minibatch["cls"][selected], bboxes[selected]]
-        return torch.cat(items, dim=-1)
-
-    if args.save_hybrid:
-        lb = [_concat(i) for i in range(nb)]
-    else:
-        lb = []
-
-    preds = postprocess(preds, args, lb)
-    for si, pred in enumerate(preds):
-        pbatch = _prepare_batch(si, minibatch, device)
-        cls, bbox = pbatch.pop("cls"), pbatch.pop("bbox")
-        nl = len(cls)
-        npr = len(pred)  # num predictions
-        if npr == 0:
-            if nl:
-                conf_mat.process_batch(detections=None, gt_bboxes=bbox, gt_cls=cls)
-                continue
-
-        if args.single_cls:
-            pred[:, 5] = 0
-
-        predn = _prepare_pred(pred, pbatch)
-        conf_mat.process_batch(predn, bbox, cls)
-
-    N = conf_mat.matrix.sum()  # total number of instances
-    tp, fp = conf_mat.tp_fp()  # returns list of tp & fp per class
-    # use [:-1] to exlcude background class since task=detect
-    fn = conf_mat.matrix.sum(0)[:-1] - tp
-    tp, fp, fn = tp[0], fp[0], fn[0]
-    tn = N - (tp + fp + fn)
-    acc = (tp + tn) / (tp + fp + fn + tn)
-    f1 = (2 * tp) / (2 * tp + fp + fn)
-    # adding small constant for stability to avoid div by 0
-    precision = tp / (tp + fp + 1e-10)
-    recall = tp / (tp + fn)
-    metrics = {
-        f"{step}/accuracy": acc,
-        f"{step}/f1": f1,
-        f"{step}/recall": recall,
-        f"{step}/precision": precision,
-        f"cm/tp": tp,
-        f"cm/fp": fp,
-        f"cm/fn": fn,
-        f"cm/tn": tn,
-    }
-
-    return metrics
-
-
-@torch.no_grad()
-def inference_step(
-    minibatch: dict[str, Union[Tensor, int, float, str]],
-    model: DetectionModel,
-    step: str,
-    device: str,
-) -> dict[str, float]:
-    model.eval()
-    # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
-    pred = model(minibatch["img"])
-    return score(minibatch, pred, step, device, model.args)
-
-
 class YoloModelTrainer(BaseTrainer):
     """
     Model trainer class for the YOLO object detection model (DetectionModel class) from Ultralytics.
-    Note that we have removed the torch.nn.parallel.DistributedDataParallel (DDP) usage that was present in 
+    Note that we have removed the torch.nn.parallel.DistributedDataParallel (DDP) usage that was present in
     Ultralytics since we use Hyperopt for distributed tuning and it's not clear how nicely they will interact with each other.
     """
 
@@ -191,7 +42,7 @@ class YoloModelTrainer(BaseTrainer):
         optimizer: torch.optim.Optimizer = None,
         train_args: TrainingArgs = None,
         epochs: int = 1,
-        **kwargs
+        **kwargs,
     ):  # pragma: no cover
         super().__init__(model, optimizer, train_args, epochs, **kwargs)
         self.freeze_layers()
@@ -216,27 +67,55 @@ class YoloModelTrainer(BaseTrainer):
             if any(x in k for x in freeze_layer_names):
                 # LOGGER.info(f"Freezing layer '{k}'")
                 v.requires_grad = False
-            elif not v.requires_grad and v.dtype.is_floating_point:  # only floating point Tensor can require gradients
+            elif (
+                not v.requires_grad and v.dtype.is_floating_point
+            ):  # only floating point Tensor can require gradients
                 # LOGGER.info(
                 #     f"WARNING ⚠️ setting 'requires_grad=True' for frozen layer '{k}'. "
                 #     "See ultralytics.engine.trainer for customization of frozen layers."
                 # )
                 v.requires_grad = True
 
-    def get_validator(self, val_dataloader: DataLoader) -> ModifiedDetectionValidator:
-        self.loss_names = "box_loss", "cls_loss", "dfl_loss"
-        return  ModifiedDetectionValidator(val_dataloader, save_dir=None, args=copy(self.args), _callbacks=None)
+    @staticmethod
+    def get_validator(
+        dataloader: DataLoader,
+        training: bool,
+        device: str,
+        args: uutils.IterableSimpleNamespace,
+    ) -> ModifiedDetectionValidator:
+        """
+        Returns a validator for performing validation on the model.
+        This was made a static method to allow access to a validator
+        when working with the test set so no model trainer is needed.
 
-    def label_loss_items(self, loss_items=None, prefix="VAL"):
+        Args:
+        dataloader: The dataloader for the validation/test dataset
+        training: Whether or not we are training the model
+        device: The device to run the model on
+        """
+        return ModifiedDetectionValidator(
+            dataloader, args=copy(args), training=training, device=device
+        )
+
+    def label_loss_items(self, loss_items: torch.Tensor, step: str = "VAL") -> dict[str, float] | list[str]:
         """
         Returns a loss dict with labelled training loss items tensor.
+        Not needed for classification but necessary for segmentation & detection.
+        Taken from:
+        https://github.com/ultralytics/ultralytics/blob/09a34b19eddda5f1a92f1855b1f25f036300d9a1/ultralytics/engine/trainer.py#L628
 
-        Not needed for classification but necessary for segmentation & detection
+        Args:
+            loss_items: A tensor containing the loss items
+            step: the prefix to prepend to the loss name/key
+
+        Returns:
+        loss_dict if loss_items is not None, else a list of loss names
         """
-        keys = [f"{prefix}/{x}" for x in self.loss_names]
+        keys = [f"{step}/{x}" for x in self.loss_types]
         if loss_items is not None:
-            loss_items = [round(float(x), 5) for x in loss_items]  # convert tensors to 5 decimal place floats
-            return dict(zip(keys, loss_items))
+            loss_items = [float(x) for x in loss_items]
+            loss_dict = dict(zip(keys, loss_items))
+            return loss_dict
         else:
             return keys
 
@@ -278,9 +157,9 @@ class YoloModelTrainer(BaseTrainer):
             # forward pass
             minibatch = self.preprocess_train(minibatch)
 
-            # Note: criterion is implemented as a class in ultralytics
+            # Note: criterion is implemented as a class in Ultralytics
             preds = self.model(
-                minibatch["img"], augment=False
+                minibatch["img"]
             )  # can also get loss directly by passing whole dict
 
             # Note: we are not including tloss variable b/c it seems to only be used for logging purposes
@@ -292,31 +171,17 @@ class YoloModelTrainer(BaseTrainer):
         }
 
         loss_scores["loss"] = self.loss
-        
+
         return loss_scores, loss_items
 
     @torch.no_grad()
     def validation_step(
-        self, minibatch: Union[Tensor, int, float, str], step: Steps = Steps.VAL
+        self, loss_items: torch.Tensor, step: str = "VAL", **kwargs
     ) -> dict:  # pragma: no cover
-        minibatch = self.preprocess_val(minibatch)
-        # NOTE: moved inference_step logic into this function, added no_grad decorator to this
-        model = self.ema.ema or self.model
-        model = model.half() if self.args.half else model.float()
-        model.eval()
-        # for inference (non-dict input) ultralytics forward implementation returns a tensor not the loss
-        preds = model(minibatch["img"], augment=False)
-        metrics = score(minibatch, preds, step.name, self.device, self.args)
-
-        if step.name == "VAL":
-            loss, loss_items = model.loss(batch=minibatch, preds=preds)
-            metrics["loss_VAL"] = loss.cpu().item()
-            loss_scores = {
-                f"{step.name}/{name}": loss_items[i].item()
-                for i, name in enumerate(self.loss_types)
-            }
-            metrics = {**metrics, **loss_scores}
-
+        metrics, val_loss = self.validator(self.model, loss_items)
+        num_batches = len(self.validator.dataloader)
+        losses = self.label_loss_items(val_loss.cpu() / num_batches, step)
+        metrics = {**metrics, **losses}
         return metrics
 
     def get_signature(self, dataloader: DataLoader) -> ModelSignature:
