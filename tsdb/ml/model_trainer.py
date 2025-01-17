@@ -130,7 +130,12 @@ class BaseTrainer:
             patience=hyperparameters.patience,
         )
 
-    def get_validator(self, dataloader: DataLoader):
+    @staticmethod
+    def get_validator(dataloader: DataLoader, training: bool, device: str, args: uutils.IterableSimpleNamespace):
+        """
+        A static method to create a validator for the given dataloader. The validator computes
+        valdiation metrics (and losses if trianing is True).
+        """
         raise NotImplementedError("Child class needs to implement get_validator")
 
     def _setup_scheduler(self):
@@ -343,7 +348,7 @@ class BaseTrainer:
             dict[str, float] A dict containing the loss
         """
         # Validator
-        validator = self.get_validator(dataloaders.val)
+        self.validator = self.get_validator(dataloader=dataloaders.val, training=True, device=self.device, args=self.args)
 
         num_batches = len(dataloaders.train)
         num_warmup = (
@@ -369,7 +374,7 @@ class BaseTrainer:
                 # Manual Warmup
                 self.manual_warmup(num_warmup, step_number)
 
-                metrics, self.loss_items = self.training_step(minibatch=train_batch)
+                metrics, loss_items = self.training_step(minibatch=train_batch)
                 loss = metrics.pop("loss")
 
                 self.scaler.scale(loss).backward()
@@ -389,28 +394,17 @@ class BaseTrainer:
             for metric in train_metrics.keys():
                 train_metrics[metric] /= num_batches
 
-            mlflow.log_metrics(train_metrics, step=step_number)
+            mlflow.log_metrics(train_metrics, step=epoch)
 
             # Validation
             if epoch % self.train_args.val_interval == 0:
-                metrics = validator(self)
-                mlflow.log_metrics(metrics, step=epoch)
-                #print(f"Metrics are {metrics}")
-                # self.model.eval()
-                # val_report_interval = len(dataloaders.val)
-                # for batch_index, val_batch in enumerate(dataloaders.val):
-                #     val_metrics = self.validation_step(
-                #         minibatch=val_batch, step=Steps.VAL
-                #     )
+                val_metrics =  self.validation_step(loss_items, step="VAL")
+                mlflow.log_metrics(val_metrics, step=epoch)
 
-                #     if batch_index % val_report_interval == 0:
-                #         step_number = epoch#batch_index + (num_batches * epoch)
-                #         mlflow.log_metrics(val_metrics, step=step_number)
-
-                val_metric = -1 #val_metrics[f"VAL/{self.train_args.objective_metric}"]
+                val_metric = val_metrics[f"metrics/{self.train_args.objective_metric}(B)"]
 
                 if trial is not None:
-                    trial.report(val_metric, step_number)
+                    trial.report(val_metric, epoch)
 
                     if trial.should_prune():
                         raise optuna.TrialPruned()

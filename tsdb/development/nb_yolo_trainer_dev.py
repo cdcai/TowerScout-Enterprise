@@ -34,6 +34,7 @@ def get_model(model_yaml, model_pt, data):
     See DetectionTrainer class and BaseTrainer class for details on how to setup the model
     """
     args = get_cfg()  # used to get hyperparams for model and other stuff from some config file
+    print(type(args))
     model = DetectionModel(cfg=model_yaml, verbose=False)
     weights, _ = attempt_load_one_weight(model_pt)
     model.load(weights)

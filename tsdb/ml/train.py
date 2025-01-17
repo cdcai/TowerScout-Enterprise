@@ -1,13 +1,9 @@
-import mlflow
-
-from optuna.trial import Trial
-
 from dataclasses import asdict
-
 from typing import Any
-
 from functools import partial
 
+import mlflow
+from optuna.trial import Trial
 from torch.utils.data import DataLoader
 
 from ultralytics.cfg import get_cfg
@@ -15,7 +11,7 @@ from ultralytics.nn.tasks import attempt_load_one_weight, DetectionModel
 
 from tsdb.ml.utils import PromotionArgs, Hyperparameters, Steps
 from tsdb.ml.data import DataLoaders, data_augmentation
-from tsdb.ml.yolo_trainer import inference_step, YoloModelTrainer
+from tsdb.ml.yolo_trainer import YoloModelTrainer
 from tsdb.ml.model_trainer import TrainingArgs
 
 
@@ -38,10 +34,10 @@ def get_model(model_yaml: str, model_pt: str) -> DetectionModel:
     weights, _ = attempt_load_one_weight(model_pt)
     model.load(weights)
     model.nc = 1  # attach number of classes to model
-    model.names = {0:"ct"}  # attach class names to model
+    model.names = {0: "ct"}  # attach class names to model
     model.args = args
     # Note that this isn't set in cfg/default.yaml so must set it ourselves
-    model.args.conf = 0.0011
+    model.args.conf = 0.002
     # Set to true for towerscout since there's only 1 class
     model.args.single_cls = True
 
@@ -87,7 +83,9 @@ def objective(
     with mlflow.start_run(nested=True):
         # Create model and trainer
         mlflow.log_params(asdict(hyperparameters))  # convert dataclass to dict
-        metric = model_trainer.train(dataloaders, model_name="towerscout_model", trial=trial)
+        metric = model_trainer.train(
+            dataloaders, model_name="towerscout_model", trial=trial
+        )
 
     return metric
 

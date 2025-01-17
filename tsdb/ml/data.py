@@ -56,35 +56,35 @@ class YoloDataset(StreamingDataset):
             **kwargs
         )
 
-        mosaic_aug = ModifiedMosaic(
-            self, image_size=image_size, p=hyperparameters.prob_mosaic, n=4
-        )
-    
-        albumentation = Albumentations(p=1.0)
-
         format = Format(
-                bbox_format="xywh",
-                normalize=True,
-                return_mask=False,
-                return_keypoint=False,
-                return_obb=False,
-                batch_idx=False,
-                mask_ratio=4,
-                mask_overlap=True,
-                bgr=0.0,  # Always return BGR, not RGB. Value from default.yaml
-            )
+                    bbox_format="xywh",
+                    normalize=True,
+                    return_mask=False,
+                    return_keypoint=False,
+                    return_obb=False,
+                    batch_idx=False,
+                    mask_ratio=4,
+                    mask_overlap=True,
+                    bgr=0.0,  # Always return BGR, not RGB. Value from default.yaml
+                )
 
-        # prepend mosaic augmentation to input Ultralytics transforms
-        self.transforms = ultralytics.data.augment.Compose([mosaic_aug, albumentation] + transform)
-        self.transforms.append(format)
+        if transform is not None:
+            mosaic_aug = ModifiedMosaic(
+                self, image_size=image_size, p=hyperparameters.prob_mosaic, n=4
+            )
+        
+            albumentation = Albumentations(p=1.0)
+
+            # prepend mosaic augmentation to input Ultralytics transforms
+            self.transforms = ultralytics.data.augment.Compose([mosaic_aug, albumentation] + transform)
+            self.transforms.append(format)
+        
+        else:
+            self.transforms = ultralytics.data.augment.Compose([format])
 
     def __getitem__(self, index: int) -> Any:
         labels = self.get_image_and_label(index)
-        # Account for the case where the image has no labels (null image)
-        if len(labels["cls"]) == 0:
-            return labels
-        else:
-            return self.transforms(labels)
+        return self.transforms(labels)
 
     def get_image_and_label(self, index: int) -> Any:
         """
@@ -96,8 +96,13 @@ class YoloDataset(StreamingDataset):
         """
         label = super().__getitem__(index)  # get row from dataset
 
+        # reshape bboxes array from shape (N*4,) to (N, 4) 
+        # where N is the number of boxes
         bboxes = deepcopy(label.pop("bboxes")).reshape(-1, 4)
+        
+        # convert bboxes from xyxy to xywh
         bboxes = xyxy2xywh(bboxes)
+
         # move bboxes from "bboxes" key to "instances" key
         instances = Instances(
             bboxes=bboxes,
@@ -111,6 +116,11 @@ class YoloDataset(StreamingDataset):
 
         # rename "image_path" key to "im_file"
         label["im_file"] = label.pop("image_path")
+
+        # make a deepcopy to make cls array writeable otherwise 
+        # this line in Format class causes a warning: 
+        # https://github.com/ultralytics/ultralytics/blob/09a34b19eddda5f1a92f1855b1f25f036300d9a1/ultralytics/data/augment.py#L2058
+        label["cls"] = deepcopy(label.pop("cls")) 
         label["instances"] = instances
         return label
 
@@ -131,8 +141,8 @@ class ModifiedMosaic(Mosaic):
     def __init__(self, dataset: Dataset, image_size: int, p: float, n: int):
         """
         NOTE: image_size determines the size of the images *comprising* the mosaic.
-        So for an image size of DxD and for a mosaic of 4 images (2 x 2 grid of images)
-        the output mosaic image will have a size of 2D x 2D.
+        So for an image size of m x m and for a mosaic of 4 images (2 x 2 grid of images)
+        the output mosaic image will have a size of 2m x 2m.
         """
         super().__init__(dataset=dataset, imgsz=image_size, p=p, n=n)
 
@@ -155,30 +165,6 @@ class ModifiedMosaic(Mosaic):
         """
         # select from any images in dataset
         return [random.randint(0, len(self.dataset) - 1) for _ in range(self.n - 1)]
-
-
-class ToTensor:
-    """
-    NOTE: We create our own ToTensor class since the one by Ultralytics
-    doesn't take input data in the same format as the RandomFlip
-    transformation does i.e. a dict with keys "img" and "instances".
-    """
-
-    def __init__(self):
-        """
-        Initializes the ToTensor object for converting images to PyTorch tensors.
-
-        This class is designed to be used as part of a transformation pipeline for image preprocessing in the
-        Ultralytics YOLO framework.
-        """
-        super().__init__()
-
-    def __call__(
-        self, labels: dict[str, np.ndarray | Instances]
-    ) -> dict[str, torch.Tensor | Instances]:
-        labels["img"] = torch.tensor(np.ascontiguousarray(labels["img"]))
-        labels["img"] = labels["img"].to(torch.uint8)
-        return labels
 
 
 def data_augmentation(
@@ -213,12 +199,11 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
     """
     result = defaultdict(list)
     for index, element in enumerate(data):
-        # set ratio_pad to None to have Ultralytics
-        # methods compute it for us
+        # set ratio_pad key to None to have
+        # Ultralytics methods compute it for us
         result["ratio_pad"].append(None)
 
-        # This accounts for null images 
-        # (images with no cooling towers)
+        # This accounts for null images (images with no cooling towers)
         if len(element["cls"]) == 0:
            result["img"].append(element["img"])
            result["im_file"].append(element["im_file"])
@@ -226,7 +211,7 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
            result["resized_shape"].append(element["resized_shape"])
            continue
 
-        bboxes = element.pop("bboxes") #._bboxes.bboxes
+        bboxes = element.pop("bboxes")
         result["bboxes"].append(bboxes)
 
         for key, value in element.items():
@@ -237,12 +222,9 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
             # yolo dataloader has this as a float not int
             result["batch_idx"].append(float(index))
 
-    # Reshape tensor from BHWC to BCHW with permute
-    # because model expected channel first format
-    # however the mosaic augmentation expects channel last
-    # hence the reshape is done here.
-    # NOTE: No need to call permute here because we now have Format augmentatoin
-    result["img"] = torch.stack(result["img"], dim=0) #.permute(0,3,1,2)
+    # NOTE: No need to call permute here because the Format augmentatoin
+    # takes care of this for us
+    result["img"] = torch.stack(result["img"], dim=0)
     result["batch_idx"] = torch.tensor(result["batch_idx"])
 
     # Shape of resulting tensor should be (num bboxes in batch, 4)
@@ -273,20 +255,17 @@ def get_dataloader(
     Args:
     local_dir: Local directory where dataset is cached during training
     remote_dir: The local or remote directory where dataset `.mds` files are stored
-    hyperparams: Dataclass containting he batch size of the dataloader and dataset
+    hyperparams: Dataclass containting the batch size of the dataloader and dataset
           See: https://docs.mosaicml.com/projects/streaming/en/stable/getting_started/faqs_and_tips.html
           as well as the mosaic augmentation probability.
     transforms: A list of torchvision transforms to be composed and applied to the images
+    
     Returns:
     A PyTorch DataLoader object
-
-    TODO: DELETE HERE
     """
 
-    if transforms is None:
-        transform = [] #[ToTensor()]
-    else:
-        transform = transforms #+ [ToTensor()]
+    # NOTE: We do not need to use ToTensor because the Format 
+    # augmentation object converts our images to tensors for us
 
     # Note that StreamingDataset is unit tested here:
     # https://github.com/mosaicml/streaming/blob/main/tests/test_streaming.py
@@ -295,7 +274,7 @@ def get_dataloader(
         remote=remote_dir,
         shuffle=True,
         hyperparameters=hyperparams,
-        transform=transform,
+        transform=transforms,
         image_size=320,
         **kwargs,
     )
