@@ -4,18 +4,22 @@ from tsdb.ml.utils import PromotionArgs, Hyperparameters
 from tsdb.ml.data import data_augmentation, DataLoaders
 from tsdb.ml.train import model_promotion
 
-mlflow.set_registry_uri("databricks-uc")
+# COMMAND ----------
+
+client = mlflow.MlflowClient()
 
 
-
-# client = mlflow.MlflowClient()
-
-# # client.delete_registered_model(name='edav_dev_csels.towerscout.yolo_detection_model')
+# client.delete_registered_model(name='edav_dev_csels.towerscout.yolo_detection_model')  # for deletion once experimenting are done
 # loaded_model = mlflow.pytorch.load_model('runs:/ad3c356c5b444698b95979d7d2fdbf2e/towerscout_model')
 
 # registration_info = mlflow.register_model('runs:/ad3c356c5b444698b95979d7d2fdbf2e/towerscout_model', name="edav_dev_csels.towerscout.yolo_detection_model")
 # client.set_registered_model_alias(name="edav_dev_csels.towerscout.yolo_detection_model", alias="prod", version=registration_info.version)
 # print(registration_info.version)
+
+# COMMAND ----------
+
+mlflow.set_registry_uri("databricks-uc")
+
 
 hyperparameters = Hyperparameters(
     lr0=0.0,

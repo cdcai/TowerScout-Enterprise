@@ -91,7 +91,8 @@ def objective(
     return metric
 
 
-def model_promotion(promo_args: PromotionArgs) -> None:
+def model_promotion(promo_args: PromotionArgs) -> None: # pragma: no cover
+    # pass in args directly instead of dataclass
     """
     Evaluates the model that has the specficied alias. Promotes the model with the
     specfied alias
@@ -116,7 +117,8 @@ def model_promotion(promo_args: PromotionArgs) -> None:
         args=challenger.args,
     )
 
-    metrics = validator(challenger)
+    metrics = validator(challenger) 
+    # b/c we use Ultralytics valdiator the metrics dict has keys "metrics/{metric_name}(B)"
     challenger_test_metric = metrics[f"metrics/{promo_args.comparison_metric}(B)"]
 
     # load current prod/champion model with matching alias
@@ -135,6 +137,7 @@ def model_promotion(promo_args: PromotionArgs) -> None:
         registration_info = mlflow.register_model(
             promo_args.challenger_uri, name=promo_args.model_name
         )
+        client = mlflow.MlflowClient()
         promo_args.client.set_registered_model_alias(
             name=promo_args.model_name,
             alias=promo_args.alias,
