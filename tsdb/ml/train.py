@@ -3,6 +3,7 @@ from typing import Any
 from functools import partial
 
 import mlflow
+import torch
 from optuna.trial import Trial
 from torch.utils.data import DataLoader
 
@@ -96,42 +97,50 @@ def model_promotion(promo_args: PromotionArgs) -> None:
     specfied alias
 
     Args:
-        promo_args: Contains arguments for the model promotion logic
+        promo_args: A PromotionArgs dataclass containing the relevant arguments for 
+                    model promotion logic
     Returns:
         None
     """
+    mlflow.set_registry_uri("databricks-uc")
 
-    # load current model with matching alias (champion model)
-    champ_model = mlflow.pytorch.load_model(
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    challenger = mlflow.pytorch.load_model(promo_args.challenger_uri)
+    challenger.to(device)
+
+    validator = YoloModelTrainer.get_validator(
+        dataloader=promo_args.testing_dataloader,
+        training=False,
+        device=device,
+        args=challenger.args,
+    )
+
+    metrics = validator(challenger)
+    challenger_test_metric = metrics[f"metrics/{promo_args.comparison_metric}(B)"]
+
+    # load current prod/champion model with matching alias
+    champion = mlflow.pytorch.load_model(
         model_uri=f"models:/{promo_args.model_name}@{promo_args.alias}"
     )
+    champion.to(device)
 
-    # get testing score for current produciton model
-    champ_model_test_metrics = perform_pass(
-        step_func=partial(
-            inference_step,
-            model=champ_model,
-            step=Steps["TEST"].name,
-            metrics=promo_args.metrics,
-        ),
-        dataloader=promo_args.test_dataloader,
-        report_interval=len(promo_args.test_dataloader),
-    )
+    metrics = validator(champion)
+    champion_test_metric = metrics[f"metrics/{promo_args.comparison_metric}(B)"]
 
-    champ_test_metric = champ_model_test_metrics[f"{promo_args.objective_metric}_TEST"]
-    promo_args.logger.info(
-        f"{promo_args.objective_metric} for production model is: {champ_test_metric}"
-    )
-
-    if promo_args.challenger_metric_value > champ_test_metric:
-        promo_args.logger.info(f"Promoting challenger model to {promo_args.alias}.")
+    if challenger_test_metric > champion_test_metric:
+        print(f"Promoting challenger model to {promo_args.alias}.")
+        
         # give alias to challenger model, alias is automatically removed from current champion model
+        registration_info = mlflow.register_model(
+            promo_args.challenger_uri, name=promo_args.model_name
+        )
         promo_args.client.set_registered_model_alias(
             name=promo_args.model_name,
             alias=promo_args.alias,
-            version=promo_args.model_version,  # version of challenger model from when it was registered
+            version=registration_info.version,  # version of challenger model from when it was registered
         )
     else:
-        promo_args.logger.info(
+        print(
             f"Challenger model does not perform better than current {promo_args.alias} model. Promotion aborted."
         )

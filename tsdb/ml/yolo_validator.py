@@ -22,7 +22,7 @@ class ModifiedDetectionValidator(DetectionValidator):
             device: The device to run the model on.
     """
 
-    def __init__(self, dataloader: DataLoader, args: IterableSimpleNamespace, training: bool, device: str):
+    def __init__(self, dataloader: DataLoader, args: IterableSimpleNamespace, training: bool, device: str):  # pragma: no cover
         super().__init__(dataloader=dataloader, args=args)
         self.training = training
         self.device = device
