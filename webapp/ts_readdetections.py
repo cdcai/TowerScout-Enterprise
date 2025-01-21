@@ -261,7 +261,7 @@ class SilverTable:
         while attempt < retries:
             try:
                 max_retries = tiles_count * 2
-                jobdone = True
+                job_done = True
                 # jobdone = poll_table_for_record_count(
                 # request_id, user_id, tile_count, max_retries
                 # )
