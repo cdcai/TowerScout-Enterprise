@@ -1,15 +1,128 @@
 from databricks import sql
 from requests.exceptions import Timeout, RequestException
-import os, time, logging
+import os, time, logging, requests, ts_secrets, json
 from databricks.sql.exc import RequestError
 
-
+DATABRICKS_INSTANCE = ts_secrets.devSecrets.getSecret('DATABRICKS-INSTANCE')
+PERSONAL_ACCESS_TOKEN = ts_secrets.devSecrets.getSecret('DB-PERSONAL-ACCESS-TOKEN')
+WAREHOUSE_ID = ts_secrets.devSecrets.getSecret('WAREHOUSE-ID')
+SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
 class SilverTable:
+    
+                    # # # Testing existing data
+                    # user_id = 'cnu4'
+                    # request_id = '008d35a3'
+                    
     def __init__(self):
         self.batch_size = 100
-        
-    # @retry(wait=wait_exponential(min=2, max=10), stop=stop_after_attempt(3))
+      # @retry(wait=wait_exponential(min=2, max=10), stop=stop_after_attempt(3))
     def fetchbboxes(self, request_id, user_id, tile_count):
+        logging.info("Startinng ts_readdetections.py(fetchbboxes)")
+        attempt = 0
+        retries = 3
+        while attempt < retries:
+            try:
+                max_retries = tile_count * 2
+                job_done = self.poll_SilverTableJobDone(
+                    request_id, user_id, tile_count, max_retries
+                )
+                # jobdone = poll_table_for_record_count(
+                # request_id, user_id, tile_count, max_retries
+                # )
+                if job_done:
+                    # # Testing existing data
+                    # user_id = 'cnu4'
+                    # request_id = '008d35a3'
+                    sql_query  = "SELECT bboxes from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
+                    # Set the payload for the request (include the query)
+                    data = {
+                        'statement': sql_query,
+                        'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+                    }
+                    # Set the headers with the personal access token for authentication
+                    headers = {
+                        'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+                        'Content-Type': 'application/json',
+                    }
+            
+
+                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    result_data = response.json()
+                    print("Query result:", result_data)
+                    result_data = result_data['result']['data_array']
+
+                    print("Query result:", result_data)
+                    return(result_data)
+
+                
+            except sql.InterfaceError as e:
+                logging.error(
+                    "Interface Error at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                )
+            except RequestError as e:
+                logging.error(
+                    "RequestError at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                    )
+                attempt += 1
+                if attempt < retries:
+                    logging.info(f"Retrying {attempt}/{retries} in 10 seconds...")
+                    time.sleep(10) 
+                    retries+=1
+            except RequestException as e:
+                logging.error(
+                    "RequestException at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                    )
+                attempt += 1
+                if attempt < retries:
+                    logging.info(f"Retrying {attempt}/{retries} in 10 seconds...")
+                    time.sleep(10) 
+                    retries+=1 
+            except sql.DatabaseError as e:
+                logging.error(
+                    "Database Error at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                )
+                attempt += 1
+                if attempt < retries:
+                    logging.info(f"Retrying {attempt}/{retries} in 10 seconds...")
+                    time.sleep(10) 
+                    retries+=1 
+            except (Timeout, ConnectionError) as e:
+                logging.error(
+                    "Timeout,ConnectionError at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                )
+                attempt += 1
+                if attempt < retries:
+                    logging.info(f"Retrying {attempt}/{retries} in 10 seconds...")
+                    time.sleep(10) 
+                    retries+=1 
+            except sql.OperationalError as e:
+                logging.error(
+                    "Operational Error at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                )
+               
+            except Exception as e:
+               logging.error(
+                    "Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e
+                )
+            except RuntimeError as e:
+               logging.error("Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e)
+            except SyntaxError as e:
+               logging.error("Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e)
+            
+    # @retry(wait=wait_exponential(min=2, max=10), stop=stop_after_attempt(3))
+    def fetchbboxesOld(self, request_id, user_id, tile_count):
         logging.info("Startinng ts_readdetections.py(fetchbboxes)")
         attempt = 0
         retries = 3
@@ -141,8 +254,115 @@ class SilverTable:
                     cursor.close()
                 if connection:
                     connection.close()
-    
     def fetchbboxesWithoutPolling(self, request_id, user_id, tiles_count):
+        logging.info("Startinng ts_readdetections.py(fetchbboxes)")
+        attempt = 0
+        retries = 3
+        while attempt < retries:
+            try:
+                max_retries = tiles_count * 2
+                job_done = True
+                # jobdone = poll_table_for_record_count(
+                # request_id, user_id, tile_count, max_retries
+                # )
+                if job_done:
+                    # # Testing existing data
+                    # user_id = 'cnu4'
+                    # request_id = '008d35a3'
+                    sql_query  = ("SELECT bboxes, "
+                    "concat(uuid,'.jpeg') AS filename, "
+                    "image_path AS url "
+                    "FROM edav_dev_csels.towerscout.test_image_silver where user_id = '" + user_id + "' AND request_id = '" + request_id + "' "
+                    "ORDER BY image_id")
+                    print(f"sql_query: {sql_query}")
+                    
+                     # Set the payload for the request (include the query)
+                    data = {
+                        'statement': sql_query,
+                        'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+                        'output_format': 'json'
+                    }
+                    # Set the headers with the personal access token for authentication
+                    headers = {
+                        'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+                        'Content-Type': 'application/json',
+                    }
+            
+                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    result_data = response.json()
+                    print("Query result:", result_data)
+                    result_data = result_data['result']['data_array']
+
+                    print("Query result:", result_data)
+                    return(result_data)
+            except sql.InterfaceError as e:
+                logging.error(
+                    "Interface Error at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                )
+                
+            except RequestError as e:
+                logging.error(
+                    "RequestError at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                    )
+                attempt += 1
+                if attempt < retries:
+                    logging.info(f"Retrying {attempt}/{retries} in 10 seconds...")
+                    time.sleep(10) 
+                    retries+=1
+            except RequestException as e:
+                logging.error(
+                    "RequestException at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                    )
+                attempt += 1
+                if attempt < retries:
+                    logging.info(f"Retrying {attempt}/{retries} in 10 seconds...")
+                    time.sleep(10) 
+                    retries+=1 
+            except sql.DatabaseError as e:
+                logging.error(
+                    "Database Error at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                )
+                attempt += 1
+                if attempt < retries:
+                    logging.info(f"Retrying {attempt}/{retries} in 10 seconds...")
+                    time.sleep(10) 
+                    retries+=1 
+            except (Timeout, ConnectionError) as e:
+                logging.error(
+                    "Timeout,ConnectionError at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                )
+                attempt += 1
+                if attempt < retries:
+                    logging.info(f"Retrying {attempt}/{retries} in 10 seconds...")
+                    time.sleep(10) 
+                    retries+=1 
+            except sql.OperationalError as e:
+                logging.error(
+                    "Operational Error at %s",
+                    "ts_readdetections.py(fetchbboxes)",
+                    exc_info=e
+                )
+                
+            except Exception as e:
+                logging.error(
+                    "Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e
+                )
+            except RuntimeError as e:
+                logging.error("Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e)
+            except SyntaxError as e:
+                logging.error("Error at %s", "ts_readdetections.py(fetchbboxes)", exc_info=e)
+       
+    def fetchbboxesWithoutPollingold(self, request_id, user_id, tiles_count):
         logging.info("Startinng ts_readdetections.py(fetchbboxes)")
         attempt = 0
         retries = 3
@@ -289,7 +509,7 @@ class SilverTable:
                     cursor.close()
                 if connection:
                     connection.close()
-    
+   
     # @retry(wait=wait_exponential(min=2, max=10), stop=stop_after_attempt(5))
     def poll_SilverTableJobDone(
         self, request_id, user_id, tile_count, max_retries, delay=10
@@ -301,75 +521,52 @@ class SilverTable:
         try:
         
             retries = 0
-            connection = None
-            cursor = None
+            sql_query  = "SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
+# Set the payload for the request (include the query)
+            data = {
+            'statement': sql_query,
+            'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+}
+        # Set the headers with the personal access token for authentication
+            headers = {
+            'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+            'Content-Type': 'application/json',
+        }
             while retries < max_retries:
                 try:
                     # if connection is None:
                     #      time.sleep(60)
                         #  continue
                     # if not connection.open:
-                    connection = sql.connect(
-                       server_hostname="adb-1881246389460182.2.azuredatabricks.net",
-                       http_path="/sql/1.0/warehouses/8605a48953a7f210",
-                       access_token="dapicb010df06931117a00ccc96cab0abdf0-3",
-                       connection_timeout= 600,  # Timeout in seconds
-                       socket_timeout=600,
-                       retry_config={
-                       "min_retry_delay": 1.0,
-                       "max_retry_delay": 60.0,
-                       "max_attempts": max_retries,
-                       "retry_duration": 900.0,
-                       "default_retry_delay": 5.0,
-                       }
-                       )
-                    cursor = connection.cursor()
-                    query = "SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = ? AND request_id = ?"
-                    # cursor.execute(
-                    #     "SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
-                    #     + user_id
-                    #     + "' AND request_id = '"
-                    #     + request_id
-                    #     + "'"
-                    # )
-                    cursor.execute(query, (user_id, request_id))
-                    print(
-                        f"SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
-                        + user_id
-                        + "' AND request_id = '"
-                        + request_id
-                        + "'"
-                    )
-                    logging.info("SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
-                        + user_id
-                        + "' AND request_id = '"
-                        + request_id
-                        + "'")
-                    resultcount = cursor.fetchone()
-                    print("result count:", resultcount)
-                    logging.info(f"result count:{resultcount}")
-                    # print("result count[0]:", resultcount[0])
-                    # logging.info(f"result count[0]:{resultcount[0]}")
-                    # print("tile_count:", tile_count)
-                    # logging.info(f"tile_count:{tile_count}")
-                    if resultcount[0] >= tile_count:
-                        cursor.close()
-                        connection.close()
-                        print("result count:", resultcount)
-                        return True
+                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    print(f"SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                    print(response.status_code)
+                    if response.status_code == 200:
+                        result_data = response.json()
+                        resultcount = result_data['result']['data_array'][0][0]
+                        if (int(resultcount) >= tile_count):
+                            
+                            print("result count:", resultcount)
+                            return True
+                        else:
+                            retries += 1
+                            logging.info(f"Number of retries: {retries}")
+                            if retries == max_retries:
+                                max_retries +=1
+                            
+                            # raise Timeout("Forcing timeout error")
+                            time.sleep(delay)
                     else:
                         retries += 1
                         logging.info(f"Number of retries: {retries}")
                         if retries == max_retries:
                             max_retries +=1
-                        cursor.close()
-                        connection.close()
-                            # raise Timeout("Forcing timeout error")
                         time.sleep(delay)
+                   
+                    
                 except RequestError as e:
                     print("RequestError silvertablejobdone. Retrying...")
-                    cursor.close()
-                    connection.close()
+                   
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
@@ -377,16 +574,14 @@ class SilverTable:
                 
                 except Exception as e:
                     print(f"Exception silvertablejobdone. Retrying...{e}")
-                    cursor.close()
-                    connection.close()
+                    
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
                     time.sleep(delay)  # Wait before retrying
                 except (Timeout,ConnectionError) as e:
                     print("Timeout,ConnectionError occurred. Retrying...")
-                    cursor.close()
-                    connection.close()
+                    
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
@@ -395,65 +590,52 @@ class SilverTable:
                     logging.info(f"result count:{resultcount}")
                     logging.error("SyntaxError at %s","ts_readdetections.py(poll_SilverTableJobDone)",
                     exc_info=e)
-                    cursor.close()
-                    connection.close()
                     time.sleep(delay)
                 except RequestException as e:
                     print("RequestException silvertablejobdone. Retrying...")
-                    cursor.close()
-                    connection.close()
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
                     time.sleep(delay)  # Wait before retrying
                 finally:
-                    if cursor:
-                        cursor.close()
-                    if connection:
-                        connection.close()
+                    print("Finally. Retrying sub process...")
+                        
         except sql.InterfaceError as e:
             logging.error(
                 "Interface Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
                 exc_info=e
             )
-            cursor.close()
-            connection.close()
+            
         except sql.DatabaseError as e:
             logging.error(
                 "Database Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
                 exc_info=e
             )
-            cursor.close()
-            connection.close()
+            
         except sql.OperationalError as e:
             logging.error(
                 "Operational Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
                 exc_info=e
             )
-            cursor.close()
-            connection.close()
+            
         except Exception as e:
-            cursor.close()
-            connection.close()
+           
             logging.error(
                 "Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
                 exc_info=e
             )
-            cursor.close()
-            connection.close()
+           
         except RuntimeError as e:
             logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
         except SyntaxError as e:
             logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
         finally:
-                if cursor:
-                    cursor.close()
-                if connection:
-                    connection.close()
+            print("Finally. Retrying...")
+                   
       
 
     def get_bboxesfortiles(self, tiles, events, id, request_id, user_id):
@@ -477,18 +659,18 @@ class SilverTable:
                     boxes = []
                     #  get bbox column for each row from the results
                     # result[0] is bboxes, result[1] is tile id
-                    bboxarray = result[0]
+                    bboxarray = json.loads(result[0])
                 
                     tile_results = [
                         {
-                            "x1": item["x1"],
-                            "y1": item["y1"],
-                            "x2": item["x2"],
-                            "y2": item["y2"],
-                            "conf": item["conf"],
-                            "class": int(item["class"]),
-                            "class_name": item["class_name"],
-                            "secondary": item["secondary"],
+                        'x1': float(item['x1']),
+                        'y1':float(item['y1']),
+                        'x2':float(item['x2']),
+                        'y2':float(item['y2']),
+                        'conf':float(item['conf']),
+                        'class':int(item['class']),
+                        'class_name':item['class_name'],
+                        'secondary':float(item['secondary']),
                         }
                         for item in bboxarray
                     ]
@@ -520,8 +702,74 @@ class SilverTable:
         except SyntaxError as e:
             logging.error("Error at %s", "ts_readdetections.py(get_bboxesfortiles)", exc_info=e)
     
-    
+     
     def get_bboxesfortilesWithoutPolling(self, tiles, events, id, request_id, user_id):
+        try:
+            tile_count = len(tiles)
+            results_raw = self.fetchbboxesWithoutPolling(request_id, user_id, tile_count)
+            # # Only for localhost - Azure app services
+            # for chunk in results_raw:
+            #     if chunk:
+            #         print(f"result raw chunk: {chunk}")
+        
+            results = []
+
+            for i in range(0, len(tiles), self.batch_size):
+                # make a batch of tiles and detection results
+                tile_batch = tiles[i : i + self.batch_size]
+                results_raw_batch = results_raw[i : i + self.batch_size]
+
+                for tile, result in zip(tile_batch, results_raw_batch):
+                    # record the detections in the tile
+                    boxes = []
+                    #  get bbox column for each row from the results
+                    # result[0] is bboxes, result[1] is tile id
+                    bboxarray = json.loads(result[0])
+                
+                    tile_results = [
+                        {
+                        'x1': float(item['x1']),
+                        'y1':float(item['y1']),
+                        'x2':float(item['x2']),
+                        'y2':float(item['y2']),
+                        'conf':float(item['conf']),
+                        'class':int(item['class']),
+                        'class_name':item['class_name'],
+                        'secondary':float(item['secondary']),
+                        }
+                        for item in bboxarray
+                    ]
+                    results.append(tile_results)
+                    # record the detections in the tile
+
+                    for bbox in tile_results:
+                        box = (
+                            "0 "
+                            + str((bbox["x1"] + bbox["x2"]) / 2)
+                            + " "
+                            + str((bbox["y1"] + bbox["y2"]) / 2)
+                            + " "
+                            + str(bbox["x2"] - bbox["x1"])
+                            + " "
+                            + str(bbox["y2"] - bbox["y1"])
+                            + "\n"
+                        )
+                        boxes.append(box)
+                    # tr[1] is tile id
+                    tile["detections"] = boxes
+                    tile["filename"] = result[1]
+                    tile["url"] = result[2]
+                print(f" batch of {len(tile_batch)} processed")
+
+            return results
+        except Exception as e:
+            logging.error("Error at %s", "get_bboxesfortiles ts_readdetections.py", exc_info=e)
+        except RuntimeError as e:
+            logging.error("Error at %s", "get_bboxesfortiles ts_readdetections.py", exc_info=e)
+        except SyntaxError as e:
+            logging.error("Error at %s", "ts_readdetections.py(get_bboxesfortiles)", exc_info=e)
+    
+    def get_bboxesfortilesWithoutPollingOld(self, tiles, events, id, request_id, user_id):
         try:
             tile_count = len(tiles)
             results_raw = self.fetchbboxesWithoutPolling(request_id, user_id, tile_count)
@@ -657,3 +905,5 @@ class SilverTable:
             logging.error("Error at %s", "get_bboxesfortiles ts_readdetections.py", exc_info=e)
         except SyntaxError as e:
             logging.error("Error at %s", "ts_readdetections.py(get_bboxesfortiles)", exc_info=e)
+
+
