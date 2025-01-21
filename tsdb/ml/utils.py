@@ -36,26 +36,19 @@ class PromotionArgs:
     A class to represent model promotion arguements
 
     Attributes:
-        objective_metric: The evaluation metric we want to optimize
-        batch_size: The size of the minibatchs passed to the model
-        metrics: Various model evaluation metrics we want to track
-        model_version: The version of the model that is the challenger
-        model_name: The name of the model
-        challenger_metric_value: The value of the objective metric achieved by the challenger model on the test dataset
+        challenger_uri: The URI for the challenger model. Found under the experiment it was logged under.
+        testing_dataloader: The dataloader for the test dataset
+        comparision_metric: The evaluation metric used to compare performance of the two models
+        model_name: The name to register the model under in Unity Catalog
         alias: The alias we are promoting the model to
-        test_dataloader: The dataloader for the test dataset
+        client: The mlflow client used to
     """
-
-    objective_metric: str = "f1"
-    batch_size: int = 4
-    metrics: list[ValidMetric] = field(default_factory=list)
-    model_version: int = 1
-    model_name: str = "ts"
-    challenger_metric_value: float = 0
-    alias: str = "staging"
-    test_dataloader: DataLoader = None
-    client: MlflowClient = None
-    logger: Logger = None
+    challenger_uri: str
+    testing_dataloader: DataLoader
+    comparison_metric: str
+    model_name: str
+    alias: str
+    client: MlflowClient = MlflowClient()
 
 
 @dataclass
