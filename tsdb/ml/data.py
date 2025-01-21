@@ -228,7 +228,7 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
     result["batch_idx"] = torch.tensor(result["batch_idx"])
 
     # Shape of resulting tensor should be (num bboxes in batch, 4)
-    result["bboxes"] = torch.tensor(np.concatenate(result["bboxes"]))
+    result["bboxes"] = torch.tensor(np.concatenate(result["bboxes"])).reshape(-1, 4)
 
     # Shape of resulting tensor should be (num bboxes in batch, 1)
     # Call np.concatenate to avoid calling tensor on a list of np arrays but instead just one 2d np array

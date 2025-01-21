@@ -126,7 +126,7 @@ class BaseTrainer:
             epochs=hyperparameters.epochs,
             batch_size=hyperparameters.batch_size,
             momentum=hyperparameters.momentum,
-            patience=hyperparameters.patience,
+            patience=train_args.patience,
         )
 
     @staticmethod
@@ -164,7 +164,7 @@ class BaseTrainer:
         momentum: float = 0.9,
         decay: float = 1e-5,
         iterations: int = 1e5,
-    ):
+    ) -> torch.optim.Optimizer:
         """
         Code adapted from the build_optimizer method in: ultralytics/models/yolo/train.py
         Constructs an optimizer for the given model, based on the specified optimizer name, learning rate, momentum,
