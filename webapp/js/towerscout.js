@@ -1689,7 +1689,7 @@ function ProcessUserRequest(estimate)
 {
   try
   {
-
+    
     if (Detection_detections.length > 0) {
       if (!window.confirm("This will erase current detections. Proceed?")) {
       // erase the previous set of towers and tiles
@@ -1730,7 +1730,7 @@ function ProcessUserRequest(estimate)
     formData.append('provider', provider);
     formData.append('polygons', boundaries);
     formData.append('estimate', "yes");
-
+    
 
     fetch("/uploadTileImages", { method: "POST", body: formData, })
       .then(result => result.text())
@@ -1756,7 +1756,7 @@ function ProcessUserRequest(estimate)
         startTime = performance.now();
 
         // now, the actual request
-
+        
         Detection.resetAll();
         formData.delete("estimate");
         fetch("/uploadTileImages", { method: "POST", body: formData })
@@ -1766,14 +1766,14 @@ function ProcessUserRequest(estimate)
             formData.append('user_id', result.user_id);
             formData.append('request_id', result.request_id);
             formData.append('tiles_count', result.tiles_count);
-            console.log("Polling Silver Table for detections....");
-            pollSilverTable();
-            })
+            console.log("Delaying Polling Silver Table by 1 minute");
+            setTimeout(pollSilverTable, 60000);  // Start polling after 1 minute
+            })  
           .catch(e => {
             console.log(e + ": "); disableProgress(0, 0);
           });
       });
-
+      
       getazmapTransactioncountjs(2);
     } catch (error) {
       console.error('Error during main ProcessRequest:', error);
@@ -1856,11 +1856,11 @@ async function fetchWithTimeout(url, options, timeoutDuration) {
   try {
     // Send the HTTP request with the AbortController signal
     const response = await fetch(url, { ...options, signal: controller.signal });
-
+    
     // If the request was successful, parse the response
     const data = await response.json();
     console.log('Data received:', data);
-
+    
     // Clear the timeout when the request completes
     clearTimeout(timeoutId);
 
@@ -1868,13 +1868,15 @@ async function fetchWithTimeout(url, options, timeoutDuration) {
   } catch (error) {
     if (error.name === 'AbortError') {
       console.log('fetchWithTimeout - Request timed out');
+      throw new Error("fetchWithTimeout - AbortError");
     } else {
-      console.error('fetchWithTimeout - Fetch error:', error);
+      throw new Error(`fetchWithTimeout - Fetch error: ${error.text}`);
     }
   }
 }
 
 async function pollSilverTable() {
+  console.log("Started Polling Silver Table for detections....");
   const url = '/pollSilverTable';  // Endpoint URL
   const options = { method: 'POST', body: formData };  // Request body
 
@@ -1892,7 +1894,7 @@ async function pollSilverTable() {
         return pollSilverTable();
       }
       if (result) {
-        console.log('Detections found in the Silver Table. Request completed successfully');
+        console.log('Polling complete. Detections found in the Silver Table. Request completed successfully');
         console.log("Reverse geocoding and drawing bounding boxes ....");
         drawBoundingBoxes();
         return true;
@@ -1917,7 +1919,7 @@ async function pollSilverTable() {
 
 
 async function pollSilverTableSimple() {
-
+ 
   try {
     // Send the HTTP request
     const response = await fetch('/pollSilverTable', {method: "POST", body: formData, });  // API URL
@@ -1962,8 +1964,8 @@ function drawBoundingBoxes(){
         }
     catch (error) {
     console.log('Error during drawBoundingBoxes:', error);
-
-    }
+    
+    }  
 }
 // // Start the cycle when the script first loads
 // checkCondition();
