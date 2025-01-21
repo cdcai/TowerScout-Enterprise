@@ -265,7 +265,7 @@ class SilverTable:
                 # jobdone = poll_table_for_record_count(
                 # request_id, user_id, tile_count, max_retries
                 # )
-                if jobdone:
+                if job_done:
                     # # Testing existing data
                     # user_id = 'cnu4'
                     # request_id = '008d35a3'
