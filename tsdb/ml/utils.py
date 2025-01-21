@@ -46,9 +46,9 @@ class PromotionArgs:
     challenger_uri: str
     testing_dataloader: DataLoader
     comparison_metric: str
-    model_name: str
+    uc_model_name: str
     alias: str
-    client: MlflowClient = MlflowClient()
+    
 
 
 @dataclass
