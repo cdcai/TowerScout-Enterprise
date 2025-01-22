@@ -1,5 +1,5 @@
 import pytest
-import tsdb.ml.data_processing as processing
+import tsdb.preprocessing.transformations as processing
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.types import StringType, StructType, StructField

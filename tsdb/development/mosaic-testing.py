@@ -1,4 +1,19 @@
 # Databricks notebook source
+# from tsdb.preprocessing.preprocess import convert_to_mds
+
+# df = spark.sql("""SELECT * FROM edav_dev_csels.towerscout.test_image_gold LIMIT 10""")
+# df = df.selectExpr(
+#     "image_path",
+#     "transform(bboxes, x -> float(0)) AS cls",
+#     "flatten(transform(bboxes, x -> array(x.x1, x.y1, x.x2, x.y2))) AS bboxes",
+#     "split_label",
+# )
+
+
+# convert_to_mds(df, out_root="/Volumes/edav_dev_csels/towerscout/misc/mosaic_streaming_unit_test/")
+
+# COMMAND ----------
+
 # %pip install mosaicml-streaming
 # %pip install optuna
 

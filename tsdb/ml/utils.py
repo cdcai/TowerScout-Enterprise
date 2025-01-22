@@ -1,18 +1,8 @@
-from collections import namedtuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TypedDict
-
 from enum import Enum, auto
 
-from torch import nn
-
-from torch.utils.data import DataLoader
-
-from optuna.trial import Trial
-
-from mlflow import MlflowClient
-
-from logging import Logger
+import mlflow
 
 
 class Steps(Enum):
@@ -21,75 +11,24 @@ class Steps(Enum):
     TEST = auto()
 
 
-class ValidMetric(Enum):
-    """
-    An Enum which is used to represent valid evaluation metrics for the model
-    """
-
-    BCE = nn.BCEWithLogitsLoss()
-    MSE = nn.MSELoss()
-
-
 @dataclass
-class PromotionArgs:
+class UCModelName:
     """
-    A class to represent model promotion arguements
+    A class to represent the full name of a model registered in
+    Unity Catalog
 
     Attributes:
-        challenger_uri: The URI for the challenger model. Found under the experiment it was logged under.
-        testing_dataloader: The dataloader for the test dataset
-        comparision_metric: The evaluation metric used to compare performance of the two models
-        model_name: The name to register the model under in Unity Catalog
-        alias: The alias we are promoting the model to
-        client: The mlflow client used to
+        catalog: The catalog the model is under
+        schema: The schema the model is under
+        name: The name of the model in Unity Catalog
     """
-    challenger_uri: str
-    testing_dataloader: DataLoader
-    comparison_metric: str
-    uc_model_name: str
-    alias: str
-    
 
+    catalog: str
+    schema: str
+    name: str
 
-@dataclass
-class Hyperparameters:
-    """
-    A class to represent hyperparameter arguements
-    to be used for Optuna tuning
-
-    Attributes:
-        lr0: The initial learning rate
-        momentum: optimizer momentum parameter
-        weight_decay: optimizer weight decay parameter
-        batch_size: batch size for dataloader
-        epochs: number of epochs
-        prob_H_flip: probablity of horizontally flipping image
-        prob_V_flip: probability of vertically flipping image
-        patience: number of epochs to wait for validation metric improvement before early stopping
-    """
-    lr0: float
-    momentum: float
-    weight_decay: float
-    batch_size: int
-    epochs: int
-    prob_H_flip: float
-    prob_V_flip: float
-    prob_mosaic: float = 1.0
-
-    @classmethod
-    def from_optuna_trial(cls, trial: Trial):
-        lr = trial.suggest_float("lr", 1e-2, 1e-2, log=True)
-        momentum = trial.suggest_float("momentum", 0.937, 0.937)
-        weight_decay = trial.suggest_float("weight_decay", 5e-4, 5e-4, log=True)
-        batch_size_power = trial.suggest_int("batch_size_power", 4, 4)
-        batch_size = 2**batch_size_power
-        prob_H_flip = trial.suggest_float("prob_H_flip", 0.5, 0.5)
-        prob_V_flip = trial.suggest_float("prob_V_flip", 0.0, 0.0)
-        prob_mosaic = trial.suggest_float("prob_mosaic", 1.0, 1.0)
-        epochs = trial.suggest_int("epochs", 16, 16)
-
-        return cls(lr, momentum, weight_decay, batch_size, epochs, prob_H_flip, prob_V_flip, prob_mosaic)
-
+    def __str__(self):
+        return f"{self.catalog}.{self.schema}.{self.name}"
 
 
 class YOLOv5Detection(TypedDict):
@@ -101,6 +40,7 @@ class YOLOv5Detection(TypedDict):
     class_: int
     class_name: str
     secondary: int
+
 
 def cut_square_detection(img, x1, y1, x2, y2):
     w,h = img.size
@@ -145,7 +85,7 @@ def get_model_tags(model_name: str, alias: str) -> tuple[dict[str, str], str]:  
     
         - https://github.com/mlflow/mlflow/blob/8c07dc0f604565bec29358526db461ca4f842bb5/tests/store/model_registry/test_rest_store.py#L306
     """
-    client = MlflowClient()
+    client = mlflow.MlflowClient()
     model_version_info = client.get_model_version_by_alias(
         name=model_name, alias=alias
     )
