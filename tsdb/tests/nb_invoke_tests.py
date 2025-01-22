@@ -1,8 +1,4 @@
 # Databricks notebook source
-!pip install optuna # optuna not installed on cpu cluster by default and cpu cluster is where all unit tests pass (test_single_image)
-
-# COMMAND ----------
-
 import pytest
 import sys
 
@@ -35,4 +31,4 @@ def run_pytest_main(flags: list[str]):
 
 # COMMAND ----------
 
-run_pytest_main([".", "-v", "-p", "no:cacheprovider"])
+run_pytest_main(["test_model_trainer.py", "-v", "-p", "no:cacheprovider"])

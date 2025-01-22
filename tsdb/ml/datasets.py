@@ -13,11 +13,10 @@ from streaming.base.util import clean_stale_shared_memory
 from streaming import StreamingDataset
 
 import ultralytics
-from ultralytics.utils.instance import Instances
+import ultralytics.utils as uutils
 from ultralytics.data.augment import RandomFlip, Mosaic, Format, Albumentations
-from ultralytics.utils.ops import xyxy2xywh
 
-from tsdb.ml.utils import Hyperparameters
+from tsdb.ml.types import Hyperparameters
 
 
 class YoloDataset(StreamingDataset):
@@ -35,6 +34,7 @@ class YoloDataset(StreamingDataset):
                 Uses a temp directory if not set
         shuffle:  Whether to iterate over the samples in randomized orde
         hyperparameters: Hyperparameters to use (batch size)
+        transfrom: Whether to apply the data augmentation transforms
         image_size: image size used to create the mosaic augmentation object
     """
 
@@ -44,45 +44,52 @@ class YoloDataset(StreamingDataset):
         local: str,
         shuffle: bool,
         hyperparameters: Hyperparameters,
-        transform: list[callable],
+        transform: bool,
         image_size: int,
-        **kwargs
-    ):
+        **kwargs,
+    ):  # pragma: no cover
         super().__init__(
             local=local,
             remote=remote,
             shuffle=shuffle,
             batch_size=hyperparameters.batch_size,
-            **kwargs
+            **kwargs,
         )
 
         format = Format(
-                    bbox_format="xywh",
-                    normalize=True,
-                    return_mask=False,
-                    return_keypoint=False,
-                    return_obb=False,
-                    batch_idx=False,
-                    mask_ratio=4,
-                    mask_overlap=True,
-                    bgr=0.0,  # Always return BGR, not RGB. Value from default.yaml
-                )
+            bbox_format="xywh",
+            normalize=True,
+            return_mask=False,
+            return_keypoint=False,
+            return_obb=False,
+            batch_idx=False,
+            mask_ratio=4,
+            mask_overlap=True,
+            bgr=0.0,  # Always return BGR, not RGB. Value from default.yaml
+        )
 
-        if transform is not None:
+        if transform:
             mosaic_aug = ModifiedMosaic(
                 self, image_size=image_size, p=hyperparameters.prob_mosaic, n=4
             )
-        
+
             albumentation = Albumentations(p=1.0)
 
-            # prepend mosaic augmentation to input Ultralytics transforms
-            self.transforms = ultralytics.data.augment.Compose([mosaic_aug, albumentation] + transform)
+            rand_flips = [
+                RandomFlip(p=hyperparameters.prob_H_flip, direction="horizontal"),
+                RandomFlip(p=hyperparameters.prob_V_flip, direction="vertical"),
+            ]
+
+            # apply transformations in the same order Ultralyitcs does
+            self.transforms = ultralytics.data.augment.Compose(
+                [mosaic_aug, albumentation] + rand_flips
+            )
             self.transforms.append(format)
-        
+
         else:
             self.transforms = ultralytics.data.augment.Compose([format])
 
-    def __getitem__(self, index: int) -> Any:
+    def __getitem__(self, index: int) -> Any:  # pragma: no cover
         labels = self.get_image_and_label(index)
         return self.transforms(labels)
 
@@ -96,18 +103,18 @@ class YoloDataset(StreamingDataset):
         """
         label = super().__getitem__(index)  # get row from dataset
 
-        # reshape bboxes array from shape (N*4,) to (N, 4) 
+        # reshape bboxes array from shape (N*4,) to (N, 4)
         # where N is the number of boxes
         bboxes = deepcopy(label.pop("bboxes")).reshape(-1, 4)
-        
+
         # convert bboxes from xyxy to xywh
-        bboxes = xyxy2xywh(bboxes)
+        bboxes = uutils.ops.xyxy2xywh(bboxes)
 
         # move bboxes from "bboxes" key to "instances" key
-        instances = Instances(
+        instances = uutils.instance.Instances(
             bboxes=bboxes,
             # See: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/dataset.py#L227
-            # We set this value as the calcuations some class methods of Instance perform 
+            # We set this value as the calcuations some class methods of Instance perform
             # require it to not be the default value of None
             segments=np.zeros((0, 1000, 2), dtype=np.float32),
             bbox_format="xywh",
@@ -117,10 +124,10 @@ class YoloDataset(StreamingDataset):
         # rename "image_path" key to "im_file"
         label["im_file"] = label.pop("image_path")
 
-        # make a deepcopy to make cls array writeable otherwise 
-        # this line in Format class causes a warning: 
+        # make a deepcopy to make cls array writeable otherwise
+        # this line in Format class causes a warning:
         # https://github.com/ultralytics/ultralytics/blob/09a34b19eddda5f1a92f1855b1f25f036300d9a1/ultralytics/data/augment.py#L2058
-        label["cls"] = deepcopy(label.pop("cls")) 
+        label["cls"] = deepcopy(label.pop("cls"))
         label["instances"] = instances
         return label
 
@@ -138,7 +145,7 @@ class ModifiedMosaic(Mosaic):
             n: The grid size, either 4 (for 2x2) or 9 (for 3x3).
     """
 
-    def __init__(self, dataset: Dataset, image_size: int, p: float, n: int):
+    def __init__(self, dataset: Dataset, image_size: int, p: float, n: int):  # pragma: no cover
         """
         NOTE: image_size determines the size of the images *comprising* the mosaic.
         So for an image size of m x m and for a mosaic of 4 images (2 x 2 grid of images)
@@ -146,7 +153,7 @@ class ModifiedMosaic(Mosaic):
         """
         super().__init__(dataset=dataset, imgsz=image_size, p=p, n=n)
 
-    def get_indexes(self) -> list[int]:
+    def get_indexes(self) -> list[int]:  # pragma: no cover
         """
         Returns a list of random indexes from the dataset for mosaic augmentation.
         This implementation removes the 'buffer' parameter and always uses the entire dataset
@@ -167,23 +174,6 @@ class ModifiedMosaic(Mosaic):
         return [random.randint(0, len(self.dataset) - 1) for _ in range(self.n - 1)]
 
 
-def data_augmentation(
-    prob_H_flip: float = 0.2,
-    prob_V_flip: float = 0.2,
-) -> list:
-    """
-    Data Augmentation function to add label invariant transforms to training pipeline
-    Applies a series of transformations such as rotation, horizontal and vertical flips, and Gaussian blur to each image
-
-    TODO: test this
-    """
-    transforms = [
-        RandomFlip(p=prob_H_flip, direction="horizontal"),
-        RandomFlip(p=prob_V_flip, direction="vertical"),
-    ]
-    return transforms
-
-
 def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Function for collating data into batches. Some additional
@@ -193,7 +183,6 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
 
     Args:
         data: The data to be collated a batch
-        transforms: Ultralytics transforms applied to the np array images
     Returns: A dictionary containing the collated data in the formated
             expected by the Ultralytics DetectionModel class
     """
@@ -205,11 +194,11 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
 
         # This accounts for null images (images with no cooling towers)
         if len(element["cls"]) == 0:
-           result["img"].append(element["img"])
-           result["im_file"].append(element["im_file"])
-           result["ori_shape"].append(element["ori_shape"])
-           result["resized_shape"].append(element["resized_shape"])
-           continue
+            result["img"].append(element["img"])
+            result["im_file"].append(element["im_file"])
+            result["ori_shape"].append(element["ori_shape"])
+            result["resized_shape"].append(element["resized_shape"])
+            continue
 
         bboxes = element.pop("bboxes")
         result["bboxes"].append(bboxes)
@@ -246,7 +235,7 @@ def get_dataloader(
     local_dir: str,
     remote_dir: str,
     hyperparams: Hyperparameters,
-    transforms: list[callable] = None,
+    transform: bool = False,
     **kwargs,
 ) -> DataLoader:
     """
@@ -258,13 +247,13 @@ def get_dataloader(
     hyperparams: Dataclass containting the batch size of the dataloader and dataset
           See: https://docs.mosaicml.com/projects/streaming/en/stable/getting_started/faqs_and_tips.html
           as well as the mosaic augmentation probability.
-    transforms: A list of torchvision transforms to be composed and applied to the images
-    
+    transform: Whether to apply data augmentation
+
     Returns:
     A PyTorch DataLoader object
     """
 
-    # NOTE: We do not need to use ToTensor because the Format 
+    # NOTE: We do not need to use ToTensor because the Format
     # augmentation object converts our images to tensors for us
 
     # Note that StreamingDataset is unit tested here:
@@ -274,7 +263,7 @@ def get_dataloader(
         remote=remote_dir,
         shuffle=True,
         hyperparameters=hyperparams,
-        transform=transforms,
+        transform=transform,
         image_size=320,
         **kwargs,
     )
@@ -303,7 +292,7 @@ class DataLoaders:
     test: DataLoader
 
     @classmethod
-    def from_mds(cls, cache_dir: str, mds_dir: str, hyperparams: Hyperparameters, transforms=None):
+    def from_mds(cls, cache_dir: str, mds_dir: str, hyperparams: Hyperparameters):
         clean_stale_shared_memory()
 
         dataloaders = [
@@ -312,7 +301,7 @@ class DataLoaders:
                 remote_dir=mds_dir,
                 hyperparams=hyperparams,
                 split=split,
-                transforms=transforms if split == "train" else None,
+                transform=split == "train",
             )
             for split in ("train", "val", "test")
         ]

@@ -2,8 +2,7 @@ import pytest
 import numpy as np
 
 from PIL import Image
-from tsdb.ml.utils import cut_square_detection, get_model_tags
-
+from tsdb.ml.utils import cut_square_detection
 
 @pytest.fixture
 def mock_img() -> Image.Image:

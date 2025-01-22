@@ -77,7 +77,7 @@ import mlflow
 import optuna
 from joblibspark import register_spark
 
-from tsdb.ml.train import objective
+from tsdb.ml.tune import objective
 
 # COMMAND ----------
 

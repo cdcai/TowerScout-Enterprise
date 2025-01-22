@@ -1,12 +1,13 @@
 import shutil
 from typing import Any
+import uuid
 
 import pytest
 import torch
 import numpy as np
 
-from tsdb.ml.utils import Hyperparameters
-from tsdb.ml.data import get_dataloader, collate_fn_img, DataLoader
+from tsdb.ml.types import Hyperparameters
+from tsdb.ml.datasets import get_dataloader, collate_fn_img, DataLoader
 
 
 @pytest.fixture
@@ -16,7 +17,8 @@ def remote_dir() -> str:
 
 @pytest.fixture
 def local_dir() -> str:
-    return "/Volumes/edav_dev_csels/towerscout/misc/mosaic_streaming_unit_test/cache"
+    # append uuid to avoid uuusing same cache between tests
+    return "/local/cache/path/" + str(uuid.uuid4())
 
 @pytest.fixture
 def hyperparams() -> Hyperparameters:
@@ -24,7 +26,7 @@ def hyperparams() -> Hyperparameters:
         lr0=0.001,
         momentum=0.9,
         weight_decay=0.005,
-        batch_size=8,
+        batch_size=2,
         epochs=3,
         prob_H_flip=0.5,
         prob_V_flip=0.5,

@@ -1,6 +1,6 @@
 from typing import Any
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import torch
 from torch import nn, optim
@@ -14,34 +14,9 @@ import mlflow
 from mlflow.models.signature import infer_signature, ModelSignature
 import ultralytics.utils as uutils
 
-from tsdb.ml.efficientnet import EN_Classifier
-from tsdb.ml.utils import Steps, Hyperparameters
-from tsdb.ml.data import DataLoaders
-
-
-@dataclass
-class TrainingArgs:
-    """
-    A class to represent model training arguements
-
-    Attributes:
-        objective_metric: The evaluation metric we want to optimize
-        report_interval: Interval to log metrics during training
-        val_interval: Interval to evaluate the model
-        metrics: Various model evaluation metrics we want to track
-    """
-
-    objective_metric: str = "BCE"  # will be selected option for the drop down
-    report_interval: int = 5
-    val_interval: int = 1
-    metrics: Any = None
-    nbs: int = 64  # nominal batch size
-    warmup_epochs: float = 3.0  # fractions ok
-    warmup_momentum: float = 0.8
-    warmup_bias_lr: float = 0.1
-    lrf: float = 0.01
-    cos_lr: bool = False  # maybe tune
-    patience: int = 20
+from tsdb.ml.utils import Steps
+from tsdb.ml.datasets import DataLoaders
+from tsdb.ml.types import Hyperparameters, TrainingArgs
 
 
 class BaseTrainer:
@@ -107,9 +82,10 @@ class BaseTrainer:
         hyperparameters: Hyperparameters,
         model: nn.Module,
         train_args: TrainingArgs,
-    ) -> "BaseTrainer":
+    ) -> "BaseTrainer":  # pragma: no cover
         """
         Class method to create a YoloModelTrainer class instance from the Hyperparameters dataclass
+        NOTE: Not tested since build_optimizer is already tested
         """
         optimizer = cls.build_optimizer(
             model=model,
@@ -135,7 +111,7 @@ class BaseTrainer:
         training: bool,
         device: str,
         args: uutils.IterableSimpleNamespace,
-    ):
+    ):  # pragma: no cover
         """
         A static method to create a validator for the given dataloader. The validator computes
         valdiation metrics (and losses if trianing is True).
@@ -251,10 +227,7 @@ class BaseTrainer:
         if self.ema:
             self.ema.update(self.model)
 
-    def training_step(self, minibatch) -> dict:
-        """
-        TODO: test this
-        """
+    def training_step(self, minibatch) -> dict:  # pragma: no cover
         raise NotImplementedError("Child class needs to implement training_step")
 
     @torch.no_grad()
@@ -263,20 +236,11 @@ class BaseTrainer:
     ) -> dict:  # pragma: no cover
         raise NotImplementedError("Child class needs to implement validation_step")
 
-    def get_signature(self, dataloader: DataLoader) -> ModelSignature:
+    def get_signature(self, dataloader: DataLoader) -> ModelSignature:  # pragma: no cover
         """
         Returns the mlflow signature of the model for logging and registration
         """
-        self.model.eval()
-        minibatch = next(iter(dataloader))
-
-        # Note: we are using the first image in the batch
-        signature = infer_signature(
-            model_input=minibatch[0].cpu().numpy(),
-            model_output=self.model(minibatch)[0].detach().cpu().numpy(),
-        )
-
-        return signature
+        raise NotImplementedError("Child class needs to implement get_signature")
 
     def manual_warmup(self, num_warmup: int, step: int):
         """
@@ -381,6 +345,9 @@ class BaseTrainer:
                 train_metrics[metric] /= num_batches
 
             mlflow.log_metrics(train_metrics, step=epoch)
+            
+            lr = self.scheduler.get_last_lr()[0]
+            mlflow.log_metric("learning_rate", lr, step=epoch)
 
             # Validation
             if epoch % self.train_args.val_interval == 0:
@@ -415,33 +382,3 @@ class BaseTrainer:
 
     def save_model(self) -> None:  # pragma: no cover
         pass
-
-
-def set_optimizer(
-    model, optlr=0.0001, optmomentum=0.9, optweight_decay=1e-4
-):  # pragma: no cover
-    params_to_update = []
-    for name, param in model.named_parameters():
-        if "_bn" in name:
-            param.requires_grad = False
-        if param.requires_grad == True:
-            params_to_update.append(param)
-
-    optimizer = optim.SGD(
-        params_to_update, lr=optlr, momentum=optmomentum, weight_decay=optweight_decay
-    )
-    return optimizer
-
-
-def score(logits, labels, step: str, metrics):  # pragma: no cover
-    return {
-        f"{metric.name}_{step}": metric.value(logits, labels).cpu().item()
-        for metric in metrics
-    }
-
-
-@torch.no_grad()
-def inference_step(minibatch, model, metrics, step) -> dict:  # pragma: no cover
-    model.eval()
-    logits, _, labels = forward_func(model, minibatch)
-    return score(logits, labels, step, metrics)

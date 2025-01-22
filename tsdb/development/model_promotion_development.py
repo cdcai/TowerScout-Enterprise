@@ -1,13 +1,14 @@
 # Databricks notebook source
 import mlflow
-from tsdb.ml.utils import PromotionArgs, Hyperparameters
-from tsdb.ml.data import data_augmentation, DataLoaders
-from tsdb.ml.train import model_promotion
+from tsdb.ml.types import Hyperparameters
+from tsdb.ml.utils import UCModelName
+from tsdb.ml.datasets import DataLoaders
+from tsdb.ml.promote import model_promotion
 
 # COMMAND ----------
 
 client = mlflow.MlflowClient()
-
+mlflow.set_registry_uri("databricks-uc")
 
 # client.delete_registered_model(name='edav_dev_csels.towerscout.yolo_detection_model')  # for deletion once experimenting are done
 # loaded_model = mlflow.pytorch.load_model('runs:/ad3c356c5b444698b95979d7d2fdbf2e/towerscout_model')
@@ -38,16 +39,13 @@ out_root_base = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/tes
 dataloaders = DataLoaders.from_mds(
     cache_dir,
     mds_dir=out_root_base,
-    hyperparams=hyperparameters,
-    transforms=None,
+    hyperparams=hyperparameters
 )
 
-promo_args = PromotionArgs(
-    challenger_uri="runs:/ec50663136d5413b89b1600e6d66c7f2/towerscout_model",
+uc_model_name = UCModelName("edav_dev_csels", "towerscout", "yolo_detection_model")
+    
+model_promotion(challenger_uri="runs:/ec50663136d5413b89b1600e6d66c7f2/towerscout_model",
     testing_dataloader=dataloaders.test,
     comparison_metric="f1",
-    model_name="edav_dev_csels.towerscout.yolo_detection_model",
-    alias="prod",
-)
-
-model_promotion(promo_args)
+    uc_model_name=uc_model_name,
+    alias="prod")
