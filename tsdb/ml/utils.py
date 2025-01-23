@@ -27,7 +27,7 @@ class UCModelName:
     schema: str
     name: str
 
-    def __str__(self):
+    def __str__(self): 
         return f"{self.catalog}.{self.schema}.{self.name}"
 
 

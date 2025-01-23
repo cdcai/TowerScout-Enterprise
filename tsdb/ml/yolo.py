@@ -1,4 +1,4 @@
-from typing import Union, Any
+from typing import Union
 from enum import Enum, auto
 from copy import copy
 
@@ -273,7 +273,7 @@ class YoloModelTrainer(BaseTrainer):
 
     def training_step(self, minibatch: Union[torch.Tensor, int, float, str]) -> dict:
         """
-        TODO: test this
+        Performs a training step on the model given a minibatch of data.
         """
         self.model.train()
 

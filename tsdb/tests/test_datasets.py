@@ -6,8 +6,16 @@ import pytest
 import torch
 import numpy as np
 
+import ultralytics.utils as uutils
+
 from tsdb.ml.types import Hyperparameters
-from tsdb.ml.datasets import get_dataloader, collate_fn_img, DataLoader
+from tsdb.ml.datasets import (
+    get_dataloader,
+    collate_fn_img,
+    DataLoader,
+    DataLoaders,
+    YoloDataset,
+)
 
 
 @pytest.fixture
@@ -19,6 +27,7 @@ def remote_dir() -> str:
 def local_dir() -> str:
     # append uuid to avoid uuusing same cache between tests
     return "/local/cache/path/" + str(uuid.uuid4())
+
 
 @pytest.fixture
 def hyperparams() -> Hyperparameters:
@@ -33,6 +42,25 @@ def hyperparams() -> Hyperparameters:
         prob_mosaic=0.5,
     )
     return hyperparams
+
+
+def test_get_image_and_label(remote_dir: str, local_dir, hyperparams: Hyperparameters):
+    dataset = YoloDataset(
+        remote=remote_dir,
+        local=local_dir,
+        shuffle=True,
+        hyperparameters=hyperparams,
+        transform=False,
+        image_size=320,
+    )
+    item = dataset.get_image_and_label(1)
+
+    assert isinstance(
+        item["instances"], uutils.instance.Instances
+    ), "'instances' value should be of type Ultralytics Instances"
+
+    expected_keys = ["im_file", "img", "cls", "ori_shape", "resized_shape"] 
+    assert all(key in item for key in expected_keys), f"Missing key from: {expected_keys}"
 
 
 def test_get_dataloader(remote_dir: str, local_dir, hyperparams: Hyperparameters):
@@ -54,6 +82,7 @@ def data() -> list[dict[str, Any]]:
     # Create dummy images (640x640 RGB image tensors)
     img1 = torch.rand(3, 640, 640)
     img2 = torch.rand(3, 640, 640)
+    img3 = torch.rand(3, 640, 640)
 
     data = [
         {
@@ -62,6 +91,7 @@ def data() -> list[dict[str, Any]]:
             "bboxes": np.array([0.4, 0.4, 0.6, 0.6, 0.2, 0.33, 0.1, 0.55]),
             "cls": np.array([0.0, 0.0]),
             "ori_shape": np.array([640, 640], dtype=np.uint32),
+            "resized_shape": np.array([640, 640], dtype=np.uint32),
         },
         {
             "im_file": "path/to/img2.jpg",
@@ -71,6 +101,15 @@ def data() -> list[dict[str, Any]]:
             ),
             "cls": np.array([0.0, 0.0, 0.0]),
             "ori_shape": np.array([640, 640], dtype=np.uint32),
+            "resized_shape": np.array([640, 640], dtype=np.uint32),
+        },
+        {
+            "im_file": "path/to/img3.jpg",
+            "img": img3,
+            "bboxes": np.array([]),
+            "cls": np.array([]),
+            "ori_shape": np.array([640, 640], dtype=np.uint32),
+            "resized_shape": np.array([640, 640], dtype=np.uint32),
         },
     ]
     return data
@@ -79,7 +118,7 @@ def data() -> list[dict[str, Any]]:
 def test_collate_fn_img_bboxes(data):
     """Test bbox output of the collate_fn_img function."""
     batch = collate_fn_img(data)
-    print(batch['bboxes'])
+    print(batch["bboxes"])
     assert torch.allclose(
         batch["bboxes"],
         torch.tensor(
@@ -90,7 +129,8 @@ def test_collate_fn_img_bboxes(data):
                 [0.03, 0.8, 0.1, 0.77],
                 [0.49, 0.21, 0.66, 0.99],
             ],
-        dtype=torch.float64)
+            dtype=torch.float64,
+        ),
     )
 
 
@@ -100,12 +140,7 @@ def test_collate_fn_img_cls(data):
 
     assert torch.allclose(
         batch["cls"],
-        torch.tensor(
-            [
-                [0.0],[0.0],[0.0],[0.0],[0.0]
-            ],
-        dtype=torch.float64
-        )
+        torch.tensor([[0.0], [0.0], [0.0], [0.0], [0.0]], dtype=torch.float64),
     )
 
 
@@ -113,7 +148,9 @@ def test_collate_fn_img_img(data):
     """Test cls output of the collate_fn_img function."""
     batch = collate_fn_img(data)
     img = batch["img"]
-    assert (2, 3, 640, 640) == tuple(img.shape), "Shape should be (batch_size, channels, height, width)"
+    assert (3, 3, 640, 640) == tuple(
+        img.shape
+    ), "Shape should be (batch_size (3), channels (3), height (640), width (640))"
 
 
 def test_collate_fn_img_ori_shape(data):
@@ -128,4 +165,4 @@ def test_collate_fn_img_img_file(data):
     """Test im_file output of the collate_fn_img function."""
     batch = collate_fn_img(data)
     im_files = batch["im_file"]
-    assert ("path/to/img1.jpg", "path/to/img2.jpg") == im_files
+    assert ("path/to/img1.jpg", "path/to/img2.jpg", "path/to/img3.jpg") == im_files

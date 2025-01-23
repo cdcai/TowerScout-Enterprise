@@ -12,7 +12,6 @@
 # YOLOv5 detector class
 
 import sys
-import numpy as np
 import mlflow
 from torch import nn
 from PIL import Image
