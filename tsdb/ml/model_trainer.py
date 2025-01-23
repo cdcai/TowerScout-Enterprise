@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import torch
 from torch import nn, optim
-from torch import Tensor
 from torch.utils.data import DataLoader
 
 import numpy as np
@@ -242,9 +241,13 @@ class BaseTrainer:
         """
         raise NotImplementedError("Child class needs to implement get_signature")
 
-    def manual_warmup(self, num_warmup: int, step: int):
+    def manual_warmup(self, num_warmup: int, step: int) -> None:
         """
         A manual warmup phase for the optimizer. This is taken from the source code of Ultralytics.
+
+        Args:
+        num_warmup: The number of warmup steps.
+        ste: The current step.
         """
         if step > num_warmup:
             return

@@ -68,6 +68,13 @@ class TrainingArgs:
         report_interval: Interval to log metrics during training
         val_interval: Interval to evaluate the model
         metrics: Various model evaluation metrics we want to track
+        nbs: nominal batch size
+        warmup_epochs: number of epochs to warmup the learning rate
+        warmup_momentum: momentum for warmup
+        warmup_bias_lr: bias learning rate for warmup
+        lrf: final learning rate
+        cos_lr: bool to use cosine annealing: https://arxiv.org/pdf/1812.01187
+        patience: number of epochs to wait for validation metric improvement before early stopping
     """
 
     objective_metric: str = "BCE"  # will be selected option for the drop down

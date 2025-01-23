@@ -14,7 +14,7 @@ from streaming import StreamingDataset
 
 import ultralytics
 import ultralytics.utils as uutils
-from ultralytics.data.augment import RandomFlip, Mosaic, Format, Albumentations
+import ultralytics.data.augment as uaugment
 
 from tsdb.ml.types import Hyperparameters
 
@@ -34,7 +34,7 @@ class YoloDataset(StreamingDataset):
                 Uses a temp directory if not set
         shuffle:  Whether to iterate over the samples in randomized orde
         hyperparameters: Hyperparameters to use (batch size)
-        transfrom: Whether to apply the data augmentation transforms
+        transfrom: Whether to apply the data augmentation transforms (should be True only for training set)
         image_size: image size used to create the mosaic augmentation object
     """
 
@@ -56,7 +56,7 @@ class YoloDataset(StreamingDataset):
             **kwargs,
         )
 
-        format = Format(
+        format = uaugment.Format(
             bbox_format="xywh",
             normalize=True,
             return_mask=False,
@@ -73,11 +73,11 @@ class YoloDataset(StreamingDataset):
                 self, image_size=image_size, p=hyperparameters.prob_mosaic, n=4
             )
 
-            albumentation = Albumentations(p=1.0)
+            albumentation = uaugment.Albumentations(p=1.0)
 
             rand_flips = [
-                RandomFlip(p=hyperparameters.prob_H_flip, direction="horizontal"),
-                RandomFlip(p=hyperparameters.prob_V_flip, direction="vertical"),
+                uaugment.RandomFlip(p=hyperparameters.prob_H_flip, direction="horizontal"),
+                uaugment.RandomFlip(p=hyperparameters.prob_V_flip, direction="vertical"),
             ]
 
             # apply transformations in the same order Ultralyitcs does
@@ -132,7 +132,7 @@ class YoloDataset(StreamingDataset):
         return label
 
 
-class ModifiedMosaic(Mosaic):
+class ModifiedMosaic(uaugment.Mosaic):
     """
     A modified Mosaic augmentation object that inherets from the Mosaic class from Ultralytics.
     The sole modification is the removal of the 'buffer' parameter from the Mosaic class
@@ -199,17 +199,18 @@ def collate_fn_img(data: list[dict[str, Any]]) -> dict[str, Any]:
             result["ori_shape"].append(element["ori_shape"])
             result["resized_shape"].append(element["resized_shape"])
             continue
+        
+        else:
+            bboxes = element.pop("bboxes")
+            result["bboxes"].append(bboxes)
 
-        bboxes = element.pop("bboxes")
-        result["bboxes"].append(bboxes)
+            for key, value in element.items():
+                result[key].append(value)
 
-        for key, value in element.items():
-            result[key].append(value)
-
-        num_boxes = len(element["cls"])
-        for _ in range(num_boxes):
-            # yolo dataloader has this as a float not int
-            result["batch_idx"].append(float(index))
+            num_boxes = len(element["cls"])
+            for _ in range(num_boxes):
+                # yolo dataloader has this as a float not int
+                result["batch_idx"].append(float(index))
 
     # NOTE: No need to call permute here because the Format augmentatoin
     # takes care of this for us
@@ -292,7 +293,18 @@ class DataLoaders:
     test: DataLoader
 
     @classmethod
-    def from_mds(cls, cache_dir: str, mds_dir: str, hyperparams: Hyperparameters):
+    def from_mds(cls, cache_dir: str, mds_dir: str, hyperparams: Hyperparameters):  # pragma: no cover
+        """
+        Class method to create a DataLoaders object from exisiting mds files in a directory with subdirectories
+        train, val and test.
+        
+        Args:
+            cache_dir: Directory to store cache files
+            mds_dir: Directory where mds files are stored
+            hyperparams: Hyperparameters object
+        
+        NOTE: No testing needed as get_dataloader is already tested.
+        """
         clean_stale_shared_memory()
 
         dataloaders = [
