@@ -56,7 +56,7 @@ class AzureMap(Map):
             + ","
             + str(tile["lat_for_url"])
         )
-        url += "&height=640&Width=640&format=webp&labels=false&showCountryBoundary=false&traffic=false&pointOfInterest=false&showRoadLabels=false&traffic=false"
+        url += "&height=640&Width=640&format=jpeg&labels=false&showCountryBoundary=false&traffic=false&pointOfInterest=false&showRoadLabels=false&traffic=false"
         
 
         return url
