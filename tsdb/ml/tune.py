@@ -13,6 +13,7 @@ def objective(
     out_root_base: str,
     yolo_version: str = "yolov10n",
     objective_metric: str = "f1",
+    model_name: str = "towerscout_model",
 ) -> float:  # pragma: no cover
     """
     Objective function for Optuna to optimize.
@@ -21,6 +22,8 @@ def objective(
         trail: Optuna Trail object for hyperparameter suggestions
         out_root_base: The directory to store the mds files
         yolo_version: the version of YOLO to use, default yolov10n
+        objective_metric: The metric to optimize, default f1
+        model_name: The name to log the model under in the MLflow experiment artifacts 
     Returns:
         The value of the objective metric to optimize after model trianing
         with suggested hyperparameters is completed
@@ -44,7 +47,7 @@ def objective(
         # Create model and trainer
         mlflow.log_params(asdict(hyperparameters))  # convert dataclass to dict
         metric = model_trainer.train(
-            dataloaders, model_name="towerscout_model", trial=trial
+            dataloaders, model_name=model_name, trial=trial
         )
 
     return metric

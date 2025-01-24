@@ -23,6 +23,18 @@ class BaseTrainer:
     This base class implements our base trainer for
     training various deep learning models. We mimic the PyTorch Lightning
     interface to allow for easy extension and modification.
+
+    Args:
+        model: The pytorch model to be trained
+        optimizer: The optimizer to be used for training
+        train_args: The training arguments
+        epochs: The number of epochs to train for
+        momentum: The momentum to be used for training
+        accumulate: The number of batches to accumulate gradients for
+        batch_size: The batch size to be used for training
+        lf: The final learning rate
+        scheduler: The learning rate scheduler to be used for training
+        patience: The patience for early stopping
     """
 
     def __init__(
@@ -119,7 +131,7 @@ class BaseTrainer:
 
     def _setup_scheduler(self):
         """
-        Initialize training learning rate scheduler. Taken from ultralytics
+        Initializes the training learning rate scheduler. Taken from ultralytics
         """
         lrf = self.train_args.lrf
 
@@ -214,7 +226,6 @@ class BaseTrainer:
     def optimizer_step(self):  # pragma: no cover
         """
         Perform a single step of the training optimizer with gradient clipping and EMA update.
-        Note: We didn't include the self.ema conditional from the source code
         """
         self.scaler.unscale_(self.optimizer)  # unscale gradients
         torch.nn.utils.clip_grad_norm_(
@@ -241,7 +252,7 @@ class BaseTrainer:
         """
         raise NotImplementedError("Child class needs to implement get_signature")
 
-    def manual_warmup(self, num_warmup: int, step: int) -> None:
+    def manual_warmup(self, num_warmup: int, step: int) -> None:  # pragma: no cover
         """
         A manual warmup phase for the optimizer. This is taken from the source code of Ultralytics.
 
@@ -289,6 +300,7 @@ class BaseTrainer:
             model_trainer: The model trainer
             dataloaders: The dataloaders for the train/val/test datasets
             model_name: The name to log the model under in MLflow
+            trial: The optuna Trial object
         Returns:
             dict[str, float] A dict containing the loss
         """
