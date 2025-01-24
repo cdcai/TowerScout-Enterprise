@@ -23,12 +23,13 @@ def convert_to_mds(
 
     Args:
     df: The spark dataframe to be converted
+    out_root: The local or remote directory path to store the output compressed files
     columns: A dictionary which contains the column names of the dataframe
             as keys and the corresponding mds data types as values
     compression: Compression algorithm name to use
-    out_root: The local or remote directory path to store the output compressed files
 
     TODO: this implementation is not completely tested
+    TODO: refactor to be more general
     """
     if columns is None:
         columns = {
@@ -69,7 +70,7 @@ def convert_to_mds(
                     print(f"Row: {sample} \n caused exception: {e}")
 
 
-def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: str) -> None:
+def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: str) -> int:
     """
     Given a catalog, schema, table_name for a delta table, creates a MDS dataset for training, validation, and testing.
     Obtains the latest delta table version and persists this information in the path for reproducibility.
@@ -79,6 +80,8 @@ def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: st
         schema: UC schema name
         table: UC table name
         out_root_base: Volume path to save data to
+    
+    TODO: Refactor to handle case where directory is non-empty among other things
     """
     spark = SparkSession.builder.getOrCreate()
 
@@ -113,3 +116,5 @@ def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: st
     for split in ("train", "val", "test"):
         split_df = dataframe.filter(f"split_label == '{split}'").drop("split_label")
         convert_to_mds(split_df, out_root=f"{save_path}/{split}")
+    
+    return version_number

@@ -18,7 +18,7 @@ class Hyperparameters:
         epochs: number of epochs
         prob_H_flip: probablity of horizontally flipping image
         prob_V_flip: probability of vertically flipping image
-        patience: number of epochs to wait for validation metric improvement before early stopping
+        prob_mosaic: probablity of applying mosaic augmentation
     """
 
     lr0: float

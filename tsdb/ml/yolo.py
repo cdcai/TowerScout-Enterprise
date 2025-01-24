@@ -36,10 +36,10 @@ class ModifiedDetectionValidator(DetectionValidator):
     NOTE: Validator object tested here: https://github.com/ultralytics/ultralytics/blob/main/tests/test_engine.py
     
     Args:
-            dataloader: A PyTorch dataloader for validation/testing datasets.
-            args: A IterableSimpleNamespace object containing the arguments for the model and training (if applicable).
-            training: Wether the model is being trained or not. This determines some behaviour in __call__.
-            device: The device to run the model on.
+        dataloader: A PyTorch dataloader for validation/testing datasets.
+        args: A IterableSimpleNamespace object containing the arguments for the model and training (if applicable).
+        training: Wether the model is being trained or not. This determines some behaviour in __call__.
+        device: The device to run the model on.
     """
 
     def __init__(self, dataloader: DataLoader, args: uutils.IterableSimpleNamespace, training: bool, device: str):  # pragma: no cover
@@ -279,7 +279,7 @@ class YoloModelTrainer(BaseTrainer):
         Preprocesses a batch of images for validation.
         Code adapted from preprocess method in: ultralytics/models/yolo/detect/val.py
         Note: We didn't include the self.args.save_hybrid if statement from the source code
-
+        TODO: Test that values are noramlized between (0-1 for example)
         Args: 
             batch: A dictionary containing the batch of images to be processed
 

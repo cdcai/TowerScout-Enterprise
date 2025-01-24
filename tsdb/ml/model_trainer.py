@@ -97,6 +97,7 @@ class BaseTrainer:
         """
         Class method to create a YoloModelTrainer class instance from the Hyperparameters dataclass
         NOTE: Not tested since build_optimizer is already tested
+        TODO: Test if class is properly instantiated
         """
         optimizer = cls.build_optimizer(
             model=model,
@@ -158,7 +159,7 @@ class BaseTrainer:
         weight decay, and number of iterations.
 
         Args:
-            model (torch.nn.Module): The model for which to build an optimizer.
+            model: The model for which to build an optimizer.
             name (str, optional): The name of the optimizer to use. If 'auto', the optimizer is selected
                 based on the number of iterations. Default: 'auto'.
             lr (float, optional): The learning rate for the optimizer. Default: 0.001.
@@ -168,9 +169,7 @@ class BaseTrainer:
                 name is 'auto'. Default: 1e5.
 
         Returns:
-            (torch.optim.Optimizer): The constructed optimizer.
-
-        # TODO: test this
+            The constructed optimizer.
         """
         g = [], [], []  # optimizer parameter groups
         bn = tuple(
@@ -301,6 +300,7 @@ class BaseTrainer:
             dataloaders: The dataloaders for the train/val/test datasets
             model_name: The name to log the model under in MLflow
             trial: The optuna Trial object
+        
         Returns:
             dict[str, float] A dict containing the loss
         """

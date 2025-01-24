@@ -35,6 +35,7 @@ def trainer(model: DetectionModel, train_args: TrainingArgs, optimizer: torch.op
 
 
 def test_build_optimizer(trainer: BaseTrainer) -> None:
+    """Could be made cleaner with a class or function."""
     optimizer = BaseTrainer.build_optimizer(trainer.model, name="auto")
     assert isinstance(optimizer, torch.optim.Optimizer), "optimizer is not an instance of torch.optim.Optimizer"
 

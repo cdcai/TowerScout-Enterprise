@@ -1,30 +1,36 @@
 # Databricks notebook source
-# %run ./nb_config_retrieval
+# MAGIC %md
+# MAGIC Future work:
+# MAGIC
+# MAGIC Parameterize objective metric and pruner
 
 # COMMAND ----------
 
-# # Purpose: Check if the global view 'global_temp_towerscout_configs' exists and extract configuration values from it. 
-# # If the view does not exist, exit the notebook with an error message.
+# MAGIC %run ./nb_config_retrieval
 
-# # Check if the global view exists
-# if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
-#     # Query the global temporary view and collect the first row
-#     result = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+# COMMAND ----------
+
+# Purpose: Check if the global view 'global_temp_towerscout_configs' exists and extract configuration values from it. 
+# If the view does not exist, exit the notebook with an error message.
+
+# Check if the global view exists
+if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
+    # Query the global temporary view and collect the first row
+    result = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
     
-#     # Extract values from the result row
-#     env = result['env']
-#     catalog = result['catalog_name']
-#     schema = result['schema_name']
-#     debug_mode = result['debug_mode'] == "true"
-#     unit_test_mode = result['unit_test_mode'] == "true"
-# else:
-#     # Exit the notebook with an error message if the global view does not exist
-#     dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
+    # Extract values from the result row
+    env = result['env']
+    catalog = result['catalog_name']
+    schema = result['schema_name']
+    debug_mode = result['debug_mode'] == "true"
+    unit_test_mode = result['unit_test_mode'] == "true"
+else:
+    # Exit the notebook with an error message if the global view does not exist
+    dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 # COMMAND ----------
 
 # widgets probs will go into config file
-# dbutils.widgets.text("source_schema", defaultValue="towerscout_test_schema")  # config file
 # dbutils.widgets.text("source_table", defaultValue="image_metadata")  # config file
 
 # dbutils.widgets.text("report_interval", defaultValue="5")  # nb widget 
@@ -83,7 +89,13 @@ from tsdb.ml.tune import objective
 
 mlflow.set_registry_uri("databricks-uc")
 
-out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=397"
+table_version = "397"  # set as notebook widget, default to 397
+# make widget for yolo version (8,10 etc), and one for size (n, s, m etc)
+# set model_name in config file 
+# n_trials as widget 
+# set promote flag (T/F) using widget default to false
+# make widget to build dataset default it to false. get version number from build_mds_splits if flag is true and overide widget value for version number
+out_root_base_path = f"/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version={table_version}"
 
 study = optuna.create_study(direction="maximize", pruner=optuna.pruners.MedianPruner())
 objective_with_args = partial(
@@ -91,7 +103,7 @@ objective_with_args = partial(
     out_root_base=out_root_base_path,
     yolo_version="yolov10n",
     objective_metric="f1",
-    model_name="towerscout_model"
+    model_name="ts_yolov10n"
 )
 
 # add with mlflow context here to get nested structure for logging
