@@ -45,7 +45,7 @@ class YOLOv5Detection(TypedDict):
     x2: float
     y2: float
     conf: float
-    class: int
+    class_: int
     class_name: str
     secondary: int
 

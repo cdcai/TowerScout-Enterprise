@@ -90,7 +90,8 @@ objective_with_args = partial(
     objective,
     out_root_base=out_root_base_path,
     yolo_version="yolov10n",
-    objective_metric="f1"
+    objective_metric="f1",
+    model_name="towerscout_model"
 )
 
 # add with mlflow context here to get nested structure for logging

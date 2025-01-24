@@ -66,6 +66,7 @@ class ModifiedDetectionValidator(DetectionValidator):
         self.nc = len(model.names)
         self.metrics.names = self.names
         self.metrics.plot = self.args.plots
+        self.end2end = getattr(model, "end2end", False)
         self.confusion_matrix = uutils.metrics.ConfusionMatrix(nc=self.nc, conf=self.args.conf)
         self.seen = 0
         self.jdict = []
