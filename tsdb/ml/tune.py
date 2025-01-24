@@ -24,6 +24,7 @@ def objective(
         yolo_version: the version of YOLO to use, default yolov10n
         objective_metric: The metric to optimize, default f1
         model_name: The name to log the model under in the MLflow experiment artifacts 
+        
     Returns:
         The value of the objective metric to optimize after model trianing
         with suggested hyperparameters is completed

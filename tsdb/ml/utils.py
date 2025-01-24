@@ -6,6 +6,9 @@ import mlflow
 
 
 class Steps(Enum):
+    """
+    An enum class that holds the steps of the ML pipeline
+    """
     TRAIN = auto()
     VAL = auto()
     TEST = auto()

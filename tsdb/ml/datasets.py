@@ -14,7 +14,7 @@ from streaming import StreamingDataset
 
 import ultralytics
 import ultralytics.utils as uutils
-import ultralytics.data.augment as uaugment
+import ultralytics.data.augment as aug
 
 from tsdb.ml.types import Hyperparameters
 
@@ -56,7 +56,7 @@ class YoloDataset(StreamingDataset):
             **kwargs,
         )
 
-        format = uaugment.Format(
+        format = aug.Format(
             bbox_format="xywh",
             normalize=True,
             return_mask=False,
@@ -73,11 +73,11 @@ class YoloDataset(StreamingDataset):
                 self, image_size=image_size, p=hyperparameters.prob_mosaic, n=4
             )
 
-            albumentation = uaugment.Albumentations(p=1.0)
+            albumentation = aug.Albumentations(p=1.0)
 
             rand_flips = [
-                uaugment.RandomFlip(p=hyperparameters.prob_H_flip, direction="horizontal"),
-                uaugment.RandomFlip(p=hyperparameters.prob_V_flip, direction="vertical"),
+                aug.RandomFlip(p=hyperparameters.prob_H_flip, direction="horizontal"),
+                aug.RandomFlip(p=hyperparameters.prob_V_flip, direction="vertical"),
             ]
 
             # apply transformations in the same order Ultralyitcs does
@@ -107,7 +107,12 @@ class YoloDataset(StreamingDataset):
         This function is added because the Ultralytics augmentation objects
         like Mosaic require the dataset object to have a method called
         get_image_and_label.
-        (We add this to align with the protocol of the Ultralytics Mosiac object)
+        
+        Args:
+            index: Index of the sample to return
+        
+        Returns:
+            A dictionary containing the image and label information
         """
         label = super().__getitem__(index)  # get row from dataset
 
@@ -140,7 +145,7 @@ class YoloDataset(StreamingDataset):
         return label
 
 
-class ModifiedMosaic(uaugment.Mosaic):
+class ModifiedMosaic(aug.Mosaic):
     """
     A modified Mosaic augmentation object that inherets from the Mosaic class from Ultralytics.
     The sole modification is the removal of the 'buffer' parameter from the Mosaic class
