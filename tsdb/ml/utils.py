@@ -32,12 +32,20 @@ class UCModelName:
 
 
 class YOLOv5Detection(TypedDict):
+    """
+    A class to represent a YOLOv5 detection.
+    x1,y1,x2,y2: Box coordinates
+    conf: Model confidence 
+    class: class label
+    class_name: class name
+    secondary: Class label predicted by secondary model
+    """
     x1: float
     y1: float
     x2: float
     y2: float
     conf: float
-    class_: int
+    class: int
     class_name: str
     secondary: int
 
@@ -78,6 +86,10 @@ def get_model_tags(model_name: str, alias: str) -> tuple[dict[str, str], str]:  
     Returns the tags for the model with the given model name and alias
     along with the model version.
     
+    Args:
+        model_name: the name of the model in Unity Catalog
+        alias: the alias of the model in Unity Catalog
+
     Note we do not unit test this function as `get_model_version_by_alias`
     and `get_model_version` are unit tested in the MLflow git repo already at:
     

@@ -23,8 +23,6 @@ def model_promotion(
         comparision_metric: The evaluation metric used to compare performance of the two models
         uc_model_name: The name to register the model under in Unity Catalog
         alias: The alias we are potentially promoting the model to
-    Returns:
-        None
     """
     mlflow.set_registry_uri("databricks-uc")
 

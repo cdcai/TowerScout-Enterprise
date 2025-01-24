@@ -33,7 +33,8 @@ class ModifiedDetectionValidator(DetectionValidator):
     A modified DetectionValidator object that inherets from the DetectionValidator class from Ultralytics.
     We overload the init_metric method to remove the `val` variable creation and the __call__ method
     to remove componenets that are not relevant to our use case.
-
+    NOTE: Validator object tested here: https://github.com/ultralytics/ultralytics/blob/main/tests/test_engine.py
+    
     Args:
             dataloader: A PyTorch dataloader for validation/testing datasets.
             args: A IterableSimpleNamespace object containing the arguments for the model and training (if applicable).
@@ -157,6 +158,12 @@ class YoloModelTrainer(BaseTrainer):
     Model trainer class for the YOLO object detection model (DetectionModel class) from Ultralytics.
     Note that we have removed the torch.nn.parallel.DistributedDataParallel (DDP) usage that was present in
     Ultralytics since we use Hyperopt for distributed tuning and it's not clear how nicely they will interact with each other.
+
+    Args:
+        model: The DetectionModel instance to be trained
+        optimizer: The optimizer to be used for training
+        train_args: The TrainingArgs object containing the training arguments
+        epochs: The number of epochs to train for
     """
 
     def __init__(
@@ -171,9 +178,12 @@ class YoloModelTrainer(BaseTrainer):
         self.freeze_layers()
         self.loss_types = [loss.name for loss in YOLOLoss]
 
-    def freeze_layers(self, freeze=None):
+    def freeze_layers(self, freeze: list[str] | int = None):
         """
         Freezes layers of YOLO, always freezes dfl layers
+        
+        Args:
+            freeze: A list of layer names to freeze, or an integer to freeze the first n layers.
         """
         # Freeze layers
         freeze_list = (
@@ -230,6 +240,7 @@ class YoloModelTrainer(BaseTrainer):
 
         Args:
             loss_items: A tensor containing the loss items
+            loss_types: A list of loss type names
             step: the prefix to prepend to the loss name/key
 
         Returns:
@@ -250,6 +261,12 @@ class YoloModelTrainer(BaseTrainer):
         Preprocesses a batch of images by scaling and converting to float.
         Code adapted from preprocess_batch method in: ultralytics/models/yolo/detect/train.py
         Note: We didn't include the self.args.multi_scale if statement from the source code
+
+        Args: 
+            batch: A dictionary containing the batch of images to be processed
+
+        Return:
+            A dictionary containing the preprocessed batch of images
         """
         batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
         return batch
@@ -261,6 +278,12 @@ class YoloModelTrainer(BaseTrainer):
         Preprocesses a batch of images for validation.
         Code adapted from preprocess method in: ultralytics/models/yolo/detect/val.py
         Note: We didn't include the self.args.save_hybrid if statement from the source code
+
+        Args: 
+            batch: A dictionary containing the batch of images to be processed
+
+        Return:
+            A dictionary containing the preprocessed batch of images
         """
         batch["img"] = batch["img"].to(self.device, non_blocking=True)
         batch["img"] = (
@@ -274,6 +297,11 @@ class YoloModelTrainer(BaseTrainer):
     def training_step(self, minibatch: Union[torch.Tensor, int, float, str]) -> dict:
         """
         Performs a training step on the model given a minibatch of data.
+        Args: 
+            minibatch: A dictionary containing the batch of images and labels (bounding boxes)
+
+        Return:
+            A tuple containing the loss values and loss items
         """
         self.model.train()
 
@@ -302,6 +330,14 @@ class YoloModelTrainer(BaseTrainer):
     def validation_step(
         self, loss_items: torch.Tensor, step: str = "VAL", **kwargs
     ) -> dict:  # pragma: no cover
+        """
+        Args: 
+            loss_items: A tensor containing the loss items
+            step: The prefix to prepend to the loss name/key
+
+        Return:
+            A dictionary containing the loss values and validation metric values
+        """
         metrics, val_loss = self.validator(self.model, loss_items)
         num_batches = len(self.validator.dataloader)
         losses = self.label_loss_items(val_loss.cpu() / num_batches, self.loss_types, step)

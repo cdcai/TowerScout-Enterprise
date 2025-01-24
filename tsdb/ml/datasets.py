@@ -90,6 +90,14 @@ class YoloDataset(StreamingDataset):
             self.transforms = ultralytics.data.augment.Compose([format])
 
     def __getitem__(self, index: int) -> Any:  # pragma: no cover
+        """
+        Get and return a single sample from the dataset.
+
+        Args:
+            index: Index of the sample to return
+        Returns:
+            A dictionary containing the (potentially transformed) image and label information
+        """
         labels = self.get_image_and_label(index)
         return self.transforms(labels)
 
@@ -162,13 +170,8 @@ class ModifiedMosaic(uaugment.Mosaic):
         It is used to choose images for creating mosaic augmentations.
 
         Returns:
-            (List[int]): A list of random image indexes. The length of the list is n-1, where n is the number
+            A list of random image indexes. The length of the list is n-1, where n is the number
                 of images used in the mosaic (either 3 or 8, depending on whether n is 4 or 9).
-
-        Examples:
-            >>> mosaic = Mosaic(dataset, imgsz=640, p=1.0, n=4)
-            >>> indexes = mosaic.get_indexes()
-            >>> print(len(indexes))  # Output: 3
         """
         # select from any images in dataset
         return [random.randint(0, len(self.dataset) - 1) for _ in range(self.n - 1)]
