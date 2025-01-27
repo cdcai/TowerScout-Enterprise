@@ -35,6 +35,15 @@ class YoloVersions(Enum):  # pragma: no cover
     yolov9e = auto()
 
 
+class EvaluationMetrics(Enum):  # pragma: no cover
+    """
+    Enum for the different evaluation metrics for the YOLO model.
+    """
+    F1 = 'f1'
+    PRECISION = 'precision'
+    RECALL = 'recall'
+
+
 class YOLOLoss(Enum):  # pragma: no cover
     """
     Enum for the different loss types for the YOLO model. BCE_loss correspnds to

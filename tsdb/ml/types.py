@@ -19,15 +19,18 @@ class Hyperparameters:
         prob_H_flip: probablity of horizontally flipping image
         prob_V_flip: probability of vertically flipping image
         prob_mosaic: probablity of applying mosaic augmentation
+    
+    NOTE: Default values for parameters is taken from:
+    https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/default.yaml
     """
 
-    lr0: float
-    momentum: float
-    weight_decay: float
-    batch_size: int
-    epochs: int
-    prob_H_flip: float
-    prob_V_flip: float
+    lr0: float = 0.01
+    momentum: float = 0.937
+    weight_decay: float = 0.0005
+    batch_size: int = 16
+    epochs: int = 100
+    prob_H_flip: float = 0.5
+    prob_V_flip: float = 0.0
     prob_mosaic: float = 1.0
 
     @classmethod

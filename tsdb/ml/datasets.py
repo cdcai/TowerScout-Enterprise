@@ -301,10 +301,10 @@ class DataLoaders:
 
     train: DataLoader
     val: DataLoader
-    test: DataLoader
+    test: DataLoader = None
 
     @classmethod
-    def from_mds(cls, cache_dir: str, mds_dir: str, hyperparams: Hyperparameters):  # pragma: no cover
+    def from_mds(cls, cache_dir: str, mds_dir: str, hyperparams: Hyperparameters, include_test_set: bool = False):  # pragma: no cover
         """
         Class method to create a DataLoaders object from exisiting mds files in a directory with subdirectories
         train, val and test.
@@ -317,6 +317,10 @@ class DataLoaders:
         NOTE: No testing needed as get_dataloader is already tested.
         """
         clean_stale_shared_memory()
+        if include_test_set:
+            splits = ("train", "val", "test")
+        else:
+            splits = ("train", "val")
 
         dataloaders = [
             get_dataloader(
@@ -326,7 +330,7 @@ class DataLoaders:
                 split=split,
                 transform=split == "train",
             )
-            for split in ("train", "val", "test")
+            for split in splits
         ]
 
         return cls(*dataloaders)

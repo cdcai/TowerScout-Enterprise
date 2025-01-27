@@ -11,6 +11,7 @@
 # COMMAND ----------
 
 from functools import partial
+from uuid import uuid4
 
 import joblib
 import mlflow
@@ -19,7 +20,7 @@ from joblibspark import register_spark
 
 from tsdb.ml.tune import objective
 from tsdb.ml.promote import model_promotion
-from tsdb.ml.yolo import YoloVersions
+from tsdb.ml.yolo import YoloVersions, EvaluationMetrics
 from tsdb.ml.utils import UCModelName
 from tsdb.ml.datasets import get_dataloader
 from tsdb.ml.types import Hyperparameters
@@ -54,6 +55,9 @@ else:
 yolo_models = [member.name for member in YoloVersions] 
 dbutils.widgets.dropdown("yolo_model", "yolov10n", yolo_models)
 
+eval_metrics = [member.value for member in EvaluationMetrics] 
+dbutils.widgets.dropdown("objective_metric", "f1", eval_metrics)
+
 dbutils.widgets.dropdown("build_dataset", "False", ["True", "False"])
 dbutils.widgets.dropdown("try_promotion", "False", ["True", "False"])
 dbutils.widgets.text("num_trials", defaultValue="1")  
@@ -64,6 +68,7 @@ dbutils.widgets.text("table_version", defaultValue="397")
 # DBTITLE 1,Retrieve parameters from notebook
 table_version = int(dbutils.widgets.get("table_version"))
 yolo_model = dbutils.widgets.get("yolo_model")
+objective_metric = dbutils.widgets.get("objective_metric")
 num_trials = int(dbutils.widgets.get("num_trials"))
 build_dataset = dbutils.widgets.get("build_dataset") == "True"
 try_promotion = dbutils.widgets.get("try_promotion") == "True"
@@ -92,29 +97,27 @@ objective_with_args = partial(
     objective,
     out_root_base=out_root_base_path,
     yolo_version=yolo_model,
-    objective_metric="f1",
-    model_name=f"{model_name}_{yolo_model}"   # set model_name in config file?
+    objective_metric=objective_metric,
+    model_name=f"{model_name}_{yolo_model}"
 )
 
-# add with mlflow context here to get nested structure for logging
 register_spark()
 
+# add with mlflow context here to get nested structure for logging
 with mlflow.start_run():
     with joblib.parallel_backend("spark", n_jobs=-1):
         study.optimize(objective_with_args, n_trials=num_trials)
 
 best_params = study.best_params
-best_trail = study.best_trial
+best_trial = study.best_trial
 
 # COMMAND ----------
 
 if try_promotion:
-    best_params["batch_size"] = 2**best_params.pop("batch_size_power")  
-    best_params["lr0"] = best_params.pop("lr")  # rename lr key to lr0 to create Hyperparameters objected
-    hyperparams = Hyperparameters(**best_params)
+    hyperparams = Hyperparameters() 
 
     testing_dataloader = get_dataloader(
-        local_dir="/local/cache/path",
+        local_dir=f"/local/cache/path/{str(uuid4())}",
         remote_dir=f"{out_root_base_path}/test",
         hyperparams=hyperparams,
         transform=False,
@@ -123,9 +126,9 @@ if try_promotion:
     uc_model_name = UCModelName(catalog, schema, model_name)
 
     model_promotion(
-        challenger_uri=best_trail.user_attrs["model_uri"],
+        challenger_uri=best_trial.user_attrs["model_uri"],
         testing_dataloader=testing_dataloader,
-        comparison_metric="f1",
+        comparison_metric=objective_metric,
         uc_model_name=uc_model_name,
         alias=alias,
     )
