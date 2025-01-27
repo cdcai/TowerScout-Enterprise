@@ -156,3 +156,12 @@ def test_merge_updates_into_gold(
     df = spark.sql(query)
 
     assert df.count() == 2
+
+    # remove test records once tests are complete 
+    query = f"""DELETE FROM {catalog}.{schema}.{gold_table} 
+            WHERE 
+            image_hash IN (-1467659206, 802091180) 
+            AND 
+            uuid IN ("86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0", "75c96459-1946-4950-af0f-df774c6b1f52_tmp1sdnfexw0");
+            """
+    df = spark.sql(query)

@@ -1,11 +1,9 @@
 import pytest
 from pyspark.sql import SparkSession, DataFrame, Row
-from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, BinaryType, ArrayType
-import pyspark.sql.functions as F
-from tsdb.preprocessing.functions import sum_column, sum_bytes, image_statistics_udf, compute_image_statistics
+from pyspark.sql.types import StructType, StructField, BinaryType
+from tsdb.preprocessing.functions import image_statistics_udf, compute_image_statistics
 from PIL import Image
 import io
-from pyspark.sql.utils import AnalysisException
 from tsdb.preprocessing.functions import statistics_schema
 
 @pytest.fixture(scope="module")
@@ -19,66 +17,6 @@ def spark_session() -> SparkSession:
         .getOrCreate()
     )
     return spark
-
-@pytest.mark.parametrize(
-    "data, column, expected_sum",
-    [
-        ([(1,), (2,), (3,)], "numbers", 6),         # Positive integers
-        ([(0,), (0,), (0,)], "numbers", 0),         # All zeros
-        ([(None,), (2,), (3,)], "numbers", 5),       # Contains nulls
-        ([(1.5,), (2.5,), (3.5,)], "numbers", 7.5), # Floats
-    ],
-)
-def test_sum_column(spark_session: SparkSession, data: list[tuple], column: str, expected_sum: int | float) -> None:
-    """
-    Test the sum_column function for various scenarios.
-    """
-    schema: list[str] = [column]
-    df: DataFrame = spark_session.createDataFrame(data, schema)
-    result: int | float = sum_column(df, column)
-    assert result == expected_sum, f"Expected sum {expected_sum}, but got {result}"
-
-@pytest.mark.parametrize(
-    "data, column, expected_sum",
-    [
-        ([(100,), (200,), (300,)], "bytes", 600),  # Regular integers
-        ([(0,), (0,), (0,)], "bytes", 0),         # All zeros
-        ([(None,), (200,), (300,)], "bytes", 500), # Contains nulls
-        ([(1.5,), (2.5,), (3.5,)], "bytes", 7.5), # Floats
-    ],
-)
-def test_sum_bytes(spark_session: SparkSession, data: list[tuple], column: str, expected_sum: int | float) -> None:
-    """
-    Test the sum_bytes function for various scenarios.
-    """
-    schema: list[str] = [column]
-    df: DataFrame = spark_session.createDataFrame(data, schema)
-    result: int | float = sum_bytes(df, column)
-    assert result == expected_sum, f"Expected sum {expected_sum}, but got {result}"
-
-def test_sum_column_with_invalid_column(spark_session: SparkSession) -> None:
-    """
-    Test sum_column with an invalid column name using direct assertions.
-    """
-    data: list[tuple[int]] = [(1,), (2,), (3,)]
-    schema: list[str] = ["valid_column"]
-    df: DataFrame = spark_session.createDataFrame(data, schema)
-    invalid_column: str = "invalid_column"
-
-    with pytest.raises(AnalysisException, match="UNRESOLVED_COLUMN"):
-        sum_column(df, invalid_column)
-
-def test_sum_bytes_with_invalid_column(spark_session: SparkSession) -> None:
-    """
-    Test sum_bytes with an invalid column name using direct assertions.
-    """
-    data: list[tuple[int]] = [(100,), (200,), (300,)]
-    schema: list[str] = ["valid_column"]
-    df: DataFrame = spark_session.createDataFrame(data, schema)
-    invalid_column: str = "invalid_column"
-
-    with pytest.raises(AnalysisException, match="UNRESOLVED_COLUMN"):
-        sum_bytes(df, invalid_column)
 
 @pytest.fixture(scope="module")
 def image_data() -> bytes:

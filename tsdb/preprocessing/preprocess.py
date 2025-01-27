@@ -1,72 +1,20 @@
-from collections import defaultdict
-from functools import partial
-from typing import Any
-
-import numpy as np
-from pyspark.context import SparkContext
-from pyspark.sql import DataFrame
-from petastorm.spark import SparkDatasetConverter, make_spark_converter
-from tsdb.preprocessing.functions import sum_bytes
-from torchvision.transforms import v2
-import torchvision
-import torch
-from torch.utils.data import DataLoader
-from PIL import Image
-from streaming import StreamingDataset, MDSWriter  # mosiacml-streaming
-
 """
 This module contains higher level preprocessing workflows
 that use a combination of tsdb.preprocessing.functions
 """
+import numpy as np
+from PIL import Image
+from pyspark.sql import DataFrame, SparkSession
 
-def create_converter(
-    dataframe, bytes_column: "ColumnOrName", sc: SparkContext, parallelism: int = 0
-) -> SparkDatasetConverter:
-    """
-    Returns a PetaStorm converter created from dataframe.
-
-    Args:
-        dataframe: DataFrame
-        byte_column: Column containing byte count, Used by the petastorm cache
-        parallelism: integer for parallelism, used to create petastorm cache
-    """
-    # Note this uses spark context
-    if parallelism == 0:
-        parallelism = sc.defaultParallelism
-
-    num_bytes = sum_bytes(dataframe, bytes_column)
-
-    # Cache
-    converter = make_spark_converter(
-        dataframe, parquet_row_group_size_bytes=int(num_bytes / parallelism)
-    )
-
-    return converter
-
-
-def data_augmentation(
-    rotation_angle: int = 15,
-    prob_H_flip: float = 0.2,
-    prob_V_flip: float = 0.2,
-    blur: tuple[int, float] = (1, 0.1),
-) -> list:
-    """
-    Data Augmentation function to add label invariant transforms to training pipeline
-    Applies a series of transformations such as rotation, horizontal and vertical flips, and Gaussian blur to each image
-
-    TODO: test this
-    """
-    transforms = [
-        v2.RandomRotation(rotation_angle),
-        v2.RandomHorizontalFlip(prob_H_flip),
-        v2.RandomVerticalFlip(prob_V_flip),
-        v2.GaussianBlur(kernel_size=blur[0], sigma=blur[1]),
-    ]
-    return transforms
+from streaming import MDSWriter  # mosiacml-streaming
 
 
 def convert_to_mds(
-    df: DataFrame, columns: dict[str, str], compression: str, out_root: str, **kwargs
+    df: DataFrame,
+    out_root: str,
+    columns: dict[str, str] = None,
+    compression: str = "zstd",
+    **kwargs
 ) -> None:
     """
     Function that converts a Spark DataFrame to a collection of `.mds` files.
@@ -75,17 +23,38 @@ def convert_to_mds(
 
     Args:
     df: The spark dataframe to be converted
+    out_root: The local or remote directory path to store the output compressed files
     columns: A dictionary which contains the column names of the dataframe
             as keys and the corresponding mds data types as values
     compression: Compression algorithm name to use
-    out_root: The local or remote directory path to store the output compressed files
+
+    TODO: this implementation is not completely tested
+    TODO: refactor to be more general
     """
+    if columns is None:
+        columns = {
+            "image_path": "str",
+            "img": "ndarray:uint8:640,640,3",
+            "bboxes": "ndarray:float32",
+            "cls": "ndarray:float32",
+            "ori_shape": "ndarray:uint32",
+            "resized_shape": "ndarray:uint32",
+        }
+
     pd_df = df.toPandas()
     samples = pd_df.to_dict("records")
 
     for sample in samples:
-        sample["img"] = Image.open(sample["im_file"])
-        sample["ori_shape"] = np.array(sample["img"].size, dtype=np.uint32)
+        try:
+            img = Image.open(sample["image_path"]).convert("RGB")
+        except:
+            print(f"Error reading image {sample['image_path']}. Skipping row.")
+            sample["img"] = None
+            continue
+
+        sample["ori_shape"] = np.array(img.size, dtype=np.uint32)
+        sample["img"] = np.array(img.resize((640, 640)))  # hardcode 640 for now
+        sample["resized_shape"] = np.array(sample["img"].shape[:2], dtype=np.uint32)
 
     # Use `MDSWriter` to iterate through the input data and write to a collection of `.mds` files.
     # Note this has been unit tested here: https://github.com/mosaicml/streaming/blob/main/tests/test_writer.py
@@ -93,110 +62,59 @@ def convert_to_mds(
         out=out_root, columns=columns, compression=compression, **kwargs
     ) as out:
         for sample in samples:
-            out.write(sample)
+            # skip rows whose images are corrupted/caused an error.
+            if sample["img"] is not None:
+                try:
+                    out.write(sample)
+                except Exception as e:
+                    print(f"Row: {sample} \n caused exception: {e}")
 
 
-def collate_fn_img(data: list[dict[str, Any]], transforms: callable) -> dict[str, Any]:
+def build_mds_by_splits(catalog: str, schema: str, table: str, out_root_base: str) -> int:
     """
-    Function for collating data into batches. Some additional
-    processing of the data is done in this function as well
-    to get the batch into the format expected by the Ultralytics
-    DetectionModel class.
+    Given a catalog, schema, table_name for a delta table, creates a MDS dataset for training, validation, and testing.
+    Obtains the latest delta table version and persists this information in the path for reproducibility.
 
     Args:
-        data: The data to be collated a batch
-        transforms: Torchvision transforms applied to the PIL images
-    Returns: A dictionary containing the collated data in the formated
-            expected by the Ultralytics DetectionModel class
+        catalog: UC name
+        schema: UC schema name
+        table: UC table name
+        out_root_base: Volume path to save data to
+    
+    TODO: Refactor to handle case where directory is non-empty among other things
     """
-    result = defaultdict(list)
+    spark = SparkSession.builder.getOrCreate()
 
-    for index, element in enumerate(data):
-        for key, value in element.items():
-            if key == "img":
-                value = transforms(value)
-
-                # height & width after image transform/augmentation has been done
-                _, height, width = value.shape
-                result["resized_shape"].append((height, width))
-                
-                # from https://github.com/ultralytics/ultralytics/blob/main/ultralytics/data/base.py#L295
-                result["ratio_pad"].append(
-                    (
-                        result["resized_shape"][index][0] / element["ori_shape"][0],
-                        result["resized_shape"][index][1] / element["ori_shape"][1],
-                    )
-                )  
-
-            result[key].append(value)
-
-        num_boxes = len(element["cls"])
-
-        for _ in range(num_boxes):
-            result["batch_idx"].append(
-                float(index)
-            )  # yolo dataloader has this as a float not int
-
-    result["img"] = torch.stack(result["img"], dim=0)
-    result["batch_idx"] = torch.tensor(result["batch_idx"])
-
-    # Shape of resulting tensor should be (num_bboxes_in_batch, 4)
-    result["bboxes"] = torch.tensor(np.concatenate(result["bboxes"])).reshape(-1, 4)
-
-    # Shape of resulting tensor should be (num_bboxes_in_batch, 1)
-    # Call np.concatenate to avoid calling tensor on a list of np arrays but instead just one 2d np array
-    result["cls"] = torch.tensor(np.concatenate(result["cls"])).reshape(-1, 1)
-
-    result["im_file"] = tuple(result["im_file"])
-    result["ori_shape"] = tuple(result["ori_shape"])
-    result["resized_shape"] = tuple(result["resized_shape"])
-    result["ratio_pad"] = tuple(result["ratio_pad"])
-
-    return dict(result)
-
-
-def get_dataloader(
-    local_dir: str,
-    remote_dir: str,
-    batch_size: int,
-    transforms: list[callable] = None,
-    **kwargs
-) -> DataLoader:
-    """
-    Function that creates a PyTorch DataLoader from a collection of `.mds` files.
-
-    Args:
-    local_dir: Local directory where dataset is cached during training
-    remote_dir: The local or remote directory where dataset `.mds` files are stored
-    batch_size: The batch size of the dataloader and dataset.
-          See: https://docs.mosaicml.com/projects/streaming/en/stable/getting_started/faqs_and_tips.html
-    transforms: A list of torchvision transforms to be composed and applied to the images
-    Returns:
-    A PyTorch DataLoader object
-    """
-
-    # Note that StreamingDataset is unit tested here: https://github.com/mosaicml/streaming/blob/main/tests/test_streaming.py
-    dataset = StreamingDataset(
-        local=local_dir,
-        remote=remote_dir,
-        batch_size=batch_size,
-        split=None,
-        shuffle=True,
-        **kwargs
+    training_data_table = f"{catalog}.{schema}.{table}"
+    
+    # We get the latest version number for reproducibility
+    version_number = (
+        spark
+        .sql(f"DESCRIBE HISTORY {training_data_table} LIMIT 1")
+        .collect()[0]["version"]
     )
 
-    if transforms is None:
-        transform = torchvision.transforms.Compose(
-            [
-                torchvision.transforms.ToTensor(),
-            ]
+    # Read the dataframe, we flatten bboxes to match a mds data type
+    # image_path will be read by convert_to_mds
+    # cls is extracted from bboxes to match Ultralytics training setup
+    dataframe = (
+        spark
+        .read
+        .format("delta")
+        .option("versionAsOf", version_number)
+        .table(training_data_table)
+        .selectExpr(
+            "image_path",
+            "transform(bboxes, x -> float(0)) AS cls",
+            "flatten(transform(bboxes, x -> array(x.x1, x.y1, x.x2, x.y2))) AS bboxes",
+            "split_label"
         )
-    else:
-        transform = torchvision.transforms.Compose(transforms)
-
-    # Create PyTorch DataLoader
-    collate_fn = partial(collate_fn_img, transforms=transform)
-    dataloader = DataLoader(
-        dataset, batch_size=batch_size, collate_fn=collate_fn
     )
-    return dataloader
+
+    save_path = f"{out_root_base}/{table}/version={version_number}/"
+    
+    for split in ("train", "val", "test"):
+        split_df = dataframe.filter(f"split_label == '{split}'").drop("split_label")
+        convert_to_mds(split_df, out_root=f"{save_path}/{split}")
+    
+    return version_number
