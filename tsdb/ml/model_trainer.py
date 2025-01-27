@@ -10,7 +10,7 @@ import numpy as np
 
 import optuna
 import mlflow
-from mlflow.models.signature import infer_signature, ModelSignature
+from mlflow.models.signature import ModelSignature
 import ultralytics.utils as uutils
 
 from tsdb.ml.utils import Steps

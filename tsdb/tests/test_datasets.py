@@ -51,7 +51,7 @@ def test_get_image_and_label(remote_dir: str, local_dir, hyperparams: Hyperparam
         shuffle=True,
         hyperparameters=hyperparams,
         transform=False,
-        image_size=320,
+        mosaic_crop_size=320,
     )
     item = dataset.get_image_and_label(1)
 

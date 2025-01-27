@@ -44,10 +44,10 @@ def objective(
         hyperparams=hyperparameters
     )
 
-    with mlflow.start_run(nested=True) as run:
+    with mlflow.start_run(nested=True):
         # Create model and trainer
         mlflow.log_params(asdict(hyperparameters))  # convert dataclass to dict
-        trial.set_user_attr("model_uri", f"runs:/{run.info.run_id}/{model_name}")
+        mlflow.log_param("yolo_version", yolo_version)  
 
         metric = model_trainer.train(
             dataloaders, model_name=model_name, trial=trial
