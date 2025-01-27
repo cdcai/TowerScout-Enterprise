@@ -44,7 +44,7 @@ class Hyperparameters:
         prob_H_flip = trial.suggest_float("prob_H_flip", 0.5, 0.5)
         prob_V_flip = trial.suggest_float("prob_V_flip", 0.0, 0.0)
         prob_mosaic = trial.suggest_float("prob_mosaic", 1.0, 1.0)
-        epochs = trial.suggest_int("epochs", 8, 8)
+        epochs = trial.suggest_int("epochs", 1, 1)
 
         return cls(
             lr,

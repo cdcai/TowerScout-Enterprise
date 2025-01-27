@@ -20,6 +20,9 @@ from joblibspark import register_spark
 from tsdb.ml.tune import objective
 from tsdb.ml.promote import model_promotion
 from tsdb.ml.yolo import YoloVersions
+from tsdb.ml.utils import UCModelName
+from tsdb.ml.datasets import get_dataloader
+from tsdb.ml.types import Hyperparameters
 from tsdb.preprocessing.preprocess import build_mds_by_splits
 
 # COMMAND ----------
@@ -34,10 +37,12 @@ if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_confi
     env = result['env']
     catalog = result['catalog_name']
     schema = result['schema_name']
-    table_name = result['gold_table_name']
+    gold_table_name = result['gold_table_name']
     debug_mode = result['debug_mode'] == "true"
     unit_test_mode = result['unit_test_mode'] == "true"
     model_name = result['model_name']
+    mds_path = result['mds_path']
+    alias = result['champion_alias']
 else:
     # Exit the notebook with an error message if the global view does not exist
     dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
@@ -67,13 +72,12 @@ try_promotion = dbutils.widgets.get("try_promotion") == "True"
 
 # DBTITLE 1,Build dataset from table if opted for
 if build_dataset:
-    location = "data/mds_training_splits" # make location a config parameter
-    out_root_base_path = f"/Volumes/{catalog}/{schema}/" + location 
+    out_root_base_path = f"/Volumes/{catalog}/{schema}/{mds_path}"
 
     table_version = build_mds_by_splits(
         catalog,
         schema,
-        table_name,
+        gold_table_name,
         out_root_base_path
     )
 
@@ -81,15 +85,15 @@ if build_dataset:
 
 mlflow.set_registry_uri("databricks-uc")
 
-out_root_base_path = f"/Volumes/{catalog}/{schema}/data/mds_training_splits/test_image_gold/version={table_version}"
+out_root_base_path = f"/Volumes/{catalog}/{schema}/{mds_path}/{gold_table_name}/version={table_version}"
 
 study = optuna.create_study(direction="maximize", pruner=optuna.pruners.MedianPruner())
 objective_with_args = partial(
     objective,
     out_root_base=out_root_base_path,
-    yolo_version="yolov10n",
+    yolo_version=yolo_model,
     objective_metric="f1",
-    model_name=model_name  # set model_name in config file?
+    model_name=f"{model_name}_{yolo_model}"   # set model_name in config file?
 )
 
 # add with mlflow context here to get nested structure for logging
@@ -100,8 +104,28 @@ with mlflow.start_run():
         study.optimize(objective_with_args, n_trials=num_trials)
 
 best_params = study.best_params
+best_trail = study.best_trial
 
 # COMMAND ----------
 
 if try_promotion:
-    
+    best_params["batch_size"] = 2**best_params.pop("batch_size_power")  
+    best_params["lr0"] = best_params.pop("lr")  # rename lr key to lr0 to create Hyperparameters objected
+    hyperparams = Hyperparameters(**best_params)
+
+    testing_dataloader = get_dataloader(
+        local_dir="/local/cache/path",
+        remote_dir=f"{out_root_base_path}/test",
+        hyperparams=hyperparams,
+        transform=False,
+    )
+
+    uc_model_name = UCModelName(catalog, schema, model_name)
+
+    model_promotion(
+        challenger_uri=best_trail.user_attrs["model_uri"],
+        testing_dataloader=testing_dataloader,
+        comparison_metric="f1",
+        uc_model_name=uc_model_name,
+        alias=alias,
+    )
