@@ -114,6 +114,10 @@ if "configs" in volumes:
             spark.conf.set("batch_size", conf.collect()[0][env]["batch_size"])
             spark.conf.set("bronze_path", conf.collect()[0][env]["bronze_path"])
             spark.conf.set("silver_table_name", conf.collect()[0][env]["silver_table_name"])
+            spark.conf.set("gold_table_name", conf.collect()[0][env]["gold_table_name"])
+            spark.conf.set("mds_path", conf.collect()[0][env]["mds_path"])
+            spark.conf.set("model_name", conf.collect()[0][env]["model_name"])
+            spark.conf.set("champion_alias", conf.collect()[0][env]["champion_alias"])
             spark.conf.set("checkpoint_path", conf.collect()[0][env]["checkpoint_path"])
             client_id = conf.collect()[0][env]["azure_config"]["client_id"]
             writestream_trigger_args = conf.collect()[0][env]["writestream_trigger_args"]
@@ -147,8 +151,12 @@ config_data = [
         spark.conf.get("vol_location_configs"),
         spark.conf.get("key_vault_name"),
         spark.conf.get("silver_table_name"),
+        spark.conf.get("gold_table_name"),
+        spark.conf.get("mds_path"),
+        spark.conf.get("model_name"),
         spark.conf.get("batch_size"),
         spark.conf.get("bronze_path"),
+        spark.conf.get("champion_alias"),
         image_config,
         writestream_trigger_args,
         client_id,
@@ -166,8 +174,12 @@ config_columns = [
     "vol_location_configs",
     "key_vault_name",
     "silver_table_name",
+    "gold_table_name",
+    "mds_path",
+    "model_name",
     "batch_size",
     "bronze_path",
+    "champion_alias",
     "image_config",
     "writestream_trigger_args",
     "client_id",

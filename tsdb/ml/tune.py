@@ -44,9 +44,11 @@ def objective(
         hyperparams=hyperparameters
     )
 
-    with mlflow.start_run(nested=True):
+    with mlflow.start_run(nested=True) as run:
         # Create model and trainer
         mlflow.log_params(asdict(hyperparameters))  # convert dataclass to dict
+        trial.set_user_attr("model_uri", f"runs:/{run.info.run_id}/{model_name}")
+
         metric = model_trainer.train(
             dataloaders, model_name=model_name, trial=trial
         )
