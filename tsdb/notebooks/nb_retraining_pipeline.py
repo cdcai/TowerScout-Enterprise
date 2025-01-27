@@ -10,9 +10,21 @@
 
 # COMMAND ----------
 
-# Purpose: Check if the global view 'global_temp_towerscout_configs' exists and extract configuration values from it. 
-# If the view does not exist, exit the notebook with an error message.
+from functools import partial
 
+import joblib
+import mlflow
+import optuna
+from joblibspark import register_spark
+
+from tsdb.ml.tune import objective
+from tsdb.ml.promote import model_promotion
+from tsdb.ml.yolo import YoloVersions
+from tsdb.preprocessing.preprocess import build_mds_by_splits
+
+# COMMAND ----------
+
+# DBTITLE 1,Retrieve config file values
 # Check if the global view exists
 if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
     # Query the global temporary view and collect the first row
@@ -22,80 +34,54 @@ if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_confi
     env = result['env']
     catalog = result['catalog_name']
     schema = result['schema_name']
+    table_name = result['gold_table_name']
     debug_mode = result['debug_mode'] == "true"
     unit_test_mode = result['unit_test_mode'] == "true"
+    model_name = result['model_name']
 else:
     # Exit the notebook with an error message if the global view does not exist
     dbutils.notebook.exit("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 # COMMAND ----------
 
-# widgets probs will go into config file
-# dbutils.widgets.text("source_table", defaultValue="image_metadata")  # config file
+# DBTITLE 1,Create notebook parameters
+# TODO: Add these parameters into the workflow under "parameters"
+yolo_models = [member.name for member in YoloVersions] 
+dbutils.widgets.dropdown("yolo_model", "yolov10n", yolo_models)
 
-# dbutils.widgets.text("report_interval", defaultValue="5")  # nb widget 
-# dbutils.widgets.text("max_evals", defaultValue="8")  # nb widget
-# dbutils.widgets.text("parallelism", defaultValue="2")  # nb widget
-
-# metrics = [member.name for member in ValidMetric]
-# dbutils.widgets.dropdown("objective_metric", "MSE", metrics)  # nb widget
-# dbutils.widgets.multiselect("metrics", "MSE", choices=metrics)  # nb widget
+dbutils.widgets.dropdown("build_dataset", "False", ["True", "False"])
+dbutils.widgets.dropdown("try_promotion", "False", ["True", "False"])
+dbutils.widgets.text("num_trials", defaultValue="1")  
+dbutils.widgets.text("table_version", defaultValue="397") 
 
 # COMMAND ----------
 
 # DBTITLE 1,Retrieve parameters from notebook
-# objective_metric = dbutils.widgets.get("objective_metric")
-# report_interval = int(dbutils.widgets.get("report_interval"))
-# metrics = [ValidMetric[metric] for metric in dbutils.widgets.get("metrics").split(",")]
-# parallelism = int(dbutils.widgets.get("parallelism"))
-# max_evals = int(dbutils.widgets.get("max_evals"))
+table_version = int(dbutils.widgets.get("table_version"))
+yolo_model = dbutils.widgets.get("yolo_model")
+num_trials = int(dbutils.widgets.get("num_trials"))
+build_dataset = dbutils.widgets.get("build_dataset") == "True"
+try_promotion = dbutils.widgets.get("try_promotion") == "True"
 
 # COMMAND ----------
 
-# from tsdb.preprocessing.preprocess import build_mds_by_splits
+# DBTITLE 1,Build dataset from table if opted for
+if build_dataset:
+    location = "data/mds_training_splits" # make location a config parameter
+    out_root_base_path = f"/Volumes/{catalog}/{schema}/" + location 
 
-# out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits"
-
-# build_mds_by_splits(
-#     "edav_dev_csels",
-#     "towerscout",
-#     "test_image_gold",
-#     out_root_base_path
-# )
-
-# COMMAND ----------
-
-# out_root_base_path = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=377"
-
-# dataloaders = DataLoaders.from_mds(
-#     cache_dir="/tmp/training_cache/", 
-#     mds_dir=out_root_base_path, 
-#     batch_size=32, 
-#     transforms=data_augmentation()
-# )
-
-# COMMAND ----------
-
-from functools import partial
-
-import joblib
-import mlflow
-import optuna
-from joblibspark import register_spark
-
-from tsdb.ml.tune import objective
+    table_version = build_mds_by_splits(
+        catalog,
+        schema,
+        table_name,
+        out_root_base_path
+    )
 
 # COMMAND ----------
 
 mlflow.set_registry_uri("databricks-uc")
 
-table_version = "397"  # set as notebook widget, default to 397
-# make widget for yolo version (8,10 etc), and one for size (n, s, m etc)
-# set model_name in config file 
-# n_trials as widget 
-# set promote flag (T/F) using widget default to false
-# make widget to build dataset default it to false. get version number from build_mds_splits if flag is true and overide widget value for version number
-out_root_base_path = f"/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version={table_version}"
+out_root_base_path = f"/Volumes/{catalog}/{schema}/data/mds_training_splits/test_image_gold/version={table_version}"
 
 study = optuna.create_study(direction="maximize", pruner=optuna.pruners.MedianPruner())
 objective_with_args = partial(
@@ -103,7 +89,7 @@ objective_with_args = partial(
     out_root_base=out_root_base_path,
     yolo_version="yolov10n",
     objective_metric="f1",
-    model_name="ts_yolov10n"
+    model_name=model_name  # set model_name in config file?
 )
 
 # add with mlflow context here to get nested structure for logging
@@ -111,73 +97,11 @@ register_spark()
 
 with mlflow.start_run():
     with joblib.parallel_backend("spark", n_jobs=-1):
-        study.optimize(objective_with_args, n_trials=1)
+        study.optimize(objective_with_args, n_trials=num_trials)
 
 best_params = study.best_params
 
 # COMMAND ----------
 
-# try:
-#     best_run, challenger_test_metric, best_params = tune_hyperparams(
-#         fmin_args, train_args
-#     )
-#     logger.info(
-#         f"Best model has {train_args.objective_metric} of {challenger_test_metric}"
-#     )
-#     logger.debug("Hyperparameter tuning completed.")
-# except ValueError as e:
-#     logger.error(f"Invalid hyperparameter tuning arguments: {e}")
-# except RuntimeError as e:
-#     logger.error(f"Error during hyperparameter tuning: {e}")
-# except Exception as e:
-#     logger.error(f"Unexpected error during hyperparameter tuning: {e}")
-
-# COMMAND ----------
-
-# logger.info(
-#     f"Testing metric ({train_args.objective_metric}) value of best run: {challenger_test_metric}"
-# )
-
-# COMMAND ----------
-
-# DBTITLE 1,Register challenger model
-# run_id = best_run.run_id
-# model_name = f"{catalog}.{schema}.towerscout_model"  # model name
-# alias = dbutils.widgets.get("stage")
-
-# challenger_model_metadata = mlflow.register_model(
-#     model_uri=f"runs:/{run_id}/ts-model-mlflow",  # path to logged artifact folder called models
-#     name=model_name,  # name for model in catalog
-# )
-# logger.info(
-#     f"Registered model {model_name} with version {challenger_model_metadata.version}"
-# )
-
-# COMMAND ----------
-
-# promo_args = PromotionArgs(
-#     objective_metric=train_args.objective_metric,
-#     batch_size=train_args.batch_size,
-#     metrics=train_args.metrics,
-#     model_version=challenger_model_metadata.version,
-#     model_name=model_name,
-#     challenger_metric_value=challenger_test_metric,
-#     alias=alias,
-#     test_conv=split_convs.test,
-#     client=client,
-#     logger=logger,
-# )
-
-# COMMAND ----------
-
-# try:
-#     model_promotion(promo_args)
-#     logger.debug("Promotion completed.")
-# except Exception as e:
-#     logger.error(f"Error during model promotion: {e}")
-
-# COMMAND ----------
-
-# # Close the handler to ensure the file is properly closed
-# handler.close()
-# logger.removeHandler(handler)
+if try_promotion:
+    
