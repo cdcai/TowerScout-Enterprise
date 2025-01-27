@@ -7,6 +7,8 @@ omit =
   */spark/*
   */venv/*
   */databricks/*
+  ../ml/tune.py
+  ../ml/promote.py
 
 [report]
 exclude_lines =

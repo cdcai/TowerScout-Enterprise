@@ -1,109 +1,48 @@
-from collections import namedtuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TypedDict
+from enum import Enum, auto
 
-from enum import Enum
+import mlflow
 
-from torch import nn
 
-from petastorm.spark.spark_dataset_converter import SparkDatasetConverter
-
-from mlflow import MlflowClient
-
-from logging import Logger
-
-class ValidMetric(Enum):
+class Steps(Enum):
     """
-    An Enum which is used to represent valid evaluation metrics for the model
+    An enum class that holds the steps of the ML pipeline
     """
-
-    BCE = nn.BCEWithLogitsLoss()
-    MSE = nn.MSELoss()
-
-
-# using a dataclass instead results in sparkcontext error
-FminArgs = namedtuple("FminArgs", ["fn", "space", "algo", "max_evals", "trials"])
-
-@dataclass
-class SplitConverters:
-    """
-    A class to hold the spark dataset converters for the training, testing
-    and validation sets
-
-    Attributes:
-        train: The spark dataset converter for the training dataset
-        val: The spark dataset converter for the validation dataset
-        test: The spark dataset converter for the testing dataset
-    """
-
-    train: SparkDatasetConverter = None
-    val: SparkDatasetConverter = None
-    test: SparkDatasetConverter = None
+    TRAIN = auto()
+    VAL = auto()
+    TEST = auto()
 
 
 @dataclass
-class TrainingArgs:
+class UCModelName:
     """
-    A class to represent model training arguements
+    A class to represent the full name of a model registered in
+    Unity Catalog
 
     Attributes:
-        objective_metric:The evaluation metric we want to optimize
-        epochs: Number of epochs to optimize model over
-        batch_size: The size of the minibatchs passed to the model
-        report_interval: Interval to log metrics during training
-        metrics: Various model evaluation metrics we want to track
+        catalog: The catalog the model is under
+        schema: The schema the model is under
+        name: The name of the model in Unity Catalog
     """
 
-    objective_metric: str = "recall"  # will be selected option for the drop down
-    epochs: int = 2
-    batch_size: int = 4
-    report_interval: int = 5
-    metrics: list[ValidMetric] = field(default_factory=dict)
+    catalog: str
+    schema: str
+    name: str
 
+    def __str__(self): 
+        return f"{self.catalog}.{self.schema}.{self.name}"
 
-@dataclass
-class PromotionArgs:
-    """
-    A class to represent model promotion arguements
-
-    Attributes:
-        objective_metric: The evaluation metric we want to optimize
-        batch_size: The size of the minibatchs passed to the model
-        metrics: Various model evaluation metrics we want to track
-        model_version: The version of the model that is the challenger
-        model_name: The name of the model
-        challenger_metric_value: The value of the objective metric achieved by the challenger model on the test dataset
-        alias: The alias we are promoting the model to
-        test_conv: The converter for the test dataset
-    """
-
-    objective_metric: str = "recall"
-    batch_size: int = 4
-    metrics: list[ValidMetric] = field(default_factory=list)
-    model_version: int = 1
-    model_name: str = "ts"
-    challenger_metric_value: float = 0
-    alias: str = "staging"
-    test_conv: SparkDatasetConverter = None
-    client: MlflowClient = None
-    logger: Logger = None
-
-
-@dataclass
-class OptimizerArgs:
-    """
-    A class to represent YOLO model optimizer arguements
-
-    Attributes:
-        optimizer_name: The name of optimzer to use SGD, Adam, etc
-        lr0: The initial learning rate
-        momentum: Momentum parameter
-    """
-    optimizer_name: str = "auto"
-    lr0: float = 0.001
-    momentum: float = 0.9
 
 class YOLOv5Detection(TypedDict):
+    """
+    A class to represent a YOLOv5 detection.
+    x1,y1,x2,y2: Box coordinates
+    conf: Model confidence 
+    class: class label
+    class_name: class name
+    secondary: Class label predicted by secondary model
+    """
     x1: float
     y1: float
     x2: float
@@ -112,6 +51,7 @@ class YOLOv5Detection(TypedDict):
     class_: int
     class_name: str
     secondary: int
+
 
 def cut_square_detection(img, x1, y1, x2, y2):
     w,h = img.size
@@ -149,6 +89,10 @@ def get_model_tags(model_name: str, alias: str) -> tuple[dict[str, str], str]:  
     Returns the tags for the model with the given model name and alias
     along with the model version.
     
+    Args:
+        model_name: the name of the model in Unity Catalog
+        alias: the alias of the model in Unity Catalog
+
     Note we do not unit test this function as `get_model_version_by_alias`
     and `get_model_version` are unit tested in the MLflow git repo already at:
     
@@ -156,7 +100,7 @@ def get_model_tags(model_name: str, alias: str) -> tuple[dict[str, str], str]:  
     
         - https://github.com/mlflow/mlflow/blob/8c07dc0f604565bec29358526db461ca4f842bb5/tests/store/model_registry/test_rest_store.py#L306
     """
-    client = MlflowClient()
+    client = mlflow.MlflowClient()
     model_version_info = client.get_model_version_by_alias(
         name=model_name, alias=alias
     )

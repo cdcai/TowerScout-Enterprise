@@ -3,27 +3,35 @@ This module contains DataFrame -> Dataframe transformations that are used in PyS
 """
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
-import tsdb.preprocessing.utils as utils
 
 
-def compute_bytes(
-    dataframe: DataFrame, binary_column: "ColumnOrName", col_name: "str" = "bytes"
-) -> DataFrame:
+def train_test_val_split(
+    dataframe: DataFrame,
+    train_ratio: float|int,
+    test_ratio: float|int,
+    val_ratio: float|int,
+    seed: int=42
+) -> tuple[DataFrame, DataFrame, DataFrame]:
     """
-    Returns a dataframe with a bytes column, which calculates the number of
-    bytes in a binary column. While this function is intended to be used for
-    binary data, we do not strictly enforce this.
+    Splits a Spark dataframe into train, test, and validation sets using the provided ratios.
+    The ratios can be floats or integers, however; if the values do not sum to 1.0, randomSplit
+    will normalize them. The seed is used to ensure reproducibility.
 
     Args:
-        dataframe: DataFrame
-        binary_column: Name or col that has bit data
-        col_name (default="bytes"): The name of the new result column
-    """
-    base_bytes = 4
-    binary_column = utils.cast_to_column(binary_column)
-    num_bytes = F.lit(base_bytes) + F.length(binary_column)
+        dataframe (DataFrame): Input dataframe to be split.
+        train_ratio (float or int): The ratio of the train set.
+        test_ratio (float or int): The ratio of the test set.
+        val_ratio (float or int): The ratio of the validation set.
+        seed (int): The seed to use for randomSplit reproducibility
 
-    return dataframe.withColumn(col_name, num_bytes)
+    Returns:
+        tuple: A tuple containing the train, test, and validation dataframes.
+    """
+    train_df, test_df, val_df = (
+        dataframe
+        .randomSplit([train_ratio, test_ratio, val_ratio], seed=seed)
+    )
+    return train_df, test_df, val_df
 
 
 def perform_inference(dataframe, inference_udf, input_column: str="content"):  # pragma: no cover

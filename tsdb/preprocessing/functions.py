@@ -2,7 +2,6 @@
 This module contains low-level functions that transform column objects to a column object. These functions are utility-like but specific to preprocessing tasks.
 """
 import io
-from typing import Union
 
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
@@ -17,31 +16,6 @@ statistics_schema = pst.StructType([
     pst.StructField("extrema", pst.ArrayType(pst.ArrayType(pst.IntegerType()))),
 ])
 
-
-
-def sum_column(dataframe, column: "str") -> Union[int, float]:
-    """
-    Returns the sum of a column in a dataframe.
-
-    Args:
-        dataframe: DataFrame
-        column: Numeric column or column name containing numeric values.
-    """
-    result = dataframe.select(F.sum(column)).first()
-    return result[0]
-
-
-def sum_bytes(dataframe, bytes_column: "ColumnOrName") -> int:
-    """
-    Returns the sum of bytes in a bytes column from a dataframe. Primarily used
-    to start a Petastorm cache.
-
-    Args:
-        dataframe: DataFrame
-        bytes_column: Column that contains counts of bytes
-    """
-    aggregate_bytes = dataframe.agg(F.sum(bytes_column).alias("total_bytes"))
-    return aggregate_bytes.collect()[0]["total_bytes"]
 
 def image_statistics_udf(image_binary: pst.BinaryType) -> statistics_schema:
     """

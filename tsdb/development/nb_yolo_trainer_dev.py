@@ -1,19 +1,24 @@
 # Databricks notebook source
-# MAGIC %pip install ultralytics
-# MAGIC %pip install efficientnet_pytorch
+# %pip install ultralytics
+# %pip install efficientnet_pytorch
+# %pip install optuna
 
 # COMMAND ----------
 
+from torchvision.utils import draw_bounding_boxes
+from torchvision.transforms.functional import to_pil_image
+
+from ultralytics.utils.ops import xywh2xyxy
 from ultralytics.data import build_dataloader, build_yolo_dataset
 from ultralytics.data.utils import check_det_dataset
 from ultralytics.cfg import get_cfg
 from ultralytics.nn.tasks import attempt_load_one_weight, DetectionModel
-from tsdb.ml.utils import OptimizerArgs
+# from tsdb.ml.utils import OptimizerArgs
 from tsdb.ml.yolo_trainer import YoloModelTrainer
 
 # COMMAND ----------
 
-optimizer_args = OptimizerArgs(optimizer_name="Adam", lr0=0.002, momentum=0.9)
+# optimizer_args = OptimizerArgs(optimizer_name="Adam", lr0=0.002, momentum=0.9)
 
 # COMMAND ----------
 
@@ -29,6 +34,7 @@ def get_model(model_yaml, model_pt, data):
     See DetectionTrainer class and BaseTrainer class for details on how to setup the model
     """
     args = get_cfg()  # used to get hyperparams for model and other stuff from some config file
+    print(type(args))
     model = DetectionModel(cfg=model_yaml, verbose=False)
     weights, _ = attempt_load_one_weight(model_pt)
     model.load(weights)
@@ -46,15 +52,20 @@ model = get_model(model_yaml, model_pt, data)
 
 # COMMAND ----------
 
-model.args.single_cls = True # set to False when using coco dataset since it has 80 classes
+# import torch
+# isinstance(model, torch.nn.Module)
 
 # COMMAND ----------
 
-yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model)
+# model.args.single_cls = True # set to False when using coco dataset since it has 80 classes
 
 # COMMAND ----------
 
-batch_size = 3
+# yolo_trainer = YoloModelTrainer(optimizer_args=optimizer_args, model=model, train_args=None)
+
+# COMMAND ----------
+
+batch_size = 2
 
 # seems like confusion matrix methods only work when the dataset is built with
 # mode="val" or else the minibatches wont have the key "ratio_pad" that is needed by some functions
@@ -69,10 +80,20 @@ loader = build_dataloader(dataset, batch_size, workers=4)
 
 # COMMAND ----------
 
-for image_batch in loader:
-    #print(image_batch)
-    print(image_batch['bboxes'].shape)
-    print(image_batch['cls'].shape)
+for i, image_batch in enumerate(loader):
+    idx = image_batch["batch_idx"] == 0
+    bboxes = xywh2xyxy(image_batch["bboxes"][idx]) * 640
+    image = image_batch["img"][0]
+    print(image_batch["img"])
+    print(bboxes)
+    test_image = draw_bounding_boxes(image, bboxes, colors="red")
+    #display(to_pil_image(test_image))
+    break
+    # print(f"BATCH {i} image paths: {image_batch['im_file']}")
+    # print(f"BATCH {i} image shape: {image_batch['img'].shape}")
+    # print(f"BATCH {i} boxes: {image_batch['bboxes']}")
+    # print(f"BATCH {i} classes: {image_batch['cls']}")
+    # print(f"BATCH {i} batch indexes: {image_batch['batch_idx']}\n")
 
 # COMMAND ----------
 

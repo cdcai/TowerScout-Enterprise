@@ -39,3 +39,7 @@ wheels/
 .installed.cfg
 *.egg
 .coverage
+*.pt
+*/datasets/*
+*.jpg
+*.png

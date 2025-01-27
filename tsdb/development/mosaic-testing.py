@@ -1,5 +1,153 @@
 # Databricks notebook source
-# MAGIC %pip install mosaicml-streaming
+# from tsdb.preprocessing.preprocess import convert_to_mds
+
+# df = spark.sql("""SELECT * FROM edav_dev_csels.towerscout.test_image_gold LIMIT 10""")
+# df = df.selectExpr(
+#     "image_path",
+#     "transform(bboxes, x -> float(0)) AS cls",
+#     "flatten(transform(bboxes, x -> array(x.x1, x.y1, x.x2, x.y2))) AS bboxes",
+#     "split_label",
+# )
+
+
+# convert_to_mds(df, out_root="/Volumes/edav_dev_csels/towerscout/misc/mosaic_streaming_unit_test/")
+
+# COMMAND ----------
+
+# %pip install mosaicml-streaming
+# %pip install optuna
+
+# COMMAND ----------
+
+from typing import Any
+from collections import defaultdict
+
+from uuid import uuid4
+
+import torch
+import torchvision
+
+from torchvision.utils import draw_bounding_boxes
+from torchvision.transforms.functional import to_pil_image
+
+import PIL
+
+import numpy as np
+
+from ultralytics.data.augment import Mosaic, Compose
+from ultralytics.utils.instance import Instances
+from ultralytics.utils.ops import xywh2xyxy
+from streaming import StreamingDataset
+from torch.utils.data import DataLoader
+
+from tsdb.ml.utils import Hyperparameters
+from tsdb.ml.data import YoloDataset, get_dataloader
+
+# COMMAND ----------
+
+hyperparams = Hyperparameters(
+    lr0=0.1,
+    momentum=0.9,
+    weight_decay=0.1,
+    batch_size=2,
+    epochs=2,
+    prob_H_flip=0.5,
+    prob_V_flip=0.0,
+    prob_mosaic=0.0,
+)
+
+
+cache_dir = "/local/cache/path/" + str(uuid4())
+remote_dir = "/Volumes/edav_dev_csels/towerscout/data/mds_training_splits/test_image_gold/version=397/train"
+
+dataloader = get_dataloader(cache_dir, remote_dir, hyperparams)
+
+for i, image_batch in enumerate(dataloader):
+    idx = image_batch["batch_idx"] == 0
+    bboxes = xywh2xyxy(image_batch["bboxes"][idx]) * 640
+    image = image_batch["img"][0]  #.permute(0,1,2)
+    test_image = draw_bounding_boxes(image, bboxes, colors="red")
+    #display(to_pil_image(image.permute(0,1,2)))
+    display(to_pil_image(test_image))
+    break
+
+# COMMAND ----------
+
+from torchvision.utils import draw_bounding_boxes
+from torchvision.transforms.functional import to_pil_image
+
+class BoundingBox:
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+
+def denormalize_bounding_boxes(
+    item: BoundingBox, width: int=640, height: int=640
+) -> tuple[float, float, float, float]:
+    return (
+        item["x1"] * width,
+        item["y1"] * height,
+        item["x2"] * width,
+        item["y2"] * height
+    )
+
+
+image_index = 0
+selected_image = batch["img"][image_index]
+
+image = batch["img"][image_index].to(torch.uint8).permute(2,0,1)
+print(image.size())
+bboxes = batch["bboxes"] 
+print(bboxes)
+
+test_image = draw_bounding_boxes(image, bboxes, colors="red")
+display(to_pil_image(test_image))
+
+# COMMAND ----------
+
+cache_dir = "/local/cache/path/" + str(uuid4())
+
+dataset = YoloDataset(
+    local=cache_dir,
+    remote=remote_dir,
+    shuffle=False,
+    hyperparameters=hyperparams,
+    image_size=320,
+)
+
+dataloader = DataLoader(
+    dataset=dataset, batch_size=1, collate_fn=collate_fn_img, shuffle=False
+)
+
+data_iter = iter(dataloader)
+for i in range(1):
+    batch = next(data_iter)
+
+print(f"Image batch looks like: {batch}")
+
+# COMMAND ----------
+
+import matplotlib.pyplot as plt
+
+data = dataset.get_item(2)
+to_tens = ToTensor()
+#data = to_tens(data)
+#print(data["img"].dtype)
+to_pil_image = torchvision.transforms.ToPILImage()
+data["img"] = torch.tensor(np.ascontiguousarray(data["img"])).float() #/ 255
+new_img = to_pil_image(data["img"].permute(2,0,1))
+plt.imshow(new_img)
+#display(new_img)  # for some reason output images are invereted in color? 
+
+# COMMAND ----------
+
+data = dataset.__getitem__(0)
+#data = dataset.get_item(0)
+#print(data)
+print(data["instances"].convert_bbox(format="xyxy"))
+print("Boxes", data["instances"]._bboxes.bboxes)
 
 # COMMAND ----------
 

@@ -2,7 +2,16 @@ import pytest
 import numpy as np
 
 from PIL import Image
-from tsdb.ml.utils import cut_square_detection, get_model_tags
+from tsdb.ml.utils import cut_square_detection, UCModelName
+
+
+@pytest.fixture
+def uc_model_name() -> UCModelName:
+    return UCModelName("catalog", "schema", "model")
+    
+
+def test__str__(uc_model_name: UCModelName) -> None:
+    assert str(uc_model_name) == "catalog.schema.model", "str dunder method doesn't return the expected string"
 
 
 @pytest.fixture
