@@ -47,6 +47,8 @@ def objective(
     with mlflow.start_run(nested=True):
         # Create model and trainer
         mlflow.log_params(asdict(hyperparameters))  # convert dataclass to dict
+        mlflow.log_param("yolo_version", yolo_version)  
+
         metric = model_trainer.train(
             dataloaders, model_name=model_name, trial=trial
         )

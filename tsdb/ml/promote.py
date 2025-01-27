@@ -44,7 +44,7 @@ def model_promotion(
 
     # load current prod/champion model with matching alias
     champion = mlflow.pytorch.load_model(
-        model_uri=f"models:/{str(uc_model_name)}@{alias}"
+        model_uri=f"models:/{uc_model_name}@{alias}"
     )
     champion.to(device)
 

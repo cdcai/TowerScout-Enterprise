@@ -35,7 +35,11 @@ class YoloDataset(StreamingDataset):
         shuffle:  Whether to iterate over the samples in randomized orde
         hyperparameters: Hyperparameters to use (batch size)
         transfrom: Whether to apply the data augmentation transforms (should be True only for training set)
-        image_size: image size used to create the mosaic augmentation object
+        mosaic_crop_size: size of sub-images in the mosaic image created by the mosaic augmentation object
+
+        NOTE: mosaic_crop_size determines the size of the images *comprising* the mosaic.
+        So for a mosaic_crop_size of m the resulting mosiac image will be a size of 2m x 2m 
+        since we set n=4 in the Mosaic constructor.
     """
 
     def __init__(
@@ -45,7 +49,7 @@ class YoloDataset(StreamingDataset):
         shuffle: bool,
         hyperparameters: Hyperparameters,
         transform: bool,
-        image_size: int,
+        mosaic_crop_size: int,
         **kwargs,
     ):  # pragma: no cover
         super().__init__(
@@ -70,7 +74,7 @@ class YoloDataset(StreamingDataset):
 
         if transform:
             mosaic_aug = ModifiedMosaic(
-                self, image_size=image_size, p=hyperparameters.prob_mosaic, n=4
+                self, image_size=mosaic_crop_size, p=hyperparameters.prob_mosaic, n=4
             )
 
             albumentation = aug.Albumentations(p=1.0)
@@ -159,11 +163,6 @@ class ModifiedMosaic(aug.Mosaic):
     """
 
     def __init__(self, dataset: Dataset, image_size: int, p: float, n: int):  # pragma: no cover
-        """
-        NOTE: image_size determines the size of the images *comprising* the mosaic.
-        So for an image size of m x m and for a mosaic of 4 images (2 x 2 grid of images)
-        the output mosaic image will have a size of 2m x 2m.
-        """
         super().__init__(dataset=dataset, imgsz=image_size, p=p, n=n)
 
     def get_indexes(self) -> list[int]:  # pragma: no cover
@@ -245,6 +244,7 @@ def get_dataloader(
     remote_dir: str,
     hyperparams: Hyperparameters,
     transform: bool = False,
+    mosaic_crop_size: int = 320,
     **kwargs,
 ) -> DataLoader:
     """
@@ -257,6 +257,7 @@ def get_dataloader(
           See: https://docs.mosaicml.com/projects/streaming/en/stable/getting_started/faqs_and_tips.html
           as well as the mosaic augmentation probability.
     transform: Whether to apply data augmentation
+    mosaic_crop_size: The size of sub-images created by 2x2 mosaic augmentation
 
     Returns:
     A PyTorch DataLoader object
@@ -267,13 +268,15 @@ def get_dataloader(
 
     # Note that StreamingDataset is unit tested here:
     # https://github.com/mosaicml/streaming/blob/main/tests/test_streaming.py
+
+    # 
     dataset = YoloDataset(
         local=local_dir,
         remote=remote_dir,
         shuffle=True,
         hyperparameters=hyperparams,
         transform=transform,
-        image_size=320,
+        mosaic_crop_size=mosaic_crop_size,
         **kwargs,
     )
 
