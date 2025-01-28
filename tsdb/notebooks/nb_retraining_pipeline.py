@@ -1,11 +1,4 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC Future work:
-# MAGIC
-# MAGIC Parameterize objective metric and pruner
-
-# COMMAND ----------
-
 # MAGIC %run ./nb_config_retrieval
 
 # COMMAND ----------
