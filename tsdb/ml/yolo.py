@@ -16,6 +16,34 @@ from tsdb.ml.model_trainer import BaseTrainer, TrainingArgs
 from tsdb.ml.utils import Steps
 
 
+class YoloVersions(Enum):  # pragma: no cover
+    """
+    Enum for names of different yolo models by version and size.
+    The yaml files can be found at:
+    https://github.com/ultralytics/ultralytics/tree/main/ultralytics/cfg/models
+    """
+    yolov10n = auto()
+    yolov10s = auto()
+    yolov10m = auto()
+    yolov10b = auto()
+    yolov10l = auto()
+    yolov10x = auto()
+    yolov9t = auto()
+    yolov9s = auto()
+    yolov9m = auto()
+    yolov9c = auto()
+    yolov9e = auto()
+
+
+class EvaluationMetrics(Enum):  # pragma: no cover
+    """
+    Enum for the different evaluation metrics for the YOLO model.
+    """
+    F1 = 'f1'
+    PRECISION = 'precision'
+    RECALL = 'recall'
+
+
 class YOLOLoss(Enum):  # pragma: no cover
     """
     Enum for the different loss types for the YOLO model. BCE_loss correspnds to
