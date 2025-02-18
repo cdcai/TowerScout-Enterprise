@@ -16,7 +16,19 @@ import ultralytics
 import ultralytics.utils as uutils
 import ultralytics.data.augment as aug
 
-from tsdb.ml.types import Hyperparameters
+from tsdb.ml.types import Hyperparameters, ImageMetadata
+from tsdb.preprocessing.images import get_image_metadata
+
+
+class ImageBinaryDataset(Dataset):
+    def __init__(self, images): 
+        self.images = images
+    
+    def __len__(self):
+        return len(self.images)
+    
+    def __getitem__(self, index) -> ImageMetadata:
+         return get_image_metadata(self.images[index])
 
 
 class YoloDataset(StreamingDataset):

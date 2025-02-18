@@ -1,7 +1,28 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
+import PIL
 from optuna.trial import Trial
+
+
+class ImageMetadata(TypedDict):
+    """
+    A class to represent image metadata.
+    height: the image height
+    width: the image width
+    lat: the latitude of the image
+    long: the longitude of the image
+    image_id: the id of the image
+    map_provider: the map provider the image is from 
+    image: The PIL image object
+    """
+    height: int
+    width: int
+    lat: float
+    long: float
+    image_id: int
+    map_provider: str
+    image: PIL.Image
 
 
 @dataclass
