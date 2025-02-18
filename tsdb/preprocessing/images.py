@@ -1,35 +1,40 @@
 from io import BytesIO
-from PIL import Image
+import PIL
 from json import loads
 
 from pyspark.sql import SparkSession
 import pyspark.sql.types as T
 
+from tsdb.ml.types import ImageMetadata
 
-def make_image_metadata_udf(spark: SparkSession):  # pragma: no cover
-    towerscout_image_metadata_schema = T.StructType([
-        T.StructField("height", T.IntegerType()),
-        T.StructField("width", T.IntegerType()),
-        T.StructField("lat", T.DoubleType()),
-        T.StructField("long", T.DoubleType()),
-        T.StructField("image_id", T.IntegerType()),
-        T.StructField("map_provider", T.StringType())
-    ])
 
-    def get_image_metadata(image_binary: T.BinaryType):  # pragma: no cover
-        image = Image.open(BytesIO(image_binary))
-        exif = image._getexif()
+def get_image_metadata(image_binary: bytes) -> ImageMetadata:  # pragma: no cover
+        # Try to read the image and if we fail, we have to default to
+        # to the null image case
+        image_binary = BytesIO(image_binary)
+
+        try:
+            image = PIL.Image.open(image_binary)
+            exif = image._getexif()
+
+        except FileNotFoundError:
+            exif = None
+        except UnicodeDecodeError:
+            exif = None
+
         user_comment_exif_id = 37510
 
         if exif is None or user_comment_exif_id not in exif:
             # we need to return with default values
+            fake_image = PIL.Image.new("RGB", (640, 640), "black")
             return {
-                "height": image.height,
-                "width": image.width,
+                "height": 640,
+                "width": 640,
                 "lat": 0.0,
                 "long": 0.0,
-                "id": -1,
-                "map_provider": "unknown"
+                "image_id": -1,
+                "map_provider": "unknown",
+                "image": fake_image
             }
         
         try:
@@ -39,6 +44,7 @@ def make_image_metadata_udf(spark: SparkSession):  # pragma: no cover
             )
         
         except UnicodeDecodeError as e:
+            # can we gracefully handle this?
             raise ValueError(f"Unable to decode exif data: {e}")
         
         image_id = -1 if "id" not in exif_dict else int(exif_dict["id"])
@@ -48,11 +54,6 @@ def make_image_metadata_udf(spark: SparkSession):  # pragma: no cover
             "lat": exif_dict["lat"],
             "long": exif_dict["lng"],
             "image_id": image_id,
-            "map_provider": exif_dict["mapProvider"]
+            "map_provider": exif_dict["mapProvider"],
+            "image": image
         }
-    
-    return spark.udf.register(
-        "get_image_metadata_udf",
-        get_image_metadata, 
-        towerscout_image_metadata_schema
-    )
