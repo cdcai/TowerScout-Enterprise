@@ -41,7 +41,7 @@ def image_binary_dir() -> str:
 
 @pytest.fixture
 def remote_dir() -> str:
-    return "/Volumes/edav_dev_csels/towerscout/misc/mosaic_streaming_unit_test/"
+    return "/Volumes/edav_dev_csels/towerscout/misc/unit_tests/mosaic_streaming_unit_test/"
 
 
 @pytest.fixture
