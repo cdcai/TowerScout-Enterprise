@@ -8,7 +8,19 @@ import pyspark.sql.types as T
 from tsdb.ml.types import ImageMetadata
 
 
-def get_image_metadata(image_binary: bytes) -> ImageMetadata:  # pragma: no cover
+def get_image_metadata(image_binary: bytes, return_tensor: bool = False) -> ImageMetadata:
+        """
+        A function that takes an image binary and returns a dictionary of metadata
+        and the image as either a torch tensor or a numpy array.
+
+        Args: 
+            image_binary: The image binary.
+            return_tensor: Whether to return the image as a torch tensor.
+        
+        Returns:
+            A dictionary of metadata and the image as a numpy array or torch tensor.
+        """
+        
         # Try to read the image and if we fail, we have to default to
         # to the null image case
         image_binary = BytesIO(image_binary)
@@ -26,7 +38,7 @@ def get_image_metadata(image_binary: bytes) -> ImageMetadata:  # pragma: no cove
 
         if exif is None or user_comment_exif_id not in exif:
             # we need to return with default values
-            fake_image = PIL.Image.new("RGB", (640, 640), "black")
+            fake_image = np.zeros(640*640*3)
             return {
                 "height": 640,
                 "width": 640,
@@ -34,7 +46,7 @@ def get_image_metadata(image_binary: bytes) -> ImageMetadata:  # pragma: no cove
                 "long": 0.0,
                 "image_id": -1,
                 "map_provider": "unknown",
-                "image": fake_image
+                "image": fake_image.reshape(640, 640, 3)
             }
         
         try:
@@ -55,5 +67,5 @@ def get_image_metadata(image_binary: bytes) -> ImageMetadata:  # pragma: no cove
             "long": exif_dict["lng"],
             "image_id": image_id,
             "map_provider": exif_dict["mapProvider"],
-            "image": image
+            "image": (pil_to_tensor(image) / 255).float() if tensor else np.asarray(image)
         }
