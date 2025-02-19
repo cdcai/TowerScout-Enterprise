@@ -21,14 +21,21 @@ from tsdb.preprocessing.images import get_image_metadata
 
 
 class ImageBinaryDataset(Dataset):
-    def __init__(self, images): 
+    """
+    A dataset class to be used for working with image binaries. 
+    """
+    def __init__(self, images: list[bytes]): 
         self.images = images
     
     def __len__(self):
         return len(self.images)
     
-    def __getitem__(self, index) -> ImageMetadata:
-         return get_image_metadata(self.images[index])
+    def __getitem__(self, index: int) -> ImageMetadata:
+        """
+        Returns item at index `index` from the dataset along with the
+        metadata associated with the image.
+        """
+        return get_image_metadata(self.images[index])
 
 
 class YoloDataset(StreamingDataset):
