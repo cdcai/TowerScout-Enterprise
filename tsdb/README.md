@@ -2,10 +2,24 @@
 
 TowerScout detects cooling towers from aerial imagery. This library contains functions, classes, and abstractions for the [Databricks][databricks-docs]/[PySpark][pyspark-docs] implementations needed for the project's backend. 
 
+## Usage
+While this repo primarily runs TowerScout, the abstractions provided are helpful for any Spark based ML project. 
+
+### ml/model_trainer
+Contains our base trainer class which follows the Pytorch Lightning interface. Extend this class to define behaviors you need for training and validation. This trainer includes functionality such as warmup, gradient accumulation, early stopping, and learning rate scheduling. The training process only expects dataloaders, which can be generated in any method you desire (personally, we use MosaicML)
+
+### notebooks/nb_inference_pipeline and ml/infer.py
+Examples of how we perform inference in a distributed manner. If your model is simple enough, you can retrive a spark_udf from MLFlow as well
+
 ## Getting started
 
-### Install the package
+### Option 1: Clone the Repo
+- Create a GIT folder from this repo
+- all assets will be available in your workspace to use as normal
+
+### Option 2: Install the package
 - We store all versions of this library in the TowerScout Databricks volumes, located under `edav-dev-csels`
+- 
 
 ## Next steps
 
@@ -51,9 +65,9 @@ To maintain consistency and ensure high quality code, please follow these guidel
 
 * **examples**: A directory for example usage of functions or classes you've created. These notebooks should include markdown and comments to outline what you're doing and why you're doing it. Examples should be written for someone with Python development experience, but possibly not PySpark.
 
-* **src**: This directory is packaged and installed onto TowerScout Databricks clusters. If you want your code available in these environments, it goes here as code files. 
+* **tsdb**: This directory is packaged and installed onto TowerScout Databricks clusters. If you want your code available in these environments, it goes here as code files. 
 
-* **tests**: Unit tests for code in the `src` directory
+* **tests**: Unit tests for code in the `tsdb` directory
 
 * **workflows**: Directory for notebooks and YAML/JSON workflow files. Notebooks in this directory **should only** contain orchestration logic.
 
