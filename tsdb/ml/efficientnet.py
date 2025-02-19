@@ -13,6 +13,7 @@
 # EfficientNet B5 secondary classifier
 # Looks at detections between x% and y% confidence, rechecks
 #
+from deprecated import deprecated
 
 import torch
 import torch.nn as nn
@@ -26,6 +27,7 @@ from PIL import Image
 from tsdb.ml.utils import cut_square_detection, YOLOv5Detection, get_model_tags
 
 
+@deprecated("This class is deprecated.")
 class EN_Classifier(nn.Module):
 
     def __init__(self, model: nn.Module, uc_version: str):

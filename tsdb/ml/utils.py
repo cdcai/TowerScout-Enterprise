@@ -3,6 +3,7 @@ from typing import TypedDict
 from enum import Enum, auto
 
 import mlflow
+from PIL import Image
 
 
 class Steps(Enum):
@@ -53,7 +54,20 @@ class YOLOv5Detection(TypedDict):
     secondary: int
 
 
-def cut_square_detection(img, x1, y1, x2, y2):
+def cut_square_detection(img: Image, x1: float, y1: float, x2: float, y2: float) -> Image:
+    """
+    A function to crop a square region from an image based on 
+    given fractional coordinates (x1,y1) and (x2,y2) of a bounding box. 
+    
+    Args:
+        img: PIL Image object
+        x1, y1, x2, y2: Fractional coordinates representing the corners of a rectangular 
+                        area within the image, where (x1, y1) is the top-left 
+                        corner and (x2, y2) is the bottom-right corner.
+    
+    Returns:
+        Cropped Image object
+    """
     w,h = img.size
 
     # first, convert detection fractional coordinates into pixels
@@ -83,6 +97,7 @@ def cut_square_detection(img, x1, y1, x2, y2):
     y2 = min(h,y2)
 
     return img.crop((x1, y1, x2, y2))
+
 
 def get_model_tags(model_name: str, alias: str) -> tuple[dict[str, str], str]:  # pragma: no cover
     """
