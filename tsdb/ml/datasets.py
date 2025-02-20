@@ -22,7 +22,10 @@ from tsdb.preprocessing.images import get_image_metadata
 
 class ImageBinaryDataset(Dataset):
     """
-    A dataset class to be used for working with image binaries. 
+    A PyTorch dataset class to be used for working with image binaries. 
+
+    Args:
+        images: A list of images as bytes.
     """
     def __init__(self, images: list[bytes]): 
         self.images = images
@@ -34,6 +37,12 @@ class ImageBinaryDataset(Dataset):
         """
         Returns item at index `index` from the dataset along with the
         metadata associated with the image.
+
+        Args:
+            index: The index of the element to return
+        
+        Retruns:
+            ImageMetadata dict containing metadata and the image itself
         """
         return get_image_metadata(self.images[index])
 

@@ -8,7 +8,7 @@ import pyspark.sql.types as T
 from tsdb.ml.types import ImageMetadata
 
 
-def get_image_metadata(image_binary: bytes, return_tensor: bool = False) -> ImageMetadata:
+def get_image_metadata(image_binary: bytes) -> ImageMetadata:
         """
         A function that takes an image binary and returns a dictionary of metadata
         and the image as either a torch tensor or a numpy array.
@@ -38,7 +38,7 @@ def get_image_metadata(image_binary: bytes, return_tensor: bool = False) -> Imag
 
         if exif is None or user_comment_exif_id not in exif:
             # we need to return with default values
-            fake_image = np.zeros(640*640*3)
+            fake_image = Image.new('RGB', (640, 640), (0, 0, 0))
             return {
                 "height": 640,
                 "width": 640,
@@ -46,7 +46,7 @@ def get_image_metadata(image_binary: bytes, return_tensor: bool = False) -> Imag
                 "long": 0.0,
                 "image_id": -1,
                 "map_provider": "unknown",
-                "image": fake_image.reshape(640, 640, 3)
+                "image": fake_image
             }
         
         try:
@@ -67,5 +67,5 @@ def get_image_metadata(image_binary: bytes, return_tensor: bool = False) -> Imag
             "long": exif_dict["lng"],
             "image_id": image_id,
             "map_provider": exif_dict["mapProvider"],
-            "image": (pil_to_tensor(image) / 255).float() if tensor else np.asarray(image)
+            "image": image
         }
