@@ -75,6 +75,9 @@ def sample_raw_detections():
 
 
 def test_inference_collate_fn(sample_uncollated_batch: dict[str, Any]) -> None:
+    """
+    Test the inference_collate_fn function.
+    """
     collated_batch = inference_collate_fn(sample_uncollated_batch)
     assert len(collated_batch["images"]) == len(
         sample_uncollated_batch
@@ -89,7 +92,7 @@ def test_apply_secondary_model():
     Test the apply_secondary_model function. Test adapted from the test for
     the 'classify' method of the EN_Classifier object.
     """
-    # Mock EfficientNet model output
+    # Mock 'EfficientNet' model output
     mock_model: Mock = Mock()
     mock_model.side_effect = [
         torch.tensor([[0.1]]),  # Simulates output for the first detection
@@ -107,7 +110,6 @@ def test_apply_secondary_model():
         [0.1, 0.1, 0.2, 0.2, 0.8, 0, "tower", 0],  # Above max_conf
     ]
 
-    # Call classify
     apply_secondary_model(mock_model, img, detections, min_conf=0.25, max_conf=0.65)
 
     # Validate updated detections
