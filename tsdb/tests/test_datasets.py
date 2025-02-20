@@ -5,22 +5,43 @@ import uuid
 import pytest
 import torch
 import numpy as np
+from pyspark.sql import SparkSession
 
 import ultralytics.utils as uutils
 
-from tsdb.ml.types import Hyperparameters
+from tsdb.ml.types import Hyperparameters, ImageMetadata
 from tsdb.ml.datasets import (
     get_dataloader,
     collate_fn_img,
     DataLoader,
     DataLoaders,
     YoloDataset,
+    ImageBinaryDataset
 )
+
+
+@pytest.fixture(scope="module")
+def spark() -> SparkSession:
+    """
+    Returns the SparkSession to be used in tests that require Spark
+    """
+    spark = (
+        SparkSession.builder.master("local")
+        .appName("test_data_processing")
+        .getOrCreate()
+    )
+    
+    return spark
+
+
+@pytest.fixture
+def image_binary_dir() -> str:
+    return "/Volumes/edav_dev_csels/towerscout/misc/unit_tests/image_binary_dataset/"
 
 
 @pytest.fixture
 def remote_dir() -> str:
-    return "/Volumes/edav_dev_csels/towerscout/misc/mosaic_streaming_unit_test/"
+    return "/Volumes/edav_dev_csels/towerscout/misc/unit_tests/mosaic_streaming_unit_test/"
 
 
 @pytest.fixture
@@ -42,6 +63,26 @@ def hyperparams() -> Hyperparameters:
         prob_mosaic=0.5,
     )
     return hyperparams
+
+
+def test_image_binary_dataset(spark: SparkSession, image_binary_dir: str):
+    image_df = (
+    spark
+    .read
+    .format("binaryFile")
+    .load(image_binary_dir)
+    .select("content")
+    .limit(10)
+    )
+
+    image_df = image_df.toPandas()
+    image_bins = image_df["content"]
+
+    bin_dataset = ImageBinaryDataset(image_bins)
+
+    assert len(bin_dataset) == len(image_df), f"Dataset length should be the same as dataframe length which is {len(image_df)}"
+    assert isinstance(bin_dataset, ImageBinaryDataset), "Dataset should be of type ImageBinaryDataset"
+    assert isinstance(bin_dataset[0], dict), "Dataset item should be of type dict"
 
 
 def test_get_image_and_label(remote_dir: str, local_dir, hyperparams: Hyperparameters):
