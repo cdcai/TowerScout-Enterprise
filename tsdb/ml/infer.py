@@ -7,17 +7,17 @@ from typing import Any, Iterable, Protocol
 
 import pandas as pd
 from PIL import Image
-from torch import no_grad, Tensor
+from torch import no_grad, Tensor, cuda
 from torch.nn import Module
 
-from mlflow import set_registry_uri
+import mlflow
 
 from pyspark.sql.functions import col, pandas_udf, PandasUDFType
 from pyspark.sql import DataFrame
 import pyspark.sql.types as T
 
-from tsdb.ml.detections import YOLOv5_Detector
-from tsdb.ml.efficientnet import EN_Classifier
+from tsdb.ml.datasets import ImageBinaryDataset
+from tsdb.ml.utils import get_model_tags
 
 
 class InferenceModelType(Protocol):  # pragma: no cover
@@ -43,7 +43,21 @@ class InferenceModelType(Protocol):  # pragma: no cover
         raise NotImplementedError
 
 
-MODEL_VERSION_STRUCT = T.StructType([
+YOLO_RETURN_TYPE = T.ArrayType(
+            T.StructType([
+                T.StructField("x1", T.FloatType(), True),
+                T.StructField("y1", T.FloatType(), True),
+                T.StructField("x2", T.FloatType(), True),
+                T.StructField("y2", T.FloatType(), True),
+                T.StructField("conf", T.FloatType(), True),
+                T.StructField("class", T.IntegerType(), True),
+                T.StructField("class_name", T.StringType(), True),
+                T.StructField("secondary", T.FloatType(), True),
+            ])
+        )
+
+
+MODEL_METADATA_STRUCT = T.StructType([
     T.StructField("yolo_model", T.StringType()),
     T.StructField("yolo_model_version", T.StringType()),
     T.StructField("efficientnet_model", T.StringType()),
@@ -51,103 +65,103 @@ MODEL_VERSION_STRUCT = T.StructType([
 ])
 
 
+TOWERSCOUT_IMAGE_METADATA_STRUCT = T.StructType([
+        T.StructField("height", T.IntegerType()),
+        T.StructField("width", T.IntegerType()),
+        T.StructField("lat", T.DoubleType()),
+        T.StructField("long", T.DoubleType()),
+        T.StructField("image_id", T.IntegerType()),
+        T.StructField("map_provider", T.StringType())
+    ])
+
+
+UDF_RETURN_TYPE = T.StructType([
+        T.StructField("bboxes", YOLO_RETURN_TYPE),
+        T.StructField("model_version", MODEL_METADATA_STRUCT),
+        T.StructField("image_metadata", TOWERSCOUT_IMAGE_METADATA_STRUCT)
+    ])
+
+
 def make_towerscout_predict_udf(
     catalog: str,
     schema: str,
     yolo_alias: str = "aws",
     efficientnet_alias: str = "aws",
-    batch_size: int = 100
-) -> DataFrame:  # pragma: no cover
+    batch_size: int = 100,
+    num_workers: int = 2
+) -> callable:
     """
     For a pandas UDF, we need the outer function to initialize the models
-    and the inner function to perform the inference. Process. For more
-    information, see the following reference by NVIDIA:
-    - 
-
+    plus any other objects we want to persist within the context of the UDF
+    and the inner function to perform the inference process.
+ 
     Args:
-        model_fn (InferenceModelType): The PyTorch model.
-        batch_size (int): Batch size for the DataLoader.
-
+        catalog: The catalog name.
+        schema: The schema name.
+        yolo_alias: The alias for the YOLO model in UC.
+        efficientnet_alias: The alias for the EfficientNet model in UC.
+        batch_size: Batch size for the DataLoader.
+        num_workers: Number of workers for the DataLoader.
+ 
     Returns:
-        DataFrame: DataFrame with predictions.
-    """ 
-    set_registry_uri("databricks-uc")
+        callable: A pandas UDF for inference.
+    """
 
-    yolo_model_name = f"{catalog}.{schema}.yolo_autoshape" 
+    # set unity catalog as registry to get models from
+    mlflow.set_registry_uri("databricks-uc")
+ 
+    yolo_model_name = f"{catalog}.{schema}.yolo_autoshape"
     en_model_name = f"{catalog}.{schema}.efficientnet"  
+ 
+    # Retrieves models by alias
+    yolo_detector = mlflow.pytorch.load_model(
+            model_uri=f"models:/{yolo_model_name}@{yolo_alias}"
+        )
+ 
+    en_classifier = mlflow.pytorch.load_model(
+            model_uri=f"models:/{en_model_name}@{efficientnet_alias}"
+        )
+    
+    yolo_detector.eval()
+    en_classifier.eval()
 
-    # Retrieves models by alias and create inference objects
-    yolo_detector = YOLOv5_Detector.from_uc_registry(
-        model_name=yolo_model_name,
-        alias=yolo_alias,
-        batch_size=batch_size,
-    )
+    if cuda.is_available():  # pragma: no cover
+       en_classifier.cuda()
+       yolo_detector.cuda()
 
-    # We nearly always use efficientnet for classification but you don't have to
-    en_classifier = EN_Classifier.from_uc_registry(
-        model_name=en_model_name,
-        alias=efficientnet_alias
-    )
+    _, yolo_uc_version = get_model_tags(yolo_model_name, yolo_alias)
+    _, en_uc_version = get_model_tags(en_model_name, efficientnet_alias)
 
-    metadata = {
+    model_metadata = {
         "yolo_model": "yolo_autoshape",
-        "yolo_model_version": yolo_detector.uc_version,
+        "yolo_model_version": yolo_uc_version,
         "efficientnet_model": "efficientnet",
-        "efficientnet_model_version": en_classifier.uc_version,
+        "efficientnet_model_version": en_uc_version
     }
 
-    return_type = T.StructType([
-        T.StructField("bboxes", yolo_detector.return_type),
-        T.StructField("model_version", MODEL_VERSION_STRUCT)
-    ])
 
+    @pandas_udf(UDF_RETURN_TYPE)
     @no_grad()
-    def predict(content_series_iter: Iterable[Any]):  # pragma: no cover
+    def predict_udf(image_bins: pd.Series) -> pd.Series:  # pragma: no cover
         """
-        This predict function is distributed across executors to perform inference.
-
-        YOLOv5 library expects the following image formats:
-        For size(height=640, width=1280), RGB images example inputs are:
-        #   file:        ims = 'data/images/zidane.jpg'  # str or PosixPath
-        #   URI:             = 'https://ultralytics.com/images/zidane.jpg'
-        #   OpenCV:          = cv2.imread('image.jpg')[:,:,::-1]  # HWC BGR to RGB x(640,1280,3)
-        #   PIL:             = Image.open('image.jpg') or ImageGrab.grab()  # HWC x(640,1280,3)
-        #   numpy:           = np.zeros((640,1280,3))  # HWC
-        #   torch:           = torch.zeros(16,3,320,640)  # BCHW (scaled to size=640, 0-1 values)
-        #   multiple:        = [Image.open('image1.jpg'), Image.open('image2.jpg'), ...]  # list of images
-        - Source: https://github.com/ultralytics/yolov5/blob/master/models/common.py
-        
-        The ultralytics lib accepts the following image formats:
-        - Source: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/engine/model.py 
-        
-
-        # No need to resize for yolov5 lib as it does it for you 
+        This predict_udf function is distributed across executors to perform inference.
+ 
+        YOLOv5 library expects the following image formats: file, URI, numpy, PIL, OpenCV, torch tensor, multiple.
+        - See `forward` method of Autoshape class in:
+        https://github.com/ultralytics/yolov5/blob/master/models/common.py
+        NOTE: Despite this do NOT pass tensors during inference (only training) 
+        - See: https://github.com/ultralytics/yolov5/issues/7030#issuecomment-1078171092
+       
+        NOTE: No need to resize images for yolov5 lib as it does it for you
         - Source: letterbox and exif_transpose funcs in:
             https://github.com/ultralytics/yolov5/blob/master/models/common.py
-
+ 
         Args:
-            content_series_iter: Iterator over content series.
-
-        Yields:
-            DataFrame: DataFrame with predicted labels.
+            image_bins: A partition of image binaries
+ 
+        Returns: 
+             Predicted labels and extracted image metadata.
         """
-        for content_series in content_series_iter:
-            # Create dataset object to apply transformations
-            image_batch = [
-                Image.open(BytesIO(content)).convert("RGB")
-                for content in content_series
-            ]
-
-            # Perform inference on batch
-            outputs = yolo_detector.predict(
-                model_input=image_batch, 
-                secondary=en_classifier
-            )
-
-            outputs = [
-                {"bboxes": output, "model_version": metadata}
-                for output in outputs
-            ]
-            yield pd.DataFrame(outputs)
-
-    return pandas_udf(return_type, PandasUDFType.SCALAR_ITER)(predict)
+        pass
+ 
+    return predict_udf
