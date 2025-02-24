@@ -41,7 +41,12 @@ import getpass
 current_directory = os.getcwd()
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 timeout = aiohttp.ClientTimeout(total=600)  # Set the timeout to 6 minutes
-
+upload_containter = ""
+image_upload_dir = ""
+file_trigger_dir = ""
+var_environment = ""
+inference_object_state = ""
+blob_service_client = None
 class Map:
 
     def __init__(self):
@@ -192,7 +197,14 @@ async def gather_urls(urls, fname, metadata, mapType, tilesMetaData, unique_dire
         # execute
          # Start performance logging
         start_time = time.time()
-        
+        await getuploadlocationinfo()
+        await getEnvironmentinfo()
+
+        if var_environment == "App Services":
+            global inference_object_state
+            inference_object_state = os.getenv('inferencejobstate', 'Static')  
+        if inference_object_state == "Continuous":
+            await uploadonebytefile()
         async with aiohttp.ClientSession(timeout=timeout) as session:
             await fetch_all(
                 session,
@@ -207,7 +219,8 @@ async def gather_urls(urls, fname, metadata, mapType, tilesMetaData, unique_dire
         end_time = time.time()
         elapsed_time = end_time - start_time
         print(f"Gathering URLs took {elapsed_time:.2f} seconds.")
-        
+        if inference_object_state == "Static":
+            await uploadonebytefile()
     except Exception as e:
         logging.error("Error at %s", "gather_urls ts_maps.py", exc_info=e)
     except RuntimeError as e:
@@ -284,12 +297,10 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
             else:
                 # Create a unique container
                 imageConfigFile = config_dir + "/config.imagedirectory.json"
-                with open(imageConfigFile, "r") as file:
-                    data = json.load(file)  # Load the JSON data into a Python dictionary
-
-                    upload_dir = data["upload_dir"]
+                upload_dir = image_upload_dir
+                # print("image_upload_dir:" + image_upload_dir) 
                 directoryname = upload_dir + unique_directory
-
+                # print("directoryname:" + image_upload_dir)
                 content = await response.read()
 
                 # Code to write to Temp directory - This is required for now as there are other processes using these files
@@ -322,7 +333,7 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                         contentmeta = appendMetadatatoImg(imgobject, tileMetadata, mapType)
                         blob_url = asyncio.create_task(
                             uploadImagetodirUnqFileName(
-                                contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
+                                contentmeta, upload_containter, directoryname, blobname, blob_service_client
                             )
                         )
                         # await f.write(contentmeta)
@@ -332,7 +343,7 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                         # Adding code to write to the AIX container directory
                         blob_url = asyncio.create_task(
                             uploadImagetodirUnqFileName(
-                                content, "ddphss-csels", directoryname, blobname
+                                content, upload_containter, directoryname, blobname
                             )
                         )
     except Exception as e:
@@ -372,11 +383,68 @@ async def fetchimagemetadata(session, fname, i, mapType, unique_directory, tile,
     except SyntaxError as e:
             logging.error("Error at %s", "fetchimagemetadata ts_maps.py", exc_info=e)            
 
+async def getuploadlocationinfo():
+    try:
+        
+        imageConfigFile = config_dir + "/config.imagedirectory.json"
+        with open(imageConfigFile, "r") as file:
+            data = json.load(file)  # Load the JSON data into a Python dictionary
+        global upload_containter
+        global image_upload_dir
+        global file_trigger_dir
+        global inference_object_state
+
+        upload_containter = data["upload_container"]
+        image_upload_dir = data["image_upload_dir"]
+        file_trigger_dir = data["file_trigger_dir"]
+        inference_object_state = data["inference_object_state"]
+
+        
+    except Exception as e:
+        logging.error("Error at %s", "getuploadlocationinfo ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "getuploadlocationinfo ts_maps.py", exc_info=e)
+
+async def getEnvironmentinfo():
+    try:
+        
+        environmentconfigfile = config_dir + "/config.environment.json"
+        with open(environmentconfigfile, "r") as file:
+            data = json.load(file)  # Load the JSON data into a Python dictionary
+        global var_environment
+        
+        return data["ENVIRONMENT"]
+    except Exception as e:
+        logging.error("Error at %s", "getEnvironmentinfo ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "getEnvironmentinfo ts_maps.py", exc_info=e)
+
+def uploadonebytefile():
+    try:
+        container_client = blob_service_client.get_container_client(upload_containter)
+        filename = "onebyte"
+        
+
+        # Create a 1-byte file content
+        file_content = b'A'
+        # Generate a unique file name using UUID
+        onebyte_file_name = f"{uuid.uuid4()}_{filename}"
+        # Create a BlobClient for the unique file in the directory
+        blob_name = f"{file_trigger_dir}{onebyte_file_name}"
+        blob_client = container_client.get_blob_client(blob_name)
+
+        blob_client.upload_blob(file_content, overwrite=True)
+        return blob_client.url
+    except Exception as e:
+        print("Error at %s", "uploadImagetodirUnqFileName ts_maps.py", exc_info=e)
+    except RuntimeError as e:
+        print("Error at %s", "uploadImagetodirUnqFileName ts_maps.py", exc_info=e)
 
 async def fetch_all(
     session, urls, fname, metadata, mapType, unique_directory, tilesMetaData
 ):
     try:
+        global blob_service_client
         blob_service_client = createBlobServiceClient()
         tasks = []
         for (i, tile) in enumerate(tilesMetaData):
@@ -407,12 +475,6 @@ async def fetch_all(
             logging.error("Error at %s", "fetch_all ts_maps.py", exc_info=e)
 
 def createBlobServiceClient():
-    # Replace with your Azure Storage account details
-    # Get the token using DefaultAzureCredential
-        credential = DefaultAzureCredential()
-
-        # Initialize the BlobServiceClient
-        storage_account_name = "davsynapseanalyticsdev"
         
         storageconnectionstring = ts_secrets.devSecrets.getSecret(
             "TOWERSCOUTDEVSTORAGECONNSTR"
