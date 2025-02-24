@@ -75,11 +75,15 @@ TOWERSCOUT_IMAGE_METADATA_STRUCT = T.StructType([
     ])
 
 
-UDF_RETURN_TYPE = T.StructType([
+UDF_RETURN_TYPE = T.StructType(
+    [
         T.StructField("bboxes", YOLO_RETURN_TYPE),
         T.StructField("model_version", MODEL_METADATA_STRUCT),
-        T.StructField("image_metadata", TOWERSCOUT_IMAGE_METADATA_STRUCT)
-    ])
+        T.StructField("image_metadata", TOWERSCOUT_IMAGE_METADATA_STRUCT),
+        T.StructField("image_id", T.IntegerType()),
+        T.StructField("map_provider", T.StringType()),
+    ]
+)
 
 
 def make_towerscout_predict_udf(
