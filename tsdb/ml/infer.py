@@ -1,23 +1,22 @@
 """
 This module contains UDF's for inference for the TowerScout application
 """
-from io import BytesIO
-from json import loads
-from typing import Any, Iterable, Protocol
+from collections import defaultdict
+from typing import Any, Protocol, Union
 
 import pandas as pd
+import numpy as np
 from PIL import Image
-from torch import no_grad, Tensor
+
+from torch import no_grad, Tensor, cuda, sigmoid
 from torch.nn import Module
+from torchvision import transforms
 
-from mlflow import set_registry_uri
-
-from pyspark.sql.functions import col, pandas_udf, PandasUDFType
-from pyspark.sql import DataFrame
 import pyspark.sql.types as T
+from models.common import Detections  # Detection object for YOLOv5 model
 
-from tsdb.ml.detections import YOLOv5_Detector
-from tsdb.ml.efficientnet import EN_Classifier
+from tsdb.ml.utils import cut_square_detection
+from tsdb.ml.types import ImageMetadata
 
 
 class InferenceModelType(Protocol):  # pragma: no cover
@@ -51,103 +50,135 @@ MODEL_VERSION_STRUCT = T.StructType([
 ])
 
 
-def make_towerscout_predict_udf(
-    catalog: str,
-    schema: str,
-    yolo_alias: str = "aws",
-    efficientnet_alias: str = "aws",
-    batch_size: int = 100
-) -> DataFrame:  # pragma: no cover
+def inference_collate_fn(data: list[dict[str, ImageMetadata]]) -> dict[str, Union[Image, dict[str, Any]]]:
     """
-    For a pandas UDF, we need the outer function to initialize the models
-    and the inner function to perform the inference. Process. For more
-    information, see the following reference by NVIDIA:
-    - 
+    A collate function for DataLoaders used with the ImageBinaryDataset object. 
+    Collates the data into a batch for inference UDF.
 
     Args:
-        model_fn (InferenceModelType): The PyTorch model.
-        batch_size (int): Batch size for the DataLoader.
+        data: The ImageMetadata objects to collate into a batch
+    
+    Retruns:
+        A dictionary with the following keys:
+        - images: A list of PIL images
+        - images_metadata: A list of ImageMetadata objects with the PIL image object removed
+    """
+    batch = defaultdict(list)
+    for item in data:
+        batch["images"].append(item.pop("image"))
+        batch["images_metadata"].append(item)
 
+    return batch
+
+
+def apply_secondary_model(
+    secondary_model: Module,
+    image: Image,
+    detections: list[np.array],
+    min_conf: float = 0.25,
+    max_conf: float = 0.65,
+) -> None:
+    """
+    A function to apply the secondary model to the detections from the YOLO model. The function 
+    first crops the image based on the bounding box predicted by the YOLO model, then applies 
+    the secondary model to the cropped image to determine the probablity the image contains a cooling tower
+    and appends the computed probability to the detection array.
+
+    Args:
+        secondary_model: the secondary model to apply to the cropped image
+        image: the image to crop
+        detections: list of the detections from the YOLO model for the input image
+        min_conf: the minimum confidence to apply the secondary model
+        max_conf: the maximum confidence to apply the secondary model
+    """
+    transform = transforms.Compose(
+        [
+            transforms.Resize([456, 456]),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.5553, 0.5080, 0.4960), std=(0.1844, 0.1982, 0.2017)
+            ),
+        ]
+    )
+
+    for detection in detections:
+        x1, y1, x2, y2, conf = detection[0:5]
+
+        # Use secondary model only for certain confidence range
+        if conf >= min_conf and conf <= max_conf:
+            bbox_cropped_image = cut_square_detection(image, x1, y1, x2, y2)
+
+            # apply transformations
+            input = transform(bbox_cropped_image).unsqueeze(0)
+
+            if cuda.is_available():  # pragma: no cover
+                input = input.cuda()
+
+            # subtract from 1 because the secondary has class 0 as tower
+            output = 1 - sigmoid(secondary_model(input).cpu()).item()
+            p2 = output
+        elif conf < min_conf:
+            # set secondary classifier probability to 0
+            p2 = 0
+        else:
+            # if >= max_conf set secondary classifier probability to 1
+            p2 = 1
+
+        detection.append(p2)
+    
+    return
+
+
+def parse_yolo_detections(
+    images: list[Image],
+    yolo_results: Detections,
+    secondary_model: Module = None,
+    **kwargs
+) -> list[dict[str, Any]]:
+    """
+    A function to parse the detections from the YOLO model by converting them into a list
+    of dicts with the following keys:
+    - x1: the x1 coordinate of the bounding box
+    - y1: the y1 coordinate of the bounding box
+    - x2: the x2 coordinate of the bounding box
+    - y2: the y2 coordinate of the bounding box
+    - conf: the YOLO model confidence of the detection
+    - class: the class of the detection
+    - class_name: the name of the class of the detection
+    - secondary: the secondary model confidence of the detection (if a secondary model is supplied)
+
+    Args:
+        images: the list of PIL images
+        yolo_results: the Detections object from the YOLO model
+        secondary_model: the secondary model used to evaluate the detections
+        **kwargs: additional keyword arguments to pass to the secondary model
     Returns:
-        DataFrame: DataFrame with predictions.
-    """ 
-    set_registry_uri("databricks-uc")
+        A list of dicts with the keys from above.
+    """
+    parsed_results = []
+    batch_detections = yolo_results.xyxyn
 
-    yolo_model_name = f"{catalog}.{schema}.yolo_autoshape" 
-    en_model_name = f"{catalog}.{schema}.efficientnet"  
-
-    # Retrieves models by alias and create inference objects
-    yolo_detector = YOLOv5_Detector.from_uc_registry(
-        model_name=yolo_model_name,
-        alias=yolo_alias,
-        batch_size=batch_size,
-    )
-
-    # We nearly always use efficientnet for classification but you don't have to
-    en_classifier = EN_Classifier.from_uc_registry(
-        model_name=en_model_name,
-        alias=efficientnet_alias
-    )
-
-    metadata = {
-        "yolo_model": "yolo_autoshape",
-        "yolo_model_version": yolo_detector.uc_version,
-        "efficientnet_model": "efficientnet",
-        "efficientnet_model_version": en_classifier.uc_version,
-    }
-
-    return_type = T.StructType([
-        T.StructField("bboxes", yolo_detector.return_type),
-        T.StructField("model_version", MODEL_VERSION_STRUCT)
-    ])
-
-    @no_grad()
-    def predict(content_series_iter: Iterable[Any]):  # pragma: no cover
-        """
-        This predict function is distributed across executors to perform inference.
-
-        YOLOv5 library expects the following image formats:
-        For size(height=640, width=1280), RGB images example inputs are:
-        #   file:        ims = 'data/images/zidane.jpg'  # str or PosixPath
-        #   URI:             = 'https://ultralytics.com/images/zidane.jpg'
-        #   OpenCV:          = cv2.imread('image.jpg')[:,:,::-1]  # HWC BGR to RGB x(640,1280,3)
-        #   PIL:             = Image.open('image.jpg') or ImageGrab.grab()  # HWC x(640,1280,3)
-        #   numpy:           = np.zeros((640,1280,3))  # HWC
-        #   torch:           = torch.zeros(16,3,320,640)  # BCHW (scaled to size=640, 0-1 values)
-        #   multiple:        = [Image.open('image1.jpg'), Image.open('image2.jpg'), ...]  # list of images
-        - Source: https://github.com/ultralytics/yolov5/blob/master/models/common.py
+    for image, image_detections in zip(images, batch_detections):
+        image_detections = image_detections.cpu().numpy().tolist()
         
-        The ultralytics lib accepts the following image formats:
-        - Source: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/engine/model.py 
-        
+        if secondary_model is not None:
+            apply_secondary_model(secondary_model, image, image_detections, **kwargs)
 
-        # No need to resize for yolov5 lib as it does it for you 
-        - Source: letterbox and exif_transpose funcs in:
-            https://github.com/ultralytics/yolov5/blob/master/models/common.py
+        image_results = [
+                    {
+                        "x1": item[0],
+                        "y1": item[1],
+                        "x2": item[2],
+                        "y2": item[3],
+                        "conf": item[4],
+                        "class": int(item[5]),
+                        "class_name": yolo_results.names[int(item[5])],
+                        "secondary": item[6] if len(item) > 6 else 1,
+                    }
+                    for item in image_detections
+                ]
 
-        Args:
-            content_series_iter: Iterator over content series.
+        parsed_results.append(image_results)
 
-        Yields:
-            DataFrame: DataFrame with predicted labels.
-        """
-        for content_series in content_series_iter:
-            # Create dataset object to apply transformations
-            image_batch = [
-                Image.open(BytesIO(content)).convert("RGB")
-                for content in content_series
-            ]
+    return parsed_results
 
-            # Perform inference on batch
-            outputs = yolo_detector.predict(
-                model_input=image_batch, 
-                secondary=en_classifier
-            )
-
-            outputs = [
-                {"bboxes": output, "model_version": metadata}
-                for output in outputs
-            ]
-            yield pd.DataFrame(outputs)
-
-    return pandas_udf(return_type, PandasUDFType.SCALAR_ITER)(predict)
