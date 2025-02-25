@@ -91,9 +91,7 @@ class Map:
     def get_static_map_wh(
         self, lat=None, lng=None, zoom=19, sx=640, sy=640, crop_tiles=False
     ):
-        # lat, lng - center
-        # sx, sy - map size in pixels
-
+    
         sy_cropped = (
             int(sy * 0.96) if crop_tiles else sy
         )  # cut off bottom 4% if cropping requested
@@ -112,7 +110,7 @@ class Map:
         d_x = sx * ground_resolution
         d_y = sy_cropped * ground_resolution
 
-        # print("d_lat", d_lat, "d_lng", d_lng)
+    
         return (d_lat, d_lat_for_url, d_lng, d_y, d_x)
 
     #
@@ -237,7 +235,7 @@ async def rate_limited_fetch(
         # much impact on the time factor, especially with large number of tiles, when compared with exponentially increasing the time based on the
         # number of tiles
     try:
-        # await asyncio.sleep(index * (1/50))
+        
         # else:
         await asyncio.sleep(i * (1 / 10))
         await fetch(session, url, fname, i, mapType, unique_directory, tile, blob_service_client)
@@ -261,7 +259,7 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                 print(f"Error: HTTP status code {response.status}")
                 error_text = await response.text()
                 print(f"Error response: {error_text}")
-                # response.raise_for_status()
+                
             # #Extract metadata keys from the tile to append to the image
             tileMetadata = getTileMetaData(tile, mapType)
 
@@ -273,13 +271,10 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                 response.headers.get("Content-Type", "").lower()
                 == "application/vnd.mapbox-vector-tile"
             ):
-                #    async with aiofiles.open(filename, mode='rb') as f:
-                #         azurevector_tile_data = await response.read()
-                #         azurevectortogeojson = vector_tile_to_geojson(azurevector_tile_data)
-                # print("Printing Content type " + response.headers.get('Content-Type', '').lower())
+                
                 tile_data = await response.read()
                 tile = mapbox_vector_tile.decode(tile_data)
-                # print(json.dumps(tile, indent=2))
+                
                 json_data = {}
                 for layer_name, layer in tile.items():
                     json_data[layer_name] = {"features": []}
@@ -298,14 +293,12 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                 # Create a unique container
                 imageConfigFile = config_dir + "/config.imagedirectory.json"
                 upload_dir = image_upload_dir
-                # print("image_upload_dir:" + image_upload_dir) 
+                
                 directoryname = upload_dir + unique_directory
-                # print("directoryname:" + image_upload_dir)
+                
                 content = await response.read()
 
-                # Code to write to Temp directory - This is required for now as there are other processes using these files
-                # Need to change all the processes to read from the AIX Team's container later
-                # async with aiofiles.open(filename, mode='wb') as f:
+                
                 content_type = response.headers.get("Content-Type", "")
                 if (content_type.startswith("image/")) and (
                     Image.open(BytesIO(content)).mode != "RGB"
@@ -320,8 +313,7 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                             contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
                         )
                     )
-                    # await f.write(contentmeta)
-                    # await f.close()
+                    
                 else:
                     if content_type.startswith("image/"):
 
@@ -336,8 +328,7 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                                 contentmeta, upload_containter, directoryname, blobname, blob_service_client
                             )
                         )
-                        # await f.write(contentmeta)
-                        # await f.close()
+                       
                     else:
                         # Code to add the .txt file
                         # Adding code to write to the AIX container directory
@@ -419,7 +410,7 @@ async def getEnvironmentinfo():
     except RuntimeError as e:
         logging.error("Error at %s", "getEnvironmentinfo ts_maps.py", exc_info=e)
 
-def uploadonebytefile():
+async def uploadonebytefile():
     try:
         container_client = blob_service_client.get_container_client(upload_containter)
         filename = "onebyte"
@@ -452,18 +443,6 @@ async def fetch_all(
                 session, tile["url"], fname, i, mapType, unique_directory, tile, blob_service_client
             )
             tasks.append(task)
-            # # Upload metadata .txt
-            # # if metadata:
-            # task = fetchimagemetadata(
-            #     session,
-            #     fname,
-            #     i,
-            #     mapType,
-            #     unique_directory,
-            #     tile,
-            #     blob_service_client
-            #     )
-            # tasks.append(task)
 
         results = await asyncio.gather(*tasks)
         return results
@@ -548,7 +527,7 @@ def appendMetadatatoImg(img, tileMetaData, mapType):
             exif_data = imgImage._getexif()
             exif_dict = piexif.load(exif_data)
             exif_dict["Exif"] = {**exif_dict["Exif"], **tileMetaData}
-            # print(f"exif_dict: {exif_dict}")
+            
         else:
             # Create a datetime object for the current time
             now = datetime.now()
