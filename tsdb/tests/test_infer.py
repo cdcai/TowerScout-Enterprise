@@ -3,9 +3,12 @@ from unittest.mock import Mock
 from dataclasses import dataclass
 
 import pytest
+from pyspark.testing import assertSchemaEqual
+from pyspark.sql import SparkSession
 import torch
 from PIL import Image
 
+import tsdb.preprocessing.transformations as trf
 from tsdb.ml.infer import (
     make_towerscout_predict_udf,
     UDF_RETURN_TYPE,
@@ -13,6 +16,25 @@ from tsdb.ml.infer import (
     apply_secondary_model,
     parse_yolo_detections,
 )
+
+
+@pytest.fixture(scope="module")
+def spark() -> SparkSession:
+    """
+    Returns the SparkSession to be used in tests that require Spark
+    """
+    spark = (
+        SparkSession.builder.master("local")
+        .appName("test_data_processing")
+        .getOrCreate()
+    )
+
+    return spark
+
+
+@pytest.fixture
+def image_binary_dir() -> str:
+    return "/Volumes/edav_dev_csels/towerscout/misc/unit_tests/image_binary_dataset/"
 
 
 @pytest.fixture
@@ -205,5 +227,61 @@ def test_make_towerscout_predict_udf(
     assert (
         towerscout_inference_udf.returnType == UDF_RETURN_TYPE
     ), f"UDF return type must match that specified in {UDF_RETURN_TYPE}"
-            ), "Class labels from secondary model should be ints"
 
+
+def test_predict(
+    spark: SparkSession,
+    catalog: str,
+    schema: str,
+    yolo_alias: str,
+    efficientnet_alias: str,
+    batch_size: int,
+    num_workers: int,
+    image_binary_dir: str,
+) -> None:
+    """
+    Tests the predict UDF output by the make_towerscout_predict_udf function.
+    We transform a dataframe containing bronze images using the predict UDF and then
+    check to see if the resulting dataframes schema matches using PySparks `assertSchemaEqual`
+    function. Note that we set ignoreNullable=True since some of the resulting columns
+    in the transformed_df, such as `image_hash` have nullability set to False when the same column has
+    nullability set to True in the silver_df. This discrepancy occurs even when using the
+    old version of the towerscout_inference_udf function so it can be ignored.
+    """
+    towerscout_inference_udf = make_towerscout_predict_udf(
+        catalog, schema, yolo_alias, efficientnet_alias, batch_size, num_workers
+    )
+
+    silver_df = (
+    spark.read.format("delta")
+    .table(f"{catalog}.{schema}.test_image_silver")
+    .limit(2)
+    )
+
+    image_df = (
+        spark.read.format("binaryFile")
+        .load(image_binary_dir)
+        .limit(2)
+    )
+
+    transformed_df = (
+        image_df.transform(trf.parse_file_path)
+        .transform(trf.perform_inference, towerscout_inference_udf)
+        .transform(trf.current_time)
+        .transform(trf.hash_image)
+        .selectExpr(
+            "user_id",
+            "request_id",
+            "uuid",
+            "processing_time",
+            "results.bboxes as bboxes",
+            "image_hash",
+            "path as image_path",
+            "results.image_id as image_id",
+            "results.model_version as model_version",
+            "results.image_metadata as image_metadata",
+            "results.map_provider as map_provider",
+        )
+    )
+
+    assertSchemaEqual(silver_df.schema, transformed_df.schema, ignoreNullable=True)
