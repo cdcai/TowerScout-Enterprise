@@ -12,6 +12,8 @@
 # YOLOv5 detector class
 
 import sys
+from deprecated import deprecated
+
 import mlflow
 from torch import nn
 from PIL import Image
@@ -20,6 +22,7 @@ from tsdb.ml.utils import get_model_tags, YOLOv5Detection
 import pyspark.sql.types as T
 
 
+@deprecated("This class is deprecated.")
 class YOLOv5_Detector:
     def __init__(self, model: nn.Module, batch_size: int, uc_version: str):
         self.model = model
