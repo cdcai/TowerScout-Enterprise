@@ -253,16 +253,12 @@ def test_predict(
     )
 
     silver_df = (
-    spark.read.format("delta")
-    .table(f"{catalog}.{schema}.test_image_silver")
-    .limit(2)
-    )
-
-    image_df = (
-        spark.read.format("binaryFile")
-        .load(image_binary_dir)
+        spark.read.format("delta")
+        .table(f"{catalog}.{schema}.test_image_silver")
         .limit(2)
     )
+
+    image_df = spark.read.format("binaryFile").load(image_binary_dir).limit(2)
 
     transformed_df = (
         image_df.transform(trf.parse_file_path)
