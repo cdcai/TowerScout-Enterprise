@@ -205,3 +205,5 @@ def test_make_towerscout_predict_udf(
     assert (
         towerscout_inference_udf.returnType == UDF_RETURN_TYPE
     ), f"UDF return type must match that specified in {UDF_RETURN_TYPE}"
+            ), "Class labels from secondary model should be ints"
+
