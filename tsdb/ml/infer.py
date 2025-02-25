@@ -150,4 +150,5 @@ def make_towerscout_predict_udf(
             ]
             yield pd.DataFrame(outputs)
 
+
     return pandas_udf(return_type, PandasUDFType.SCALAR_ITER)(predict)
