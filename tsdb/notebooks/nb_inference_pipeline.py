@@ -23,6 +23,11 @@
 
 # COMMAND ----------
 
+# Temporary fix for ignoring files that have been deleted from the data lake
+spark.conf.set("spark.sql.files.ignoreMissingFiles", "true")
+
+# COMMAND ----------
+
 from tsdb.utils.uc import CatalogInfo
 import tsdb.preprocessing.transformations as trf
 from tsdb.ml.infer import make_towerscout_predict_udf
