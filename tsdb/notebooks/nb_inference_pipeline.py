@@ -25,7 +25,6 @@
 
 from tsdb.utils.uc import CatalogInfo
 import tsdb.preprocessing.transformations as trf
-from tsdb.preprocessing.images import make_image_metadata_udf
 from tsdb.ml.infer import make_towerscout_predict_udf
 
 # COMMAND ----------
@@ -61,8 +60,7 @@ sink_table = f"{catalog}.{schema}.{silver_table_name}"
 
 # Create our UDFs
 # Batch size is a very important parameter, since we iterate through images to process them
-towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, batch_size=100)
-image_metadata_udf = make_image_metadata_udf(spark)
+towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, yolo_alias="aws", efficientnet_alias="aws", batch_size=100, num_workers=8)
 
 # COMMAND ----------
 
@@ -78,26 +76,24 @@ image_df = (
 )
 
 transformed_df = (
-    image_df
-    .transform(trf.parse_file_path)
-    .transform(trf.perform_inference, towerscout_inference_udf)
-    .transform(trf.extract_metadata, image_metadata_udf)
-    .transform(trf.current_time)
-    .transform(trf.hash_image)
-    .selectExpr(
-        "user_id",
-        "request_id",
-        "uuid",
-        "processing_time",
-        "results.bboxes as bboxes",
-        "image_hash",
-        "path as image_path",
-        "image_id",
-        "results.model_version as model_version",
-        "image_metadata",
-        "map_provider"
+        image_df.transform(trf.parse_file_path)
+        .transform(trf.perform_inference, towerscout_inference_udf)
+        .transform(trf.current_time)
+        .transform(trf.hash_image)
+        .selectExpr(
+            "user_id",
+            "request_id",
+            "uuid",
+            "processing_time",
+            "results.bboxes as bboxes",
+            "image_hash",
+            "path as image_path",
+            "results.image_id as image_id",
+            "results.model_version as model_version",
+            "results.image_metadata as image_metadata",
+            "results.map_provider as map_provider",
+        )
     )
-)
 
 if debug_mode:
     (
