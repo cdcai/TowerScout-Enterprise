@@ -71,7 +71,7 @@ towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, yolo_ali
 # COMMAND ----------
 
 # Setup Graceful Shutdown
-listener = StreamShutdownListener(timeout=15) # 240 minutes/4 hours
+listener = StreamShutdownListener(timeout=240) # 240 minutes/4 hours
 spark.streams.addListener(listener)
 
 # Read Images
