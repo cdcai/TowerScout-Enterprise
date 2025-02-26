@@ -8,7 +8,7 @@ from collections import defaultdict
 import pandas as pd
 import numpy as np
 from PIL import Image
-from torch import no_grad, Tensor, cuda, sigmoid
+from torch import no_grad, Tensor, cuda, sigmoid, device
 from torch.utils.data import DataLoader
 from torch.nn import Module
 from torchvision import transforms
@@ -256,17 +256,20 @@ def make_towerscout_predict_udf(
 
     # set unity catalog as registry to get models from
     mlflow.set_registry_uri("databricks-uc")
+    torch_device = device("cuda") if cuda.is_available() else device("cpu")
 
     yolo_model_name = f"{catalog}.{schema}.yolo_autoshape"
     en_model_name = f"{catalog}.{schema}.efficientnet"
 
     # Retrieves models by alias
     yolo_detector = mlflow.pytorch.load_model(
-        model_uri=f"models:/{yolo_model_name}@{yolo_alias}"
+        model_uri=f"models:/{yolo_model_name}@{yolo_alias}",
+        map_location=torch_device
     )
 
     en_classifier = mlflow.pytorch.load_model(
-        model_uri=f"models:/{en_model_name}@{efficientnet_alias}"
+        model_uri=f"models:/{en_model_name}@{efficientnet_alias}",
+        map_location=torch_device
     )
 
     yolo_detector.eval()
