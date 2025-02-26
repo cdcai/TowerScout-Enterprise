@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %run ../notebooks/nb_config_retrieval
+
+# COMMAND ----------
+
 import pytest
 import sys
 
