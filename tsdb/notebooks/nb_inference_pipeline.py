@@ -31,6 +31,7 @@ spark.conf.set("spark.sql.files.ignoreMissingFiles", "true")
 from tsdb.utils.uc import CatalogInfo
 import tsdb.preprocessing.transformations as trf
 from tsdb.ml.infer import make_towerscout_predict_udf
+from tsdb.utils.streaming import StreamShutdownListener
 
 # COMMAND ----------
 
@@ -69,6 +70,10 @@ towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, yolo_ali
 
 # COMMAND ----------
 
+# Setup Graceful Shutdown
+listener = StreamShutdownListener(timeout=240) # 240 minutes/4 hours
+spark.streams.addListener(listener)
+
 # Read Images
 image_df = (
     spark
@@ -77,7 +82,7 @@ image_df = (
     .options(**image_config)
     .option("clouldFiles.useNotifications", "true")
     .load(image_directory_path) # parameterize
-    .repartition(8)
+    .repartition(6)
 )
 
 transformed_df = (
@@ -115,20 +120,28 @@ else:
         .writeStream
         .format("delta")
         .outputMode("append")
-        # Parameterize (available now stops the stream once available data has been processed)
-        # Option 1: Schedule the workflow to run every n minutes
-        # trigger is every n seconds, 5 minutes hard real-time requirement
-
-        # Option 2 (Default option for streams checks every 500ms for new files)
-        # Have stream run continuously between two times
-        # trigger = Continuous (processingTime="5 minutes") "10 seconds", "5 milliseconds"
-
-        # Option 3
-        # Trigger workflow on file arrival, but it only works on directories with less than 10,000 files
-        .trigger(availableNow=True) 
+        .trigger(processingTime="10 seconds") 
         .option("checkpointLocation", checkpoint_path) # parameterized
         .table(sink_table)
     )
+
+    listener.set_stream(write_stream)
+    write_stream.awaitTermination()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+# MAGIC       # Parameterize (available now stops the stream once available data has been processed)
+# MAGIC       # Option 1: Schedule the workflow to run every n minutes
+# MAGIC       # trigger is every n seconds, 5 minutes hard real-time requirement
+# MAGIC
+# MAGIC       # Option 2 (Default option for streams checks every 500ms for new files)
+# MAGIC       # Have stream run continuously between two times
+# MAGIC       # trigger = Continuous (processingTime="5 minutes") "10 seconds", "5 milliseconds"
+# MAGIC
+# MAGIC       # Option 3
+# MAGIC       # Trigger workflow on file arrival, but it only works on directories with less than 10,000 files
 
 # COMMAND ----------
 
