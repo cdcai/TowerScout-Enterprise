@@ -1,8 +1,8 @@
 from io import BytesIO
 import PIL
+from PIL import Image
 from json import loads
 
-from pyspark.sql import SparkSession
 import pyspark.sql.types as T
 
 from tsdb.ml.types import ImageMetadata
