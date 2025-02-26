@@ -125,7 +125,7 @@ else:
         .table(sink_table)
     )
 
-    listener.set_query_obj(write_stream)
+    listener.set_stream(write_stream)
     write_stream.awaitTermination()
 
 # COMMAND ----------
