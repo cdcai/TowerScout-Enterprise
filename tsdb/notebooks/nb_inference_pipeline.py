@@ -31,6 +31,7 @@ spark.conf.set("spark.sql.files.ignoreMissingFiles", "true")
 from tsdb.utils.uc import CatalogInfo
 import tsdb.preprocessing.transformations as trf
 from tsdb.ml.infer import make_towerscout_predict_udf
+from tsdb.utils.streaming import StreamShutdownListener
 
 # COMMAND ----------
 
@@ -68,6 +69,10 @@ sink_table = f"{catalog}.{schema}.{silver_table_name}"
 towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, yolo_alias="aws", efficientnet_alias="aws", batch_size=100, num_workers=8)
 
 # COMMAND ----------
+
+# Setup Graceful Shutdown
+listener = StreamShutdownListener(timeout=240) # 240 minutes/4 hours
+spark.streams.addListener(listener)
 
 # Read Images
 image_df = (
@@ -130,6 +135,5 @@ else:
         .table(sink_table)
     )
 
-# COMMAND ----------
-
-
+    listener.set_query_obj(write_stream)
+    write_stream.awaitTermination()
