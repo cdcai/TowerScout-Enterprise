@@ -17,7 +17,7 @@ class StreamShutdownListener(StreamingQueryListener):
         spark.streams.addListener(listener)
 
         stream_job = spark.readStream().format("rate").start()
-        listener.set_query_obj(stream_job)
+        listener.set_stream(stream_job)
         stream_job.awaitTermination()
 
     Args:
@@ -26,7 +26,7 @@ class StreamShutdownListener(StreamingQueryListener):
     def __init__(self, timeout: int):
         self.max_duration = timedelta(minutes=timeout)
         self._idle_start_time = None
-        self._query = None
+        self._stream = None
         self._lock = threading.Lock()
     
     @staticmethod
@@ -51,7 +51,7 @@ class StreamShutdownListener(StreamingQueryListener):
                 self._idle_start_time = current_time
         
         if (current_time - self._idle_start_time) > self.max_duration:
-            self._query.stop()
+            self._stream.stop()
 
     def onQueryProgress(self, event: listener.QueryProgressEvent) -> None:
         """
@@ -65,8 +65,8 @@ class StreamShutdownListener(StreamingQueryListener):
     def onQueryTerminated(self, event: listener.QueryTerminatedEvent) -> None:
         pass
 
-    def set_query_obj(self, query: StreamingQuery) -> None:
+    def set_stream(self, stream: StreamingQuery) -> None:
         """
         Adds a query object to the listener that will be shut down when max_duration is reached.
         """
-        self._query = query
+        self._stream = stream
