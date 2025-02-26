@@ -2,22 +2,21 @@
 This module contains UDF's for inference for the TowerScout application
 """
 
-from io import BytesIO
-from json import loads
-from typing import Any, Iterable, Protocol, Union
+from typing import Any, Protocol, Union
 from collections import defaultdict
 
-import numpy as np
 import pandas as pd
 import numpy as np
 from PIL import Image
 from torch import no_grad, Tensor, cuda, sigmoid
+from torch.utils.data import DataLoader
 from torch.nn import Module
 from torchvision import transforms
 
 import mlflow
 
 import pyspark.sql.types as T
+import pyspark.sql.functions as F
 from models.common import Detections  # Detection object for YOLOv5 model
 
 from tsdb.ml.datasets import ImageBinaryDataset
@@ -76,12 +75,10 @@ MODEL_METADATA_STRUCT = T.StructType(
 
 TOWERSCOUT_IMAGE_METADATA_STRUCT = T.StructType(
     [
-        T.StructField("height", T.IntegerType()),
-        T.StructField("width", T.IntegerType()),
         T.StructField("lat", T.DoubleType()),
         T.StructField("long", T.DoubleType()),
-        T.StructField("image_id", T.IntegerType()),
-        T.StructField("map_provider", T.StringType()),
+        T.StructField("width", T.IntegerType()),
+        T.StructField("height", T.IntegerType()),
     ]
 )
 
@@ -289,9 +286,9 @@ def make_towerscout_predict_udf(
         "efficientnet_model_version": en_uc_version,
     }
 
-    @pandas_udf(UDF_RETURN_TYPE)
+    @F.pandas_udf(UDF_RETURN_TYPE)
     @no_grad()
-    def predict_udf(image_bins: pd.Series) -> pd.Series:  # pragma: no cover
+    def predict_udf(image_bins: pd.Series) -> pd.DataFrame:
         """
         This predict_udf function is distributed across executors to perform inference.
 
@@ -311,19 +308,53 @@ def make_towerscout_predict_udf(
         Returns:
              Predicted labels and extracted image metadata.
         """
-        pass
+        bin_dataset = ImageBinaryDataset(image_bins)
+        loader = DataLoader(
+            bin_dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            collate_fn=inference_collate_fn,
+        )
+
+        outputs = []
+
+        for batch in loader:
+            yolo_output = yolo_detector(batch["images"])
+            parsed_results = parse_yolo_detections(
+                batch["images"], yolo_output, en_classifier
+            )
+
+            for parsed_result, image_metadata in zip(
+                parsed_results, batch["images_metadata"]
+            ):
+                map_provider = image_metadata.pop("map_provider")
+                image_id = image_metadata.pop("image_id")
+
+                outputs.append(
+                    {
+                        "bboxes": parsed_result,
+                        "model_version": model_metadata,
+                        "image_metadata": image_metadata,
+                        "image_id": image_id,
+                        "map_provider": map_provider,
+                    }
+                )
+
+        return pd.DataFrame(outputs)
 
     return predict_udf
 
 
-def inference_collate_fn(data: list[dict[str, ImageMetadata]]) -> dict[str, Union[Image, dict[str, Any]]]:
+def inference_collate_fn(
+    data: list[dict[str, ImageMetadata]]
+) -> dict[str, Union[Image, dict[str, Any]]]:
     """
-    A collate function for DataLoaders used with the ImageBinaryDataset object. 
+    A collate function for DataLoaders used with the ImageBinaryDataset object.
     Collates the data into a batch for inference UDF.
 
     Args:
         data: The ImageMetadata objects to collate into a batch
-    
+
     Retruns:
         A dictionary with the following keys:
         - images: A list of PIL images
@@ -345,8 +376,8 @@ def apply_secondary_model(
     max_conf: float = 0.65,
 ) -> None:
     """
-    A function to apply the secondary model to the detections from the YOLO model. The function 
-    first crops the image based on the bounding box predicted by the YOLO model, then applies 
+    A function to apply the secondary model to the detections from the YOLO model. The function
+    first crops the image based on the bounding box predicted by the YOLO model, then applies
     the secondary model to the cropped image to determine the probablity the image contains a cooling tower
     and appends the computed probability to the detection array.
 
@@ -391,7 +422,7 @@ def apply_secondary_model(
             p2 = 1
 
         detection.append(p2)
-    
+
     return
 
 
@@ -399,7 +430,7 @@ def parse_yolo_detections(
     images: list[Image],
     yolo_results: Detections,
     secondary_model: Module = None,
-    **kwargs
+    **kwargs,
 ) -> list[dict[str, Any]]:
     """
     A function to parse the detections from the YOLO model by converting them into a list
@@ -426,23 +457,23 @@ def parse_yolo_detections(
 
     for image, image_detections in zip(images, batch_detections):
         image_detections = image_detections.cpu().numpy().tolist()
-        
+
         if secondary_model is not None:
             apply_secondary_model(secondary_model, image, image_detections, **kwargs)
 
         image_results = [
-                    {
-                        "x1": item[0],
-                        "y1": item[1],
-                        "x2": item[2],
-                        "y2": item[3],
-                        "conf": item[4],
-                        "class": int(item[5]),
-                        "class_name": yolo_results.names[int(item[5])],
-                        "secondary": item[6] if len(item) > 6 else 1,
-                    }
-                    for item in image_detections
-                ]
+            {
+                "x1": item[0],
+                "y1": item[1],
+                "x2": item[2],
+                "y2": item[3],
+                "conf": item[4],
+                "class": int(item[5]),
+                "class_name": yolo_results.names[int(item[5])],
+                "secondary": item[6] if len(item) > 6 else 1,
+            }
+            for item in image_detections
+        ]
 
         parsed_results.append(image_results)
 
