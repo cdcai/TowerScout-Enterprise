@@ -69,7 +69,7 @@ def validated_data() -> dict[str, Any]:
         ),
         (
             "86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0",
-            "802091180",
+            802091180,
             [
                 {
                     "conf": 0.8,
