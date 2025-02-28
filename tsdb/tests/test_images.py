@@ -22,13 +22,14 @@ def spark() -> SparkSession:
 @pytest.fixture
 def image_binary_dir(spark: SparkSession) -> str:
     if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
-        congfigs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
-        catalog = congfigs["catalog_name"]
+        configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+        catalog = configs["catalog_name"]
+        schema = configs["schema_name"]
 
     else:
         RaiseException("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
-    return f"/Volumes/{catalog}/towerscout/misc/unit_tests/image_binary_dataset/"
+    return f"/Volumes/{catalog}/{schema}/misc/unit_tests/image_binary_dataset/"
 
 
 
