@@ -28,13 +28,14 @@ def spark() -> SparkSession:
 @pytest.fixture()
 def db_args(spark: SparkSession) -> list[str]:
     if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
-        congfigs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
-        catalog = congfigs["catalog_name"]
+        configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+        catalog = configs["catalog_name"]
+        schema = configs["schema_name"]
 
     else:
         RaiseException("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
-    return [catalog, "towerscout", "test_image_silver", "test_image_gold"]
+    return [catalog, schema, "test_image_silver", "test_image_gold"]
 
 
 @pytest.fixture()
