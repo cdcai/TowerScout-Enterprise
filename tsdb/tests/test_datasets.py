@@ -70,7 +70,7 @@ def remote_dir(catalog: str, schema: str) -> str:
 
 @pytest.fixture
 def local_dir() -> str:
-    # append uuid to avoid uusing same cache location between tests
+    # append uuid to avoid using same cache location between tests
     return "/local/cache/path/" + str(uuid.uuid4())
 
 
