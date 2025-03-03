@@ -31,11 +31,9 @@ def db_args(spark: SparkSession) -> list[str]:
         configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
         catalog = configs["catalog_name"]
         schema = configs["schema_name"]
-
+        return [catalog, schema, "test_image_silver", "test_image_gold"]
     else:
-        RaiseException("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
-
-    return [catalog, schema, "test_image_silver", "test_image_gold"]
+        raise Exception("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 
 @pytest.fixture()

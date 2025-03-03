@@ -25,12 +25,9 @@ def image_binary_dir(spark: SparkSession) -> str:
         configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
         catalog = configs["catalog_name"]
         schema = configs["schema_name"]
-
+        return f"/Volumes/{catalog}/{schema}/misc/unit_tests/image_binary_dataset/"
     else:
-        RaiseException("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
-
-    return f"/Volumes/{catalog}/{schema}/misc/unit_tests/image_binary_dataset/"
-
+        raise Exception("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 
 def test_get_image_metadata(spark: SparkSession, image_binary_dir: str):
