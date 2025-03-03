@@ -37,11 +37,9 @@ def catalog(spark: SparkSession) -> str:
     if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
         configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
         catalog = configs["catalog_name"]
-
+        return catalog
     else:
-        RaiseException("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
-    
-    return catalog
+        raise Exception("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 
 @pytest.fixture
@@ -49,11 +47,9 @@ def schema(spark: SparkSession) -> str:
     if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
         configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
         schema = configs["schema_name"]
-
+        return schema
     else:
-        RaiseException("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
-    
-    return schema
+        raise Exception("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 
 @pytest.fixture
