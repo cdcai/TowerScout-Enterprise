@@ -5,8 +5,7 @@ from typing import Any
 from pyspark.sql import SparkSession
 
 from tsdb.utils.silver_to_gold import (
-    create_updates_view_query,
-    create_gold_merge_query,
+     promote_silver_to_gold,
     convert_data_to_str,
 )
 
@@ -61,7 +60,7 @@ def validated_data() -> dict[str, Any]:
         ),
         (
             "86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0",
-            "802091180",
+            802091180,
             [
                 {
                     "conf": 0.8,
@@ -90,36 +89,36 @@ def validated_data() -> dict[str, Any]:
     return validated
 
 
-def test_create_update_view_query(
-    spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
-) -> None:
-    """
-    Tests the create_updates_view_query function
-    """
+# def test_create_update_view_query(
+#     spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
+# ) -> None:
+#     """
+#     Tests the create_updates_view_query function
+#     """
 
-    catalog, schema, silver_table, _ = db_args
-    values, uuids = convert_data_to_str(validated_data)
+#     catalog, schema, silver_table, _ = db_args
+#     values, uuids = convert_data_to_str(validated_data)
 
-    spark.sql("DROP VIEW IF EXISTS gold_updates;")
+#     spark.sql("DROP VIEW IF EXISTS gold_updates;")
 
-    create_updates_view = create_updates_view_query(
-        catalog, schema, silver_table, values, uuids
-    )
+#     create_updates_view = create_updates_view_query(
+#         catalog, schema, silver_table, values, uuids
+#     )
 
-    spark.sql(create_updates_view)
+#     spark.sql(create_updates_view)
 
-    query = f"""SELECT * FROM gold_updates 
-            WHERE 
-            image_hash IN (-1467659206, 802091180) 
-            AND 
-            uuid IN ("86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0", "75c96459-1946-4950-af0f-df774c6b1f52_tmp1sdnfexw0");
-            """
-    df = spark.sql(query)
+#     query = f"""SELECT * FROM gold_updates 
+#             WHERE 
+#             image_hash IN (-1467659206, 802091180) 
+#             AND 
+#             uuid IN ("86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0", "75c96459-1946-4950-af0f-df774c6b1f52_tmp1sdnfexw0");
+#             """
+#     df = spark.sql(query)
 
-    assert df.count() == 2
+#     assert df.count() == 2
 
 
-def test_merge_updates_into_gold(
+def test_promote_silver_to_gold(
     spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
 ) -> None:
     """
@@ -128,24 +127,18 @@ def test_merge_updates_into_gold(
 
     catalog, schema, silver_table, gold_table = db_args
 
-    # remove existing gold_table updates view if it exists
-    spark.sql("DROP VIEW IF EXISTS gold_updates;")
-
     # remove testing data from gold table if it exists
-    query = f"DELETE FROM {catalog}.{schema}.{gold_table} WHERE image_hash IN (-1467659206, 802091180);"
-    spark.sql(query)
+    delete_query = f"""DELETE FROM {catalog}.{schema}.{gold_table} 
+            WHERE 
+            image_hash IN (-1467659206, 802091180) 
+            AND 
+            uuid IN ("86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0", "75c96459-1946-4950-af0f-df774c6b1f52_tmp1sdnfexw0");
+            """
+    spark.sql(delete_query)
 
-    values, uuids = convert_data_to_str(validated_data)
+    response = promote_silver_to_gold(validated_data, catalog, schema, gold_table, silver_table)
 
-    create_updates_view = create_updates_view_query(
-        catalog, schema, silver_table, values, uuids
-    )
-
-    spark.sql(create_updates_view)
-
-    merge_updates_into_gold = create_gold_merge_query(catalog, schema, gold_table)
-
-    spark.sql(merge_updates_into_gold)
+    assert response["status"]["state"] == "SUCCEEDED", f"Databricks SQL API returned that the query did not succeed. Status was {response['status']['state']}"
 
     query = f"""SELECT * FROM {catalog}.{schema}.{gold_table} 
             WHERE 
@@ -155,13 +148,7 @@ def test_merge_updates_into_gold(
             """
     df = spark.sql(query)
 
-    assert df.count() == 2
+    assert df.count() == 2, f"Exactly two records should have been added to the gold table but actual number added was {df.count()}."
 
     # remove test records once tests are complete 
-    query = f"""DELETE FROM {catalog}.{schema}.{gold_table} 
-            WHERE 
-            image_hash IN (-1467659206, 802091180) 
-            AND 
-            uuid IN ("86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0", "75c96459-1946-4950-af0f-df774c6b1f52_tmp1sdnfexw0");
-            """
-    df = spark.sql(query)
+    spark.sql(delete_query)
