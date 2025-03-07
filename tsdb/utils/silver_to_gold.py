@@ -44,6 +44,8 @@ def create_gold_table_update_query(values: str, uuids: str) -> str:
     named parameters feature, i.e. IDENTIFIER(:silver_table) and IDENTIFIER(:gold_table), 
     of the Databricks SQL API so that they can be specficed
     when making the request to the Databricks SQL API.
+    NOTE: Maximium query text size that can be sent to the SQL API is 16 MiB:
+    https://docs.databricks.com/api/azure/workspace/statementexecution
     
     Args:
         values: The values to be inserted into the temp view
