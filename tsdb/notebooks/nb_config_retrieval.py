@@ -74,7 +74,7 @@ def get_catalog_schema_config(cat, schema):
 
 # COMMAND ----------
 
-env = get_cluster_tag_val("edav_environment")
+env = get_cluster_tag_val("x_edav_environment").lower()
 
 edav_center = get_cluster_tag_val(
     "edav_center"
