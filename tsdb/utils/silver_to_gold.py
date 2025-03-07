@@ -5,30 +5,6 @@ from typing import Any
 from numpy.random import choice
 
 
-DATABRICKS_INSTANCE = "adb-1881246389460182.2.azuredatabricks.net"
-PERSONAL_ACCESS_TOKEN = "dapi51d5af94736bbfdfaa7cb944c76cc531-3"
-WAREHOUSE_ID = "8605a48953a7f210"
-SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
-
-
-def execute_query(query: str, cursor, connection) -> None:
-    """
-    Function to execute queries on databricks using the databricks SQL API
-
-    Args:
-        query (str): The query to execute
-        cursor (sql.Cursor): The cursor to execute the query on
-        connection (sql.Connection): The connection to execute the query on
-    """
-    try:
-        cursor.execute(query)
-        return
-    except:
-        cursor.close()
-        connection.close()
-        return
-
-
 def convert_data_to_str(
     validated_data: tuple[tuple[str, str, dict[str, Any]]]
 ) -> tuple[str, str]:
@@ -36,7 +12,8 @@ def convert_data_to_str(
     Function to convert validated data to string for SQL query
 
     Args:
-        validated_data: uuids, image hash and bounding boxes of the image (in that order) validated by an end user
+        validated_data: a tuple of tuples containing uuids, image hash and bounding boxes of the image (in that order) 
+                        which are validated by an end user
     
     Returns:
         values: the validated data combined into a string
@@ -57,12 +34,16 @@ def convert_data_to_str(
 
 def create_gold_table_update_query(values: str, uuids: str) -> str:
     """
-    Function to create SQL query string that creates a temp view containing validated
-    data to be merged into the gold table.
+    Function to create SQL query string that promotes validated data from the silver table
+    to the gold table.
     The query first extracts all rows from the silver table, via a join, which
     have uuids matching those supplied to the function (uuids of the images being promoted from silver to gold)
-    and overrides their bbox field with the bboxes supplied to the function.
+    and overrides their `bboxes` field with the bboxes supplied to the function.
     These modified rows are then merged into the gold table on the image hash.
+    Note that we have parameterized the silver table and gold table names using
+    named parameters feature, i.e. IDENTIFIER(:silver_table) and IDENTIFIER(:gold_table), 
+    of the Databricks SQL API so that they can be specficed
+    when making the request to the Databricks SQL API.
     
     Args:
         values: The values to be inserted into the temp view

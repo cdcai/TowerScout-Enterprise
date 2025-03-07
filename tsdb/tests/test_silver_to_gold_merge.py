@@ -1,13 +1,20 @@
 import pytest
 import json
+import requests
 from typing import Any
 
 from pyspark.sql import SparkSession
 
 from tsdb.utils.silver_to_gold import (
-     promote_silver_to_gold,
+    create_gold_table_update_query,
     convert_data_to_str,
 )
+
+# Hardcoding until SP has perimission to access these via secrets
+DATABRICKS_INSTANCE = "adb-1881246389460182.2.azuredatabricks.net"
+PERSONAL_ACCESS_TOKEN = "dapi51d5af94736bbfdfaa7cb944c76cc531-3"
+WAREHOUSE_ID = "8605a48953a7f210"
+SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
 
 
 @pytest.fixture(scope="module")
@@ -89,36 +96,7 @@ def validated_data() -> dict[str, Any]:
     return validated
 
 
-# def test_create_update_view_query(
-#     spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
-# ) -> None:
-#     """
-#     Tests the create_updates_view_query function
-#     """
-
-#     catalog, schema, silver_table, _ = db_args
-#     values, uuids = convert_data_to_str(validated_data)
-
-#     spark.sql("DROP VIEW IF EXISTS gold_updates;")
-
-#     create_updates_view = create_updates_view_query(
-#         catalog, schema, silver_table, values, uuids
-#     )
-
-#     spark.sql(create_updates_view)
-
-#     query = f"""SELECT * FROM gold_updates 
-#             WHERE 
-#             image_hash IN (-1467659206, 802091180) 
-#             AND 
-#             uuid IN ("86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0", "75c96459-1946-4950-af0f-df774c6b1f52_tmp1sdnfexw0");
-#             """
-#     df = spark.sql(query)
-
-#     assert df.count() == 2
-
-
-def test_promote_silver_to_gold(
+def test_create_gold_table_update_query(
     spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
 ) -> None:
     """
@@ -126,6 +104,8 @@ def test_promote_silver_to_gold(
     """
 
     catalog, schema, silver_table, gold_table = db_args
+
+    values, uuids = convert_data_to_str(validated_data)
 
     # remove testing data from gold table if it exists
     delete_query = f"""DELETE FROM {catalog}.{schema}.{gold_table} 
@@ -136,9 +116,28 @@ def test_promote_silver_to_gold(
             """
     spark.sql(delete_query)
 
-    response = promote_silver_to_gold(validated_data, catalog, schema, gold_table, silver_table)
+    gold_table_update_query = create_gold_table_update_query(values, uuids)
 
-    assert response["status"]["state"] == "SUCCEEDED", f"Databricks SQL API returned that the query did not succeed. Status was {response['status']['state']}"
+    data = {
+        "statement": gold_table_update_query,
+        "warehouse_id": WAREHOUSE_ID,
+        "catalog": catalog,
+        "schema": schema,
+        "parameters": [
+            {"name": "silver_table", "value": silver_table, "type": "STRING"},
+            {"name": "gold_table", "value": gold_table, "type": "STRING"},
+        ],
+    }
+
+    # Set the headers with the personal access token for authentication
+    headers = {
+        "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers).json()
+
+    assert response["status"]["state"] == "SUCCEEDED", f"Databricks SQL API returned that the query did not succeed. Status was {response['status']['state']}."
 
     query = f"""SELECT * FROM {catalog}.{schema}.{gold_table} 
             WHERE 
