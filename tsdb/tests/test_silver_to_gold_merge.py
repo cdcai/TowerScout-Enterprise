@@ -4,17 +4,12 @@ import requests
 from typing import Any
 
 from pyspark.sql import SparkSession
+from pyspark.dbutils import DBUtils
 
 from tsdb.utils.silver_to_gold import (
     create_gold_table_update_query,
     convert_data_to_str,
 )
-
-# Hardcoding until SP has perimission to access these via secrets
-DATABRICKS_INSTANCE = "adb-1881246389460182.2.azuredatabricks.net"
-PERSONAL_ACCESS_TOKEN = "dapi51d5af94736bbfdfaa7cb944c76cc531-3"
-WAREHOUSE_ID = "8605a48953a7f210"
-SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
 
 
 @pytest.fixture(scope="module")
@@ -29,6 +24,16 @@ def spark() -> SparkSession:
     )
 
     return spark
+
+
+@pytest.fixture(scope="module")
+def databricks_utils(spark: SparkSession) -> DBUtils:
+    return DBUtils(spark)
+
+
+@pytest.fixture()
+def secret_scope() -> str:
+    return "dbs-scope-DDPHSS-CSELS-PD-DEV-TOWERSCOUT"
 
 
 @pytest.fixture()
@@ -97,11 +102,16 @@ def validated_data() -> dict[str, Any]:
 
 
 def test_create_gold_table_update_query(
-    spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str]
+    spark: SparkSession, validated_data: dict[str, Any], db_args: dict[str, str], databricks_utils: DBUtils, secret_scope: str
 ) -> None:
     """
     Tests the create_gold_merge_query function
     """
+
+    DATABRICKS_INSTANCE = databricks_utils.secrets.get(scope=secret_scope, key="DATABRICKS-INSTANCE")
+    PERSONAL_ACCESS_TOKEN = databricks_utils.secrets.get(scope=secret_scope, key="DB-PERSONAL-ACCESS-TOKEN")
+    WAREHOUSE_ID = databricks_utils.secrets.get(scope=secret_scope, key="WAREHOUSE-ID")
+    SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
 
     catalog, schema, silver_table, gold_table = db_args
 
