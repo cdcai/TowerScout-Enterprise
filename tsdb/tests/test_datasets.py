@@ -35,18 +35,38 @@ def spark() -> SparkSession:
 
 
 @pytest.fixture
-def image_binary_dir() -> str:
-    return "/Volumes/edav_dev_csels/towerscout/misc/unit_tests/image_binary_dataset/"
+def catalog(spark: SparkSession) -> str:
+    if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
+        configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+        catalog = configs["catalog_name"]
+        return catalog
+    else:
+        raise Exception("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 
 @pytest.fixture
-def remote_dir() -> str:
-    return "/Volumes/edav_dev_csels/towerscout/misc/unit_tests/mosaic_streaming_unit_test/"
+def schema(spark: SparkSession) -> str:
+    if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
+        configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+        schema = configs["schema_name"]
+        return schema
+    else:
+        raise Exception("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
+
+
+@pytest.fixture
+def image_binary_dir(catalog: str, schema: str) -> str:
+    return f"/Volumes/{catalog}/{schema}/misc/unit_tests/image_binary_dataset/"
+
+
+@pytest.fixture
+def remote_dir(catalog: str, schema: str) -> str:
+    return f"/Volumes/{catalog}/{schema}/misc/unit_tests/mosaic_streaming_unit_test/"
 
 
 @pytest.fixture
 def local_dir() -> str:
-    # append uuid to avoid uuusing same cache between tests
+    # append uuid to avoid using same cache location between tests
     return "/local/cache/path/" + str(uuid.uuid4())
 
 
