@@ -26,8 +26,14 @@ def spark() -> SparkSession:
 
 
 @pytest.fixture()
-def db_args() -> list[str]:
-    return ["edav_dev_csels", "towerscout", "test_image_silver", "test_image_gold"]
+def db_args(spark: SparkSession) -> list[str]:
+    if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_configs"):
+        configs = spark.sql("SELECT * FROM global_temp.global_temp_towerscout_configs").collect()[0]
+        catalog = configs["catalog_name"]
+        schema = configs["schema_name"]
+        return [catalog, schema, "test_image_silver", "test_image_gold"]
+    else:
+        raise Exception("Global view 'global_temp_towerscout_configs' does not exist, make sure to run the utils notebook")
 
 
 @pytest.fixture()
@@ -61,7 +67,7 @@ def validated_data() -> dict[str, Any]:
         ),
         (
             "86759e8c-2ac3-4458-a480-16e391bf3742_tmp1sdnfexw0",
-            "802091180",
+            802091180,
             [
                 {
                     "conf": 0.8,
