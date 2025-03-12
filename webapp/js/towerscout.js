@@ -178,6 +178,7 @@ function fetchGeometry(geometryId) {
 }
 
 class AzureMap extends TSMap {
+  
   constructor() {
     super();
     this.map = new atlas.Map('azureMap', {
@@ -202,6 +203,7 @@ class AzureMap extends TSMap {
 
     this.boundaries = [];
     this.drawingManager = null;
+    this.customLayers = [];
 
     // Listen for the map's ready event
     this.map.events.add('ready', () => {
@@ -308,10 +310,13 @@ class AzureMap extends TSMap {
     // Load the DrawingTools module
     this.drawingManager = new atlas.drawing.DrawingManager(this.map,
       {
+        mode: null,
         toolbar: new atlas.control.DrawingToolbar({
           position: 'top-left',
-          style: 'light'
-        })
+          style: 'light',
+          buttons: ['draw-polygon', 'draw-line', 'draw-circle', 'draw-rectangle', 'edit-geometry', 'erase-geometry'] // Include only the desired tools
+        }),
+       
       });
     var layers = this.drawingManager.getLayers();
     layers.lineLayer.setOptions({
@@ -336,7 +341,11 @@ class AzureMap extends TSMap {
         let coordinates = [];
         if ("circlePolygon" in shape) {
           coordinates = shape.circlePolygon.geometry.coordinates[0];
-        } else {
+        } 
+        else if (shape.data.geometry.type == "Point"){
+          coordinates = shape.data.geometry.coordinates;
+        }
+        else {
           coordinates = shape.data.geometry.coordinates[0];
         }
         const points = coordinates.map(coord => [coord[0], coord[1]]);
@@ -352,20 +361,19 @@ class AzureMap extends TSMap {
   }
 
   clearShapes() {
+    
     this.drawingManager?.getSource()?.clear();
     this.map.sources.getById('circleDataSource')?.clear();
     this.removeLayerById("circleShapeLayer");
+    this.clearAllCustomLayers();
+    this.drawingManager?.setOptions({ mode: 'idle' });;  // Reset drawing mode
+    
   }
 
   clearAll() {
-    if (this.hasShapes) {
-      this.clearShapes();
-    }
     Detection.resetAll();
-    this.drawingManager?.getSource()?.clear();
-
-    currentMap.clearAllCustomLayers();
-
+    this.clearShapes();
+    
   }
   hideAllDataSources() {
     var layers = this.map.layers.getLayers();  // Get all layers on the map
@@ -380,13 +388,13 @@ class AzureMap extends TSMap {
   }
   // Function to clear all layers from the map
   clearAllCustomLayers() {
-    var layers = currentMap.map.layers.getLayers(); // Get all layers in the map
-    layers.forEach(function (layer) {
-      // if (layer['type'] != 'traffic'){
-      currentMap.map.layers.remove(layer); // Remove each layer from the map
-      // }
-
-    });
+    if (this.customLayers.length > 0) { // Check if there are any layers to remove
+      this.customLayers.forEach(layer => {
+        currentMap.map.layers.remove(layer); // Remove each layer from the map
+      });
+      this.customLayers = []; // Clear the array after removal
+      
+  } 
   }
   // Function to remove a layer by its id
   removeLayerById(layerId) {
@@ -452,23 +460,24 @@ class AzureMap extends TSMap {
     this.map.sources.getById('circleDataSource')?.clear();
     this.map.sources.getById('searchResultDataSource')?.clear();
   }
-
+  
   hasShapes() {
     const shapes = this.drawingManager.getSource().shapes;
     return shapes && shapes.length > 0;
   }
 
   addShapes() {
-    let shapes = this.drawingManager.getPrimitives();
+    let shapes = this.drawingManager.getSource().shapes;
 
     if (shapes && shapes.length > 0) {
       console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
       for (let s of shapes) {
-        console.log("Adding " + s.geometry.bounds.toString());
-        let x1 = s.geometry.boundingBox.getWest();
-        let y1 = s.geometry.boundingBox.getNorth();
-        let x2 = s.geometry.boundingBox.getEast();
-        let y2 = s.geometry.boundingBox.getSouth();
+        console.log("Adding " + s.getBounds().toString());
+        
+        let x1 = s.getBounds()[0];
+        let y1 = s.getBounds()[3];
+        let x2 = s.getBounds()[2];
+        let y2 = s.getBounds()[1];
 
         let tileIds = Tile.getTileIds(x1, y1, x2, y2);
         for (let tileId of tileIds) {
@@ -485,11 +494,10 @@ class AzureMap extends TSMap {
             'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
           det.update();
         }
-        console.log("Getting Address(s) for the detection(s)....")
+        
         augmentDetections();
       }
-      this.drawingManager.clear();
-      // this.map.entities.clear();
+      
     } else {
       console.log('No shapes in the drawing manager.');
     }
@@ -562,12 +570,14 @@ class AzureMap extends TSMap {
           strokeWidth: 1                 // Border width
         });
         currentMap.map.layers.add(tileborderLayer);
+        this.customLayers.push(tileborderLayer);
         o.borderLayerID = tileborderLayer.id;
 
         fillLayer = new atlas.layer.PolygonLayer(tiledataSource, null, {
           fillColor: 'rgba(0, 0, 0, 0)',      // No fill color (transparent)
         });
         currentMap.map.layers.add(fillLayer);
+        this.customLayers.push(fillLayer);
         o.fillLayerID = fillLayer.id;
       }
       else {
@@ -582,6 +592,7 @@ class AzureMap extends TSMap {
           strokeWidth: 1                // Border width
         });
         currentMap.map.layers.add(borderLayer);
+        this.customLayers.push(borderLayer);
         o.borderLayerID = borderLayer.id;
         fillLayer = new atlas.layer.PolygonLayer(dataSource, null, {
           strokeColor: 'red',
@@ -589,6 +600,7 @@ class AzureMap extends TSMap {
           strokeWidth: 1                  // Border width
         });
         currentMap.map.layers.add(fillLayer);
+        this.customLayers.push(fillLayer);
         o.fillLayerID = fillLayer.id;;
 
       }
@@ -1868,7 +1880,7 @@ async function fetchWithTimeout(url, options, timeoutDuration) {
   } catch (error) {
     if (error.name === 'AbortError') {
       console.log('fetchWithTimeout - Request timed out');
-      throw new Error("fetchWithTimeout - AbortError");
+      throw new Error("fetchWithTimeout - Request timed out");
     } else {
       throw new Error(`fetchWithTimeout - Fetch error: ${error.text}`);
     }
@@ -1949,6 +1961,35 @@ async function pollSilverTableSimple() {
 function restartRequest() {
   setTimeout(pollSilverTable, 10000);  // Restart the cycle every 10 seconds
 }
+// Function to get the bounding box (East, West, North, South) of the polygon
+function getBoundingBox(polygon) {
+  let west = Infinity;  // Initialize to very large number
+  let east = -Infinity; // Initialize to very small number
+  let north = -Infinity; // Initialize to very small number
+  let south = Infinity; // Initialize to very large number
+
+  // Loop through the coordinates of the polygon
+  polygon.coordinates.forEach(coord => {
+      const longitude = coord[0]; // Longitude is at index 0
+      const latitude = coord[1];  // Latitude is at index 1
+      
+      // Update the bounding box
+      if (longitude < west) {
+          west = longitude; // Westmost longitude
+      }
+      if (longitude > east) {
+          east = longitude; // Eastmost longitude
+      }
+      if (latitude > north) {
+          north = latitude; // Northmost latitude
+      }
+      if (latitude < south) {
+          south = latitude; // Southmost latitude
+      }
+  });
+
+  return { west, east, north, south };
+}
 function drawBoundingBoxes(){
   try{
     formData.delete("estimate");
@@ -2009,9 +2050,9 @@ function processObjects(result, startTime) {
     }
   }
   //console.log("" + Detection_detections.length + " detections.")
-  disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
+  
   augmentDetections();
-
+  disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
 }
 
 function cancelRequest() {
@@ -2250,7 +2291,13 @@ function changeReviewMode() {
   }
   adjustConfidence();
 }
-
+function chunkArray(array, chunkSize) {
+  const result = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    result.push(array.slice(i, i + chunkSize));
+  }
+  return result;
+}
 function augmentDetections() {
   Detection_detectionsAugmented = 0;
   //for (let det of Detection_detections) {
@@ -2287,7 +2334,11 @@ function augmentDetections() {
   else if (currentUI.value == "azure") {
     const BATCH_SIZE = 99;
     let batchItems = [];
-    for (let i = 0; i < Detection_detections.length; i++) {
+    if (Detection_detections.length == 0){
+      console.log("Done. No detections found.");
+    }
+    else    {
+       for (let i = 0; i < Detection_detections.length; i++) {
       let det = Detection_detections[i];
       if (det.address === "") {
         let loc = det.getCenterUrl();
@@ -2300,14 +2351,7 @@ function augmentDetections() {
       }
     }
 
-    function chunkArray(array, chunkSize) {
-      const result = [];
-      for (let i = 0; i < array.length; i += chunkSize) {
-        result.push(array.slice(i, i + chunkSize));
-      }
-      return result;
-    }
-
+   
     const batchedItems = chunkArray(batchItems, BATCH_SIZE);
 
     batchedItems.forEach((batch, batchIndex) => {
@@ -2336,6 +2380,8 @@ function augmentDetections() {
         });
       }, 1000 * batchIndex);
     });
+    }
+   
   }
 }
 function afterAugment() {
@@ -2353,7 +2399,7 @@ function afterAugment() {
   console.log("Adjusting Confidence ....");
   adjustConfidence();
 
-  console.log("Done ....");
+  console.log("Done.");
 }
 
 
