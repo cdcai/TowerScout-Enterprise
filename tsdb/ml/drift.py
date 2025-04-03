@@ -6,12 +6,15 @@ import pyspark.sql.functions as F
 from pyspark.sql import DataFrame
 
 
-def get_struct_counts(df: DataFrame, timestamp_col: str, array_struct_col: str, filter_clause: str, time_window_days: int = 90) -> DataFrame:
+def get_struct_counts(df: DataFrame, timestamp_col: str, array_struct_col: str, filter_clause: str, time_window_days: int=90) -> DataFrame:
     """
-    This function takes in a dataframe which contains a timestamp column and a column that contains arrays of structs 
-    and returns a dataframe with a column that contains the number of structs in the array that match the 
-    filter clause given for that row as well as the total number of structs in the array for that row. This is made generic put it's
-    primary purpose is to be used to compute the number of bounding boxes which were deselected by end users. 
+    This function takes in a dataframe which contains a timestamp column and a 
+    column that contains arrays of structs and returns the dataframe with 1) a 
+    column named `num_filtered_structs` that contains the number of structs in 
+    the array that match the filter clause given for that row and 2) a column 
+    named `num_structs` that contains the total number of structs in the array 
+    for that row. This is made generic put it's primary purpose is to be used 
+    to compute the number of bounding boxes which were deselected by end users. 
 
     Args:
         df: The input dataframe
@@ -34,16 +37,22 @@ def get_struct_counts(df: DataFrame, timestamp_col: str, array_struct_col: str, 
     return df_with_counts
 
 
-def compute_drift_score(df: DataFrame, num_filtered_structs_col: str, num_structs_col: str) -> float:
+def compute_counts_ratio(df: DataFrame, num_filtered_structs_col: str, num_structs_col: str) -> float:
     """
-    This function computes the drift score for a given dataframe. The drift score is defined as the ratio of the number of structs (bounding boxes) that were deselected (filtered) by end users to the total number of structs in the array.
+    This function takes in a dataframe which contains two columns, 
+    `num_filtered_structs_col` and `num_structs_col`, of counts for each row. 
+    It then computes the ratio of total number of counts in `num_filtered_structs_col` 
+    to the total number of counts in `num_structs_col`. 
+    In the drift detection process this function is used to compute the ratio 
+    of deselcted bounding boxes to total bounding boxes.
 
     Args:
         df: The input dataframe
-        num_filtered_structs_col: The name of the column that contains the number of structs that were deselected (filtered) by end users
-        num_structs_col: The name of the column that contains the total number of structs in the array
+        num_filtered_structs_col: The name of the column that contains the count of the number of structs that were deselected (filtered) by end users
+        num_structs_col: The name of the column that contains the count of the total number of structs in the array
     Returns:
-        The drift score (ratio) as a float
+        The ratio of total number of counts in `num_filtered_structs_col` 
+        to the total number of counts in `num_structs_col`
     """
 
     aggregated_num_structs = df.agg({num_structs_col: "sum"})
