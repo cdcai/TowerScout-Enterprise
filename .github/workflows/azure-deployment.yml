@@ -26,6 +26,19 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt  # Assuming you have a requirements.txt
+
+      - name: Set up Azure CLI
+        uses: azure/setup-azure-cli@v1
+        
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_DEV }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET_DEV }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID_DEV }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+          auth-type: sp
+          
       - name: Log in to Azure
         uses: azure/login@v1
         with:
