@@ -3,7 +3,6 @@ name: Deploy Flask App to Azure
 on:
   push:
     branches:
-      - main  # Production branch
       - main_dev   # Development branch
 
 jobs:
