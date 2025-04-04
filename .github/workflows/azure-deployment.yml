@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main  # Production branch
-      - dev   # Development branch
+      - main_dev   # Development branch
 
 jobs:
   deploy:
@@ -13,11 +13,11 @@ jobs:
     steps:
       # Step 1: Checkout code
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: cdcent/TowerScout/actions/checkout@v2
 
       # Step 2: Set up Python
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: cdcent/TowerScout/actions/setup-python@v2
         with:
           python-version: '3.12'  # Replace with the version of Python you are using
 
