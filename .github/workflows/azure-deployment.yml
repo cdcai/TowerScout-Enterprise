@@ -1,4 +1,4 @@
-name: Deploy Flask App to Azure
+name: Deploy Flask App to Azure FTP
 
 on:
   push:
@@ -26,11 +26,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt  # Assuming you have a requirements.txt
           
-      - name: Set secret name based on branch
-        id: set_secret
-        run: |
-          echo "SECRET_NAME=AZURE_WEBAPP_PUBLISH_PROFILE_${{ github.ref == 'refs/heads/main' && 'PROD' || 'DEV' }}" >> $GITHUB_ENV
-
       # Step 4: Conditional Deployment Based on Branch (Dev or Prod)
       - name: Deploy to Azure Web App (Dev or Prod)
         uses: azure/webapps-deploy@v3
