@@ -1,42 +1,42 @@
-name: Deploy to Azure Web App
+name: Deploy Flask App to Azure
 
 on:
   push:
     branches:
-      - main_dev
-      
+      - main  # Production branch
+      - dev   # Development branch
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest  # You can choose 'windows-latest' or 'macos-latest' if needed
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      # Step 1: Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
+      # Step 2: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.12'  # Replace with the version of Python you are using
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # Assuming you have a requirements.txt
 
-    - name: Select Publish Profile based on Branch
-      id: publish-profile
-      run: |
-        if [[ $GITHUB_REF == 'refs/heads/main' ]]; then
-          echo "Using Production Publish Profile"
-          echo "PUBLISH_PROFILE=${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PROD }}" >> $GITHUB_ENV
-        elif [[ $GITHUB_REF == 'refs/heads/dev' ]]; then
-          echo "Using Development Publish Profile"
-          echo "PUBLISH_PROFILE=${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}" >> $GITHUB_ENV
-        fi
+      # Step 4: Conditional Deployment Based on Branch (Dev or Prod)
+      - name: Deploy to Azure Web App (Dev or Prod)
+        uses: azure/webapps-deploy@v3
+        with:
+          # Use conditional expressions to set app name based on the branch
+          app-name: ${{ github.ref == 'refs/heads/main' && 'csels-pd-towerscrt-prod-web-01' || 'csels-pd-towerscrt-dev-web-01' }}
+          
+          # Use conditional expressions to set the publish profile based on the branch
+          publish-profile: ${{ 
+            secrets['AZURE_WEBAPP_PUBLISH_PROFILE_' + (github.ref == 'refs/heads/main' && 'PROD' || 'DEV')] 
+            }}
 
-    - name: Deploy to Azure Web App
-      uses: azure/webapps-deploy@v2
-      with:
-        app-name: 'csels-pd-towerscrt-dev-web-01'
-        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
-        package: .
+          package: .  # Path to the application, deploy the entire repo
