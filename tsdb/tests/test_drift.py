@@ -13,7 +13,7 @@ from pyspark.sql.types import (
     IntegerType,
 )
 
-from tsdb.ml.drift import get_struct_counts, compute_drift_score
+from tsdb.ml.drift import get_struct_counts, compute_counts_ratio
 
 
 @pytest.fixture(scope="module")
@@ -85,10 +85,10 @@ def test_get_struct_counts(example_df: DataFrame, timestamp_col: str, array_stru
     assert new_df.agg({"num_structs": "sum"}).collect()[0][0] == 3, "Expected 3 structs total to be in the filtered dataframe."
 
 
-def test_compute_drift_score(example_df: DataFrame, timestamp_col: str, array_struct_col: str, filter_clause: str, time_window_days: int) -> None:
+def test_compute_counts_ratio(example_df: DataFrame, timestamp_col: str, array_struct_col: str, filter_clause: str, time_window_days: int) -> None:
     
     new_df = get_struct_counts(example_df, timestamp_col, array_struct_col, filter_clause, time_window_days)
-    drift_score = compute_drift_score(new_df, "num_filtered_structs", "num_structs")
+    drift_score = compute_counts_ratio(new_df, "num_filtered_structs", "num_structs")
 
     absolute_tolerance = 1e-4
     assert pytest.approx(drift_score, abs=absolute_tolerance) == 1/3, "Expected drift score to be 1/3"
