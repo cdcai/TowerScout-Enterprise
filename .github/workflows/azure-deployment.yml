@@ -37,9 +37,9 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           # Use conditional expressions to set app name based on the branch
-          app-name: ${{ github.ref == 'refs/heads/main' && 'csels-pd-towerscrt-prod-web-01' || 'csels-pd-towerscrt-dev-web-01' }}
+          app-name: 'csels-pd-towerscrt-dev-web-01'
           
           # Use conditional expressions to set the publish profile based on the branch
-          publish-profile: ${{ secrets[env.SECRET_NAME] }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
 
           package: .  # Path to the application, deploy the entire repo
