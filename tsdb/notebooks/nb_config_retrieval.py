@@ -119,6 +119,7 @@ if "configs" in volumes:
             spark.conf.set("model_name", conf.collect()[0][env]["model_name"])
             spark.conf.set("champion_alias", conf.collect()[0][env]["champion_alias"])
             spark.conf.set("checkpoint_path", conf.collect()[0][env]["checkpoint_path"])
+            spark.conf.set("drift_threshold", conf.collect()[0][env]["drift_threshold"])
             client_id = conf.collect()[0][env]["azure_config"]["client_id"]
             writestream_trigger_args = conf.collect()[0][env]["writestream_trigger_args"]
             image_config = conf.collect()[0][env]["image_config"]
@@ -162,7 +163,8 @@ config_data = [
         client_id,
         tenant_id,
         spark.conf.get("unit_test_mode"),
-        spark.conf.get("checkpoint_path")
+        spark.conf.get("checkpoint_path"),
+        spark.conf.get("drift_threshold")
     )
 ]
 
@@ -185,7 +187,8 @@ config_columns = [
     "client_id",
     "tenant_id",
     "unit_test_mode",
-    "checkpoint_path"
+    "checkpoint_path",
+    "drift_threshold"
 ]
 
 # Create a DataFrame with the configuration values and column names
