@@ -36,19 +36,14 @@ jobs:
       - name: Log in to Azure
         uses: azure/login@v1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID_DEV }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET_DEV }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID_DEV }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
-          auth-type: SERVICE_PRINCIPAL
-          
-      - name: Log in to Azure
-        uses: azure/login@v1
+          creds: ${{ secrets.AZURE_CREDENTIALS_DEV }}
+      - name: Azure CLI script
+        uses: azure/cli@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID_DEV }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET_DEV }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID_DEV }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+          azcliversion: latest
+          inlineScript: |
+            az account show 
+            
       # Step 4: Conditional Deployment Based on Branch (Dev or Prod)
       - name: Deploy to Azure Web App (Dev or Prod)
         uses: azure/webapps-deploy@v3
