@@ -37,7 +37,7 @@ jobs:
           client-secret: ${{ secrets.AZURE_CLIENT_SECRET_DEV }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID_DEV }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
-          auth-type: sp
+          auth-type: SERVICE_PRINCIPAL
           
       - name: Log in to Azure
         uses: azure/login@v1
