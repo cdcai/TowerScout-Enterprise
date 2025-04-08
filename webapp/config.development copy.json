@@ -1,7 +1,0 @@
-// Rename this file to "config.development.json and update the values below
-{
-    "tenant_id": "CHANGE_ME",
-    "client_id": "CHANGE_ME",
-    "client_secret": "CHANGE_ME",
-    "key_vault_url": "CHANGE_ME"
-}

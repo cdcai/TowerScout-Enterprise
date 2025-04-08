@@ -1187,7 +1187,7 @@ class CircleBoundary extends PolygonBoundary {
 
 class PlaceRect {
 
-  constructor(x1, y1, x2, y2, color, fillColor, opacity, classname, listener) {
+  constructor(x1, y1, x2, y2, color, fillColor, opacity, classname, listener, classtype) {
     this.x1 = x1;
     this.y1 = y1;
     this.x2 = x2;
@@ -1196,6 +1196,7 @@ class PlaceRect {
     this.fillColor = fillColor;
     this.opacity = opacity;
     this.classname = classname;
+    this.classtype = classtype;
     this.address = "<unknown address>";
     this.map = currentMap
     this.mapRect = this.map.makeMapRect(this, listener);
@@ -1260,10 +1261,15 @@ class Tile extends PlaceRect {
     Tile_tiles = [];
   }
 
-  constructor(x1, y1, x2, y2, metadata, url) {
-    super(x1, y1, x2, y2, "#0000FF", "#0000FF", 0.0, "tile")
+  constructor(x1, y1, x2, y2, metadata, url, tileID, uuid, image_hash, classname, classtype) {
+    super(x1, y1, x2, y2, "#0000FF", "#0000FF", 0.0, "tile", classtype)
     this.metadata = metadata; // for Bing maps
-    this.url = url
+    this.url = url;
+    this.tileID = tileID;
+    this.uuid = uuid;
+    this.image_hash = image_hash;
+    this.classname = classname;
+    this.classtype = classtype;
 
     Tile_tiles.push(this);
   }
@@ -1336,14 +1342,16 @@ class Detection extends PlaceRect {
     detectionsList.innerHTML = "";
   }
 
-  constructor(x1, y1, x2, y2, classname, conf, tile, idInTile, inside, selected, secondary) {
-    super(x1, y1, x2, y2, conf === 1.0 ? "blue" : "#FF0000", conf === 1.0 ? "blue" : "#FF0000", 0.2, classname, () => {
+  constructor(x1, y1, x2, y2, classname, conf, tile, idInTile, inside, selected, secondary, classtype, uuid, image_hash, silverx1, silvery1, silverx2, silvery2) {
+    super(x1, y1, x2, y2, conf === 1.0 ? "blue" : "#FF0000", conf === 1.0 ? "blue" : "#FF0000", 0.2, classname, classtype, () => {
       this.highlight(false, true);
     })
     this.conf = conf;
     this.inside = inside;
     this.idInTile = idInTile;
     this.selected = selected;
+    this.classname = classname;
+    this.classtype = classtype;
     this.address = "";
     this.maxConf = conf; // minimum confidence across same address towers, only recorded in first
     this.firstDet = null; // first of block of same address towers
@@ -1352,6 +1360,12 @@ class Detection extends PlaceRect {
 
     this.id = Detection_detections.length;
     this.originalId = this.id;
+    this.uuid = uuid;
+    this.image_hash = image_hash;
+    this.silverx1 = silverx1;
+    this.silverx2 = silverx2;
+    this.silvery1 = silvery1;
+    this.silvery2 = silvery2;
     //console.log("Detection #" + this.id + " is " + (this.selected ? "" : "not ") + "selected");
     Detection_detections.push(this);
   }
@@ -1442,6 +1456,14 @@ class Detection extends PlaceRect {
       onoff = !this.selected;
     }
     this.selected = onoff;
+    if (this.selected){
+      this.classtype = 0;
+      this.classname = 'ct'
+    }
+    else{
+      this.classtype = 1;
+      this.classname = 'not-ct';
+    }
     document.getElementById("detcb" + this.id).checked = onoff;
     this.update();
   }
@@ -1453,6 +1475,14 @@ class Detection extends PlaceRect {
     for (let det of Detection_detections) {
       if (det.address === this.address) {
         det.selected = onoff;
+        if (det.selected){
+          det.classtype = 0;
+          det.classname = 'ct'
+        }
+        else{
+          det.classtype = 1;
+          det.classname = 'not-ct';
+        }
         document.getElementById("detcb" + det.id).checked = onoff;
         det.update();
       }
@@ -1469,9 +1499,9 @@ class Detection extends PlaceRect {
 
   showAddr(onoff) {
     // Do not change the display to 'none' if the main addrli item is displaying as one of the firstdet is visible
-    if ((document.getElementById("addrli" + this.id).style.display == 'none') || (document.getElementById("addrli" + this.id).style.display == '')) {
+
       document.getElementById("addrli" + this.id).style.display = onoff ? "block" : "none";
-    }
+
   }
 
   static showDetection(id, center) {
@@ -1929,6 +1959,46 @@ async function pollSilverTable() {
 }
 }
 
+async function pollquerystatus(startTime) {
+  
+  console.log("Checking the merge query execution status....");
+  const url = '/pollquerystatus';  // Endpoint URL
+  const options = { method: 'POST', body: formData };  // Request body
+  const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
+  const RESTART_DELAY = 10000;  // Restart delay in milliseconds (e.g., 10 seconds)
+  try {
+    while (true) {
+      // console.log('Making request...');
+      const result = await fetchWithTimeout(url, options, TIMEOUT_DURATION);
+      if (result.status === 502) {
+        console.log('Error during Polling merge query status:' + error);
+        // In case of error, wait for 10 seconds before retrying
+        console.log('Waiting for 10 seconds before retrying...');
+        await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+        return pollquerystatus();
+      }
+      if (result) {
+        console.log('Merge completed successfully for ' + Detection_detections.length.toString() + ' detections.' );
+        // disableProgress(0,0);
+        return true;
+      } else {
+        console.log('Polling Polling merge query status - Request failed or timed out');
+      }
+
+      // Wait before sending another request (restart cycle after 10 seconds)
+      console.log('Waiting for 10 seconds before retrying...');
+      await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+      return pollquerystatus();
+
+  }
+  } catch (error) {
+    console.log('Error during pollquerystatus request:' + error);
+    // In case of error, wait for 10 seconds before retrying
+    console.log('Waiting for 10 seconds before retrying...');
+    await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+    return pollquerystatus();
+  }
+}
 
 async function pollSilverTableSimple() {
  
@@ -2042,11 +2112,12 @@ function processObjects(result, startTime) {
 
   // make detection objects
   for (let r of result) {
-    if (r['class'] === 0) {
+    if (r['class'] === 0) { // detection
       let det = new Detection(r['x1'], r['y1'], r['x2'], r['y2'],
-        r['class_name'], r['conf'], r['tile'], r['id_in_tile'], r['inside'], r['selected'], r['secondary']);
-    } else if (r['class'] === 1) {
-      let tile = new Tile(r['x1'], r['y1'], r['x2'], r['y2'], r['metadata'], r['url']);
+        r['class_name'], r['conf'], r['tile'], r['id_in_tile'], r['inside'], r['selected'], r['secondary'], r['class'], r['uuid'], r['image_hash'],
+        r['silverx1'], r['silvery1'], r['silverx2'], r['silvery2']);
+    } else if (r['class'] === 10) { // tile
+      let tile = new Tile(r['x1'], r['y1'], r['x2'], r['y2'], r['metadata'], r['url'], r['id'], r['uuid'], r['image_hash'], r['class_name'], r['class']);
     }
   }
   //console.log("" + Detection_detections.length + " detections.")
@@ -2369,13 +2440,22 @@ function augmentDetections() {
                 let detectionIndex = batchIndex * 99 + i;
                 Detection_detections[detectionIndex].augment(addr);
               } else {
+                if(result.batchItems[i]['error'] != "")
+                {
+                  console.log(`${result.batchItems[i]['error'].code} at ${batchIndex * 99 + i}. Please try again`);
+                  return;
+                }
+                
                 console.log(`No address found for batch item ${batchIndex * 99 + i}`);
               }
             }
             afterAugment();
           },
-          error: function (error) {
-            console.error("Error in batch reverse geocode:", error);
+          error: function (error, status) {
+            if(error.status == 500){
+              console.error("Internal Error in batch reverse geocode. Please try again.", error);
+            }
+            
           }
         });
       }, 1000 * batchIndex);
@@ -2558,9 +2638,98 @@ function download_kml() {
   download("detections.kml", text);
 }
 
+
 //
 // model upload functionality
 //
+
+
+function PromoteSilverToGold(){
+  try{
+    nd = Detection_detections.length
+    if (nd > 0){
+      enableProgress(nd);
+      setProgress(0);
+      startTime = performance.now();
+      console.log("Building detections List with updated selected/unselected values...")
+      tileRecords = [];
+      //Loop through the Tiles
+      for (let Tile of Tile_tiles) {
+        
+        // Filter detections for the tile using uuid and image_hash
+                         
+        DetectionsForTile = Detection_detections.filter(item => (item.uuid === Tile.uuid) && (item.image_hash === Tile.image_hash));              
+        bboxes = [];
+        // Looping through the updated(selected/unselected) detection array elements
+        for (let det of DetectionsForTile) {
+          // Exclude only newly added items
+          if (det.idInTile !== -1) {
+            bboxes.push({
+              'uuid': det.uuid,
+              'image_hash': det.image_hash,
+              'conf': det.conf,
+              'class': det.classtype,
+              'x1': det.silverx1,
+              'x2': det.silverx2,
+              'y1': det.silvery1,
+              'y2': det.silvery2,
+              'class_name': det.classname,
+              'secondary': det.secondary,
+            });
+            //console.log(" including detection #" + (det.originalId));
+          }
+
+        }
+        tileRecords.push({
+          'uuid': Tile.uuid,
+          'image_hash': Tile.image_hash,
+          'bboxes': bboxes,
+
+        })
+    }
+  formData.delete("SilverDetections"); 
+  formData.delete("bounds");
+  formData.delete("boundaries");
+  formData.delete("include");
+  formData.delete("additions");
+  formData.append("SilverDetections", JSON.stringify(tileRecords));
+  console.log('Promoting ' + nd.toString() + ' detections to the Gold Table......');
+  // Submit request to excute query and get the statement_id
+  fetch('/promoteSilverToGold', { method: "POST", body: formData })
+    .then(response => response.json())
+    .then(data => {
+
+    if (data['SQLstatement_id'] != "") {
+      formData.delete("SQLstatement_id");
+      formData.append("SQLstatement_id", data['SQLstatement_id']);
+       // wait for 10 seconds before starting the poll 
+      
+      setTimeout(pollquerystatus(startTime), 10000);
+      disableProgress((performance.now() - startTime) / 1000, nd);
+        // console.log('Detections successfully promoted to the Gold Table.'); 
+      }
+      else{
+        disableProgress(0,0);
+        throw new Error(`Silver to Gold promotion was not successull`);
+        
+      }
+    })
+    .catch(error => {
+      console.log(error);
+      disableProgress(0,0);
+    });
+  
+  }
+}
+    catch (error) {
+      console.log('An error occurred PromoteSilverToGold: ' + error);  
+      disableProgress(0,0);
+    }
+    finally {
+      
+    }
+  }
+ 
 
 function uploadModel() {
   let model = document.getElementById("upload_model").files[0];
