@@ -35,6 +35,12 @@ import asyncio
 import jwt
 import msal
 from datetime import timedelta
+import numpy as np
+import random
+import pandas as pd
+from azure.core.exceptions import ClientAuthenticationError
+
+config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
 
 from flask import (
@@ -586,7 +592,10 @@ def get_objects():
                 object["y2"] = tile["lat"] + 0.5 * tile["h"] - object["y2"] * tile["h"]
                 object["tile"] = tile["id"]
                 object["id_in_tile"] = i
+                object["class"] = 0
                 object["selected"] = object["secondary"] >= 0.35
+                object["uuid"] = tile["uuid"]
+                object["image_hash"] = tile["image_hash"]
 
                 # print(" output:",str(object))
             results += result
@@ -605,21 +614,26 @@ def get_objects():
         if len(results) > 1:
             i = 0
             while i < len(results) - 1:
-                if (
-                    ts_maps.get_distance(
+                distancefromnext = ts_maps.get_distance(
                         results[i]["x1"],
                         results[i]["y1"],
                         results[i + 1]["x1"],
                         results[i + 1]["y1"],
                     )
+                if (
+                    distancefromnext
                     < 1
                 ):
+                    print("distancefromnext: " + str(distancefromnext))
                     print(" removing 1 duplicate result")
+                    print(" duplicate result removed: " + str({jsonify(results[i+1])}))
                     results.remove(results[i + 1])
                 else:
                     i += 1
 
         # prepend a pseudo-result for each tile, for debugging
+        # Adding tiles collection with corresponding id. id is needed for Silver to Gold Merge
+        # Using 10 for class in order to handle class values of 0/1 for selected/unselected detections while Promoting detections to Gold
         tile_results = []
         for tile in tiles:
             tile_results.append(
@@ -628,12 +642,15 @@ def get_objects():
                     "y1": tile["lat"] + 0.5 * tile["h"],
                     "x2": tile["lng"] + 0.5 * tile["w"],
                     "y2": tile["lat"] - 0.5 * tile["h"],
-                    "class": 1,
+                    "class": 2,
                     "class_name": "tile",
                     "conf": 1,
                     "metadata": tile["metadata"],
                     "url": tile["url"],
                     "selected": True,
+                    "tile": tile["id"],
+                    "uuid": tile["uuid"],
+                    "image_hash": tile["image_hash"]
                 }
             )
 
@@ -942,6 +959,10 @@ def fetchBoundingBoxResults():
             # adjust xyxy normalized results to lat, long pairs
             for i, object in enumerate(result):
                 # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
+                object["silverx1"] = object["x1"]
+                object["silverx2"] = object["x2"]
+                object["silvery1"] = object["y1"]
+                object["silvery2"] = object["y2"]
                 object["x1"] = tile["lng"] - 0.5 * tile["w"] + object["x1"] * tile["w"]
                 object["x2"] = tile["lng"] - 0.5 * tile["w"] + object["x2"] * tile["w"]
                 object["y1"] = tile["lat"] + 0.5 * tile["h"] - object["y1"] * tile["h"]
@@ -949,11 +970,9 @@ def fetchBoundingBoxResults():
                 object["tile"] = tile["id"]
                 object["id_in_tile"] = i
                 object["selected"] = object["secondary"] >= 0.35
-                # print(f"object['x1']: {object['x1']}")
-                # print(f"object['y1']: {object['y1']}")
-                # print(f"object['y2']: {object['y2']}")
-                # print(f"object['x1']: {object['x1']}")
-                # # print(" output:",str(object))
+                object["uuid"] = tile["uuid"]
+                object["image_hash"] = tile["image_hash"]
+                
             results += result
 
         # mark results out of bounds or polygon
@@ -966,25 +985,29 @@ def fetchBoundingBoxResults():
         # sort the results by lat, long, conf
         results.sort(key=lambda x: x["y1"] * 2 * 180 + 2 * x["x1"] + x["conf"])
 
-        # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
-        if len(results) > 1:
-            i = 0
-            while i < len(results) - 1:
-                if (
-                    ts_maps.get_distance(
-                        results[i]["x1"],
-                        results[i]["y1"],
-                        results[i + 1]["x1"],
-                        results[i + 1]["y1"],
-                    )
-                    < 1
-                ):
-                    print(" removing 1 duplicate result")
-                    results.remove(results[i + 1])
-                else:
-                    i += 1
+        # # Commenting out this code - this code removes coordinates with less than 1 mile distance between them
+        # # assuming them to be duplicates. This is the original code.
+        # # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
+        # if len(results) > 1:
+        #     i = 0
+        #     while i < len(results) - 1:
+        #         if (
+        #             ts_maps.get_distance(
+        #                 results[i]["x1"],
+        #                 results[i]["y1"],
+        #                 results[i + 1]["x1"],
+        #                 results[i + 1]["y1"],
+        #             )
+        #             < 1
+        #         ):
+        #             print(" removing 1 duplicate result")
+        #             results.remove(results[i + 1])
+        #         else:
+        #             i += 1
 
-        # prepend a pseudo-result for each tile, for debugging
+        # Adding tiles collection with corresponding id. id is needed for Silver to Gold Merge
+        # Using 10 for class in order to handle class values of 0/1 for selected/unselected detections while Promoting detections to Gold
+       
         tile_results = []
         for tile in tiles:
             tile_results.append(
@@ -993,12 +1016,15 @@ def fetchBoundingBoxResults():
                     "y1": tile["lat"] + 0.5 * tile["h"],
                     "x2": tile["lng"] + 0.5 * tile["w"],
                     "y2": tile["lat"] - 0.5 * tile["h"],
-                    "class": 1,
+                    "class": 10,
                     "class_name": "tile",
                     "conf": 1,
                     "metadata": tile["metadata"],
                     "url": tile["url"],
                     "selected": True,
+                    "tile": tile["id"],
+                    "uuid": tile["uuid"],
+                    "image_hash": tile["image_hash"]
                 }
             )
 
@@ -1034,6 +1060,89 @@ def fetchBoundingBoxResults():
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
     except SyntaxError as e:
             logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+
+@app.route('/promoteSilverToGold', methods=['POST'])
+def promoteSilverToGold():
+    try:
+        # Example input JSON body that includes Silver and Gold table names and bbox dictionary
+        
+        SilverDetections = json.loads(request.form.get("SilverDetections"))
+        
+        data = getSilverGoldEndPoints()
+        silver_table = data['silver_table_name']
+        gold_table = data['gold_table_name']
+        catalog = data['catalog']
+        schema = data['schema']
+        request_id = request.form.get("request_id")
+        user_id = request.form.get("user_id")
+        stInstance = SilverTable()
+        statement_id = ""
+        print(f"SilverDetections:{SilverDetections}")
+        # Construct dynamic SQL query based on bbox_dict
+        statement_id = stInstance.PerformSilverToGoldmerge(catalog, schema, silver_table, gold_table, SilverDetections, user_id, request_id)
+        
+        return jsonify({"SQLstatement_id": statement_id})
+           
+    except Exception as e:
+        logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
+    except Exception as e:
+        logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
+    except SyntaxError as e:
+        logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
+    
+    
+@app.route('/pollquerystatus', methods=['POST'])
+def pollquerystatus():
+    try:
+        success = ""
+        statement_id = request.form.get("SQLstatement_id")
+        stinstance = SilverTable()
+        success = stinstance.poll_query_status(statement_id)
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+        return jsonify({"success": success})
+
+    except Exception as e:
+        logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
+    except Exception as e:
+        logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
+    except SyntaxError as e:
+        logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
+    finally:
+        return jsonify({"success": success})
+def getSilverGoldEndPoints():
+    try:
+        tablesConfigFile = config_dir + "/config.silvertogold.json"
+        with open(tablesConfigFile, "r") as file:
+            data = json.load(file)
+        return data
+    except Exception as ex:
+        logging.error("Error at %s", "towerscout.py(getSilverGoldTableNames)", exc_info=ex)
+
+
+def addSplitLabel(Detections):
+    try:
+        print(f"Detections: {Detections[0]}")
+   # Choices and corresponding probabilities
+        split_labels = ['train', 'val', 'test']
+        probabilities = [0.8, 0.1, 0.1]
+    # Function to randomly assign a split label based on probabilities
+        def assign_split_label():
+            return random.choices(split_labels, probabilities)[0]
+        
+    # Add the 'split_label' to each record in TileRecords
+        for record in Detections:
+            record['split_label'] = assign_split_label()
+        return Detections
+    except Exception as e:
+        logging.error("Error at %s", "towerscout.py(addSplitLabel)", exc_info=e)
 
 def get_current_user():
    #Implementing for azure app services
@@ -1109,15 +1218,22 @@ def drawResult(r, im):
 @app.route("/getazmaptransactions", methods=["GET"])
 def getazmaptransactions():
     try:
-
+        result = ""
         result = azTransactions.getAZTransactionCount(2)
 
         return result
+    except ClientAuthenticationError as e:
+        logging.error("ClientAuthenticationError at %s", "getazmaptransactions towerscout.py", exc_info=e)
+        result="ClientAuthenticationError"
+        
     except Exception as e:
         logging.error("Error at %s", "getazmaptransactions towerscout.py", exc_info=e)
+        result = "Error"
     except RuntimeError as e:
-        logging.error("Error at %s", "getazmaptransactions towerscout.py", exc_info=e)
-
+        logging.error("RuntimeError at %s", "getazmaptransactions towerscout.py", exc_info=e)
+        result = "RuntimeError"
+    finally:
+        return result
 
 # download results as dataset for formal training /testing
 @app.route("/getdataset", methods=["POST"])
@@ -1421,7 +1537,12 @@ if __name__ == "__main__":
     # app.logger.setLevel(logging.DEBUG)
     app.permanent_session_lifetime = timedelta(minutes=60)  # Adjust this as needed
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
+    # The maximum number of form parts (default is 5000)
+    # app.config['MAX_FORM_PART_SIZE'] = 1 * 1024 * 1024 # Set max size for individual form parts to 1 MB
     app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False  # Disable pretty-printing for large JSON
+    app.config['MAX_FORM_PARTS'] = None
+    app.config['MAX_FORM_MEMORY_SIZE'] = None
+    # 1 * 1024 * 1024 # Set max size for individual form parts to 1 MB
 
 
 

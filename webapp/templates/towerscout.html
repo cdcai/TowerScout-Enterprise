@@ -91,8 +91,9 @@ Licensed under CC-BY-NC-SA-4.0
         <label for="azure">Azure Maps</label><br>
         <input type="radio" id="bing" name="uis" value="bing" >
         <label for="bing">Bing Maps</label><br>
-        <input type="radio" id="upload" name="uis" value="upload">
-        <label for="upload">Image upload</label><br>
+        <!-- <input type="radio" id="upload" name="uis" value="upload">
+        <label for="upload">Image upload</label>
+        <br> -->
       </form>
       <br>
       Backend map provider:<br>
@@ -174,8 +175,7 @@ Licensed under CC-BY-NC-SA-4.0
     <div class="fsave" id="fsave" style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;font-size: smaller;">
       <button class="btn" onclick="download_csv(),download_kml()" style="width:50%; height:100%">Download
         results</button>
-      <button class="btn" onclick="download_dataset()" style="width:50%; height:100%">Download
-        dataset</button>
+      <button class="btn" onclick="PromoteSilverToGold()" style="width:50%; height:100%">Promote to Gold</button>
       <!-- <button class="btn" onclick="document.getElementById('upload_dataset').click()"
         style="width:33%; height:100%" hidden>Restore
         dataset</button> -->
