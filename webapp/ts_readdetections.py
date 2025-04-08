@@ -1,7 +1,9 @@
 from databricks import sql
 from requests.exceptions import Timeout, RequestException
-import os, time, logging, requests, ts_secrets, json
+import os, time, logging, requests, ts_secrets, json, asyncio
 from databricks.sql.exc import RequestError
+from numpy.random import choice
+
 
 DATABRICKS_INSTANCE = ts_secrets.devSecrets.getSecret('DATABRICKS-INSTANCE')
 PERSONAL_ACCESS_TOKEN = ts_secrets.devSecrets.getSecret('DB-PERSONAL-ACCESS-TOKEN')
@@ -23,13 +25,13 @@ class SilverTable:
         while attempt < retries:
             try:
                 max_retries = tile_count * 2
-                job_done = self.poll_SilverTableJobDone(
+                jobdone = self.poll_SilverTableJobDone(
                     request_id, user_id, tile_count, max_retries
                 )
                 # jobdone = poll_table_for_record_count(
                 # request_id, user_id, tile_count, max_retries
                 # )
-                if job_done:
+                if jobdone:
                     # # Testing existing data
                     # user_id = 'cnu4'
                     # request_id = '008d35a3'
@@ -254,6 +256,7 @@ class SilverTable:
                     cursor.close()
                 if connection:
                     connection.close()
+    # Using this one
     def fetchbboxesWithoutPolling(self, request_id, user_id, tiles_count):
         logging.info("Startinng ts_readdetections.py(fetchbboxes)")
         attempt = 0
@@ -261,17 +264,18 @@ class SilverTable:
         while attempt < retries:
             try:
                 max_retries = tiles_count * 2
-                job_done = True
+                jobdone = True
                 # jobdone = poll_table_for_record_count(
                 # request_id, user_id, tile_count, max_retries
                 # )
-                if job_done:
+                if jobdone:
                     # # Testing existing data
                     # user_id = 'cnu4'
                     # request_id = '008d35a3'
                     sql_query  = ("SELECT bboxes, "
                     "concat(uuid,'.jpeg') AS filename, "
-                    "image_path AS url "
+                    "image_path AS url, "
+                    "uuid, image_hash "
                     "FROM edav_dev_csels.towerscout.test_image_silver where user_id = '" + user_id + "' AND request_id = '" + request_id + "' "
                     "ORDER BY image_id")
                     print(f"sql_query: {sql_query}")
@@ -736,6 +740,8 @@ class SilverTable:
                         'class':int(item['class']),
                         'class_name':item['class_name'],
                         'secondary':float(item['secondary']),
+                        'uuid': result[3],
+                        'image_hash': result[4],
                         }
                         for item in bboxarray
                     ]
@@ -759,6 +765,8 @@ class SilverTable:
                     tile["detections"] = boxes
                     tile["filename"] = result[1]
                     tile["url"] = result[2]
+                    tile["uuid"] = result[3]
+                    tile["image_hash"] = result[4]
                 print(f" batch of {len(tile_batch)} processed")
 
             return results
@@ -905,5 +913,301 @@ class SilverTable:
             logging.error("Error at %s", "get_bboxesfortiles ts_readdetections.py", exc_info=e)
         except SyntaxError as e:
             logging.error("Error at %s", "ts_readdetections.py(get_bboxesfortiles)", exc_info=e)
+    # Working
+    # Function to dynamically construct the SQL query and execute the merge
+    def PerformSilverToGoldmerge(self, catalog, schema, silver_table, gold_table, silver_detections, user_id, request_id):
+        try:
+
+            # Generate SQL-compatible values string for the JSON data
+            values_str = ', '.join([f"('{row['uuid']}', '{row['image_hash']}', '{json.dumps(row['bboxes'])}', '{choice(a=['train', 'val', 'test'], p=[0.8, 0.1, 0.1])}')"
+                         for row in silver_detections])
+            print("values_Str:", values_str)
+            
+         # Define the raw SQL query (MERGE query)
+            merge_query = f"""
+            WITH silverdetections AS (
+                SELECT * FROM (VALUES {values_str}) AS silverdetections(uuid, image_hash, bboxes, split_label)
+            )
+            MERGE INTO {gold_table} AS target
+            USING (
+        SELECT source.*, silverdetections.image_hash AS sd_image_hash, 
+        from_json(silverdetections.bboxes, 'ARRAY<STRUCT<x2: FLOAT, x1: FLOAT, y2: FLOAT, y1: FLOAT, class_name: STRING, conf: FLOAT, secondary: FLOAT, class: INT>>') AS sd_bboxes,
+        silverdetections.split_label AS sd_split_label
+        FROM {silver_table} AS source
+        LEFT JOIN silverdetections
+        ON source.image_hash = silverdetections.image_hash
+        WHERE source.user_id = '{user_id}' AND source.request_id = '{request_id}'
+        ) AS source
+            ON 
+            target.image_hash = source.image_hash
+            WHEN MATCHED THEN
+                UPDATE SET
+                target.user_id = source.user_id,
+                target.request_id = source.request_id,
+                target.uuid = source.uuid,
+                target.reviewed_time = CURRENT_TIMESTAMP(),
+                target.bboxes = source.sd_bboxes,
+                target.image_hash = source.image_hash,
+                target.image_path = source.image_path,
+                target.split_label = source.sd_split_label
+            WHEN NOT MATCHED THEN
+                INSERT (user_id, request_id, uuid, reviewed_time, bboxes, image_hash, image_path, split_label)
+                VALUES (source.user_id, source.request_id, source.uuid, CURRENT_TIMESTAMP(), source.sd_bboxes, source.image_hash, source.image_path, source.sd_split_label);
+            """
 
 
+            print(f"merge_query: {merge_query}")
+        
+            response_data = self.execute_sql_query(merge_query, catalog=catalog, schema=schema)
+            print(f"execute_sql_query response: {response_data}")
+            return response_data
+            
+            
+        except Exception as ex:
+            logging.error("Error at %s", "ts_readdetections.py(PerformSilverToGoldmerge)", exc_info=ex)
+        
+    # Working
+    def execute_sql_query(self, sql_query, catalog, schema):
+        try:
+           
+            headers = {
+                "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}",
+                "Content-Type": "application/json"
+            }
+    
+            body = {
+                "warehouse_id": WAREHOUSE_ID,
+                "statement": sql_query,
+                "catalog": catalog,
+                "schema": schema
+            }
+    
+            response = requests.post(SQL_STATEMENTS_ENDPOINT, json=body, headers=headers)
+            statement_id = ""
+            logging.info(f"executed merge query: {response.json()}")
+            if response.status_code == 200:
+
+                statement_id = response.json().get('statement_id')
+                return statement_id
+           
+        except sql.InterfaceError as e:
+            logging.error(
+                    "Interface Error at %s",
+                    "ts_readdetections.py(execute_sql_queryes)",
+                    exc_info=e
+                )
+            
+        except RequestError as e:
+            logging.error(
+                    "RequestError at %s",
+                    "ts_readdetections.py(execute_sql_queryes)",
+                    exc_info=e
+                    )
+           
+        except RequestException as e:
+            logging.error(
+                    "RequestException at %s",
+                    "ts_readdetections.py(execute_sql_queryes)",
+                    exc_info=e
+                    )
+            
+        except sql.DatabaseError as e:
+            logging.error(
+                    "Database Error at %s",
+                    "ts_readdetections.py(execute_sql_queryes)",
+                    exc_info=e
+                )
+            
+        except (Timeout, ConnectionError) as e:
+            logging.error(
+                    "Timeout,ConnectionError at %s",
+                    "ts_readdetections.py(execute_sql_queryes)",
+                    exc_info=e
+                )
+            
+        except sql.OperationalError as e:
+            logging.error(
+                    "Operational Error at %s",
+                    "ts_readdetections.py(execute_sql_queryes)",
+                    exc_info=e
+                )
+            
+        except AttributeError as e:
+            logging.error(
+                    "AttributeError Error at %s", "ts_readdetections.py(execute_sql_queryes)", exc_info=e
+                )  
+            
+        except Exception as e:
+            logging.error(
+                    "Error at %s", "ts_readdetections.py(execute_sql_queryes)", exc_info=e
+                )
+            
+        except RuntimeError as e:
+            logging.error("Error at %s", "ts_readdetections.py(execute_sql_queryes)", exc_info=e)
+            
+        except SyntaxError as e:
+            logging.error("Error at %s", "ts_readdetections.py(execute_sql_query)", exc_info=e)
+        finally:
+            return statement_id   
+      
+ 
+    def poll_query_status(self, statement_id, delay=5):
+        try:
+            while True:
+                try:
+                    success, error_message = self.check_query_status(statement_id)
+                    if success:
+                        print("Query succeeded.")
+                        return True
+                    elif success is False:
+                        print(f"Query failed: {error_message}")
+                        time.sleep(delay)  # Wait before retrying
+                        return False
+                    else:
+                        print("Query still running... Retrying in 5 seconds.")
+                        time.sleep(delay)
+                        return False
+
+                except RequestError as e:
+                        print("RequestError poll_query_Status. Retrying...")
+                   
+                        time.sleep(delay)  # Wait before retrying
+                        return False
+                except Exception as e:
+                    print(f"Exception poll_query_Status. Retrying...{e}")
+               
+                    time.sleep(delay)  # Wait before retrying
+                    return False
+                except (Timeout,ConnectionError) as e:
+                    print("Timeout,ConnectionError occurred poll_query_Status. Retrying...")
+             
+                    time.sleep(delay)  # Wait before retrying
+                    return False
+                except SyntaxError as e:
+                    logging.error("SyntaxError at %s","ts_readdetections.py(poll_query_Status)",
+                    exc_info=e)
+                    time.sleep(delay)
+                    return False
+                except RequestException as e:
+                    print("RequestException poll_query_Status. Retrying...")
+               
+                    time.sleep(delay)  # Wait before retrying
+                    return False
+        except sql.InterfaceError as e:
+            logging.error(
+                "Interface Error at %s",
+                "ts_readdetections.py(poll_query_status)",
+                exc_info=e
+            )
+            
+        except sql.DatabaseError as e:
+            logging.error(
+                "Database Error at %s",
+                "ts_readdetections.py(poll_query_status)",
+                exc_info=e
+            )
+            
+        except sql.OperationalError as e:
+            logging.error(
+                "Operational Error at %s",
+                "ts_readdetections.py(poll_query_status)",
+                exc_info=e
+            )
+            
+        except Exception as e:
+           
+            logging.error(
+                "Error at %s",
+                "ts_readdetections.py(poll_query_status)",
+                exc_info=e
+            )
+           
+        except RuntimeError as e:
+            logging.error("Error at %s", "ts_readdetections.py(poll_query_status)", exc_info=e)
+        except SyntaxError as e:
+            logging.error("Error at %s", "ts_readdetections.py(poll_query_status)", exc_info=e)
+        finally:
+            print("Finally. Retrying...")
+
+
+    def check_query_status(self, statement_id):
+        url = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements/{statement_id}'
+        headers = {
+            "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}"
+        }
+     
+        try:
+            response = requests.get(url, headers=headers)
+            error_message = ""
+            if response.status_code == 200:
+                status = response.json()
+                execution_state = status.get('status')['state']  # "RUNNING", "SUCCEEDED", "FAILED", etc.
+                error_message = status.get('error_message', None)
+                print(f"Query execution state: {execution_state}")
+                if execution_state == "SUCCEEDED":
+                    print("Query completed successfully.")
+                    return True, None
+                elif execution_state == "FAILED":
+                    print(f"Query failed: {error_message}")
+                    return False, error_message
+                else:
+                    print("Query is still running...")
+                    return None, None  # Query is still running, continue polling
+                
+            else:
+                print(f"Error fetching query status: {response.text}")
+                return False, error_message
+        except sql.InterfaceError as e:
+            logging.error(
+                    "Interface Error at %s",
+                    "ts_readdetections.py(check_query_status)",
+                    exc_info=e
+                )
+            return False, None
+        except RequestError as e:
+            logging.error(
+                    "RequestError at %s",
+                    "ts_readdetections.py(check_query_status)",
+                    exc_info=e
+                    )
+            return False, None
+        except RequestException as e:
+            logging.error(
+                    "RequestException at %s",
+                    "ts_readdetections.py(check_query_status)",
+                    exc_info=e
+                    )
+            return False, None
+        except sql.DatabaseError as e:
+            logging.error(
+                    "Database Error at %s",
+                    "ts_readdetections.py(check_query_status)",
+                    exc_info=e
+                )
+            return False, None
+        except (Timeout, ConnectionError) as e:
+            logging.error(
+                    "Timeout,ConnectionError at %s",
+                    "ts_readdetections.py(check_query_status)",
+                    exc_info=e
+                )
+            return False, None
+        except sql.OperationalError as e:
+            logging.error(
+                    "Operational Error at %s",
+                    "ts_readdetections.py(check_query_status)",
+                    exc_info=e
+                )
+            return False, None  
+        except Exception as e:
+            logging.error(
+                    "Error at %s", "ts_readdetections.py(check_query_status)", exc_info=e
+                )
+            return False, None
+        except RuntimeError as e:
+            logging.error("Error at %s", "ts_readdetections.py(check_query_status)", exc_info=e)
+            return False, None
+        except SyntaxError as e:
+            logging.error("Error at %s", "ts_readdetections.py(check_query_status)", exc_info=e)
+            return False, None
+        
