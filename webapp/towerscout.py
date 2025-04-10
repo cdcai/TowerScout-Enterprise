@@ -25,20 +25,16 @@ from ts_zipcode import Zipcode_Provider
 from ts_events import ExitEvents
 import ts_maps
 from ts_azmaps import AzureMap
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
 from ts_azmapmetrics import azTransactions
-from authlib.integrations.flask_client import OAuth
 from ts_readdetections import SilverTable
 from functools import reduce
 import asyncio
 import jwt
 import msal
 from datetime import timedelta
-import numpy as np
 import random
-import pandas as pd
 from azure.core.exceptions import ClientAuthenticationError
+import ts_secrets
 
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
@@ -669,12 +665,7 @@ def get_objects():
 
         exit_events.free(id(session))
         print("Before results = json.dumps(results) towerscout.py line 638")
-        # with open('large_results_data.json', 'r') as f:
-        #     results = json.load(f)  # You could use ijson if the file is too large
-        # print("After results = json.dumps(results) towerscout.py line 640")  
-        # session["results"] = results
-        # # Return the loaded data as JSON response
-        # return jsonify(results)
+        
         results = json.dumps(results)
         print("After results = json.dumps(results) towerscout.py line 640")
         session["results"] = results
@@ -1043,10 +1034,7 @@ def fetchBoundingBoxResults():
 
         exit_events.free(id(session))
         print("Before results = json.dumps(results) towerscout.py line 638")
-        # with open('large_results_data.json', 'r') as f:
-        #     results = json.load(f)  # You could use ijson if the file is too large
-        # print("After results = json.dumps(results) towerscout.py line 640")  
-        # session["results"] = results
+        
         # # Return the loaded data as JSON response
         exit_events.free(id(session))
         # return jsonify(results)
@@ -1119,9 +1107,12 @@ def pollquerystatus():
         return jsonify({"success": success})
 def getSilverGoldEndPoints():
     try:
-        tablesConfigFile = config_dir + "/config.silvertogold.json"
-        with open(tablesConfigFile, "r") as file:
-            data = json.load(file)
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            data = json.loads(os.getenv('silvertogold'))
+        else:     
+            tablesConfigFile = config_dir + "/config.silvertogold.json"
+            with open(tablesConfigFile, "r") as file:
+                data = json.load(file)
         return data
     except Exception as ex:
         logging.error("Error at %s", "towerscout.py(getSilverGoldTableNames)", exc_info=ex)
@@ -1527,10 +1518,11 @@ if __name__ == "__main__":
     # read maps api key (not in source code due to security reasons)
     # has to be an api key with access to maps, staticmaps and places
     # todo: deploy CDC-owned key in final version
-    with open("apikey.txt") as f:
-        azure_api_key = f.readline().split()[0]
-        bing_api_key = f.readline().split()[0]
-        f.close
+    mapkeys = ts_secrets.devSecrets.getSecret("AZUREMAPKEYS")
+    
+    azure_api_key = mapkeys.split(";")[0]
+    bing_api_key = mapkeys.split(";")[1]
+    
     app.config['DEBUG'] = True
     app.config['timeout'] = 3600
     # logging.basicConfig(level=logging.DEBUG)
