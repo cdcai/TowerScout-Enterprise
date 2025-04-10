@@ -18,17 +18,18 @@ class devSecrets:
      
     #  SP info to access Key Vault
     # Set the environment variable
-      # env = os.getenv('ENVIRONMENT', 'development')
-      # Read the json config file
-      # Open the JSON file for reading
-      devConfigFile = config_dir + '/config.development.json'
-      with open(devConfigFile, 'r') as file:
-        data = json.load(file)  # Load the JSON data into a Python dictionary
+      # Check if the app is running in an Azure environment
+      if 'WEBSITE_SITE_NAME' in os.environ:
+        data = json.loads(os.getenv('keyvault'))
+      else:
+        devConfigFile = config_dir + '/config.keyvault.json'
+        with open(devConfigFile, 'r') as file:
+          data = json.load(file)  # Load the JSON data into a Python dictionary
 
-        tenant_id = data['tenant_id']
-        client_id = data['client_id']
-        client_secret = data['client_secret']
-        key_vault_url = data['key_vault_url']     
+      tenant_id = data['tenant_id']
+      client_id = data['client_id']
+      client_secret = data['client_secret']
+      key_vault_url = data['key_vault_url']     
 
       # Get the access for the Key Vault using the SP
       credential = ClientSecretCredential(tenant_id, client_id, client_secret)
