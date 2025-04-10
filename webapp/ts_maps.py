@@ -291,7 +291,6 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
 
             else:
                 # Create a unique container
-                imageConfigFile = config_dir + "/config.imagedirectory.json"
                 upload_dir = image_upload_dir
                 
                 directoryname = upload_dir + unique_directory
@@ -344,47 +343,22 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
     except SyntaxError as e:
             logging.error("Error at %s", "fetch ts_maps.py", exc_info=e)            
 
-async def fetchimagemetadata(session, fname, i, mapType, unique_directory, tile, blob_service_client):
-    try:
-      
-        # write the file
-        blobname = fname+str(i)+(".meta.txt")
-
-        # Get the unique container
-        imageConfigFile = config_dir + "/config.imagedirectory.json"
-        with open(imageConfigFile, "r") as file:
-            data = json.load(file)  # Load the JSON data into a Python dictionary
-
-            upload_dir = data["upload_dir"]
-            directoryname = upload_dir + unique_directory
-
-        content = json.dumps(getTileMetaDatatoUpload(tile,mapType))
-
-        # Code to add the .txt file
-            
-        blob_url = asyncio.create_task(
-            uploadImagetodirUnqFileName(
-                content, "ddphss-csels", directoryname, blobname, blob_service_client
-            )
-        )
-    except Exception as e:
-        logging.error("Error at %s", "fetchimagemetadata ts_maps.py", exc_info=e)
-    except RuntimeError as e:
-        logging.error("Error at %s", "fetchimagemetadata ts_maps.py", exc_info=e)
-    except SyntaxError as e:
-            logging.error("Error at %s", "fetchimagemetadata ts_maps.py", exc_info=e)            
-
 async def getuploadlocationinfo():
     try:
         
-        imageConfigFile = config_dir + "/config.imagedirectory.json"
-        with open(imageConfigFile, "r") as file:
-            data = json.load(file)  # Load the JSON data into a Python dictionary
         global upload_containter
         global image_upload_dir
         global file_trigger_dir
         global inference_object_state
-
+        
+         # Check if the app is running in an Azure environment
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            data = json.loads(os.getenv('imagedirectory'))
+            
+        else:
+            imageConfigFile = config_dir + "/config.imagedirectory.json"
+            with open(imageConfigFile, "r") as file:
+                data = json.load(file)  # Load the JSON data into a Python dictionary
         upload_containter = data["upload_container"]
         image_upload_dir = data["image_upload_dir"]
         file_trigger_dir = data["file_trigger_dir"]
@@ -398,13 +372,12 @@ async def getuploadlocationinfo():
 
 async def getEnvironmentinfo():
     try:
-        
-        environmentconfigfile = config_dir + "/config.environment.json"
-        with open(environmentconfigfile, "r") as file:
-            data = json.load(file)  # Load the JSON data into a Python dictionary
         global var_environment
-        
-        return data["ENVIRONMENT"]
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            var_environment = "App Services"
+        else:
+            var_environment = "Local"
+        return var_environment
     except Exception as e:
         logging.error("Error at %s", "getEnvironmentinfo ts_maps.py", exc_info=e)
     except RuntimeError as e:
