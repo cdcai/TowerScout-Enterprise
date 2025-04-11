@@ -31,7 +31,7 @@ spark.conf.set("spark.sql.files.ignoreMissingFiles", "true")
 from tsdb.utils.uc import CatalogInfo
 import tsdb.preprocessing.transformations as trf
 from tsdb.ml.infer import make_towerscout_predict_udf
-from tsdb.utils.streaming import StreamShutdownListener
+from tsdb.utils.streaming import StreamShutdownListener, StreamLogger
 
 # COMMAND ----------
 
@@ -64,6 +64,10 @@ else:
 image_directory_path = f"{bronze_path}/*/*"
 sink_table = f"{catalog}.{schema}.{silver_table_name}"
 
+# logging stuff
+logging_dir = f"/Volumes/edav_dev_csels/towerscout/misc/logs/"
+job_id = dbutils.notebook.entry_point.getDbutils().notebook().getContext().currentRunId().toString()
+
 # Create our UDFs
 # Batch size is a very important parameter, since we iterate through images to process them
 towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, yolo_alias="aws", efficientnet_alias="aws", batch_size=100, num_workers=8)
@@ -71,8 +75,9 @@ towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, yolo_ali
 # COMMAND ----------
 
 # Setup Graceful Shutdown
-listener = StreamShutdownListener(timeout=240) # 240 minutes/4 hours
-spark.streams.addListener(listener)
+shutdown_listener = StreamShutdownListener(timeout=60) # 60 minutes/1 hour
+spark.streams.addListener(shutdown_listener)
+logger = StreamLogger(spark, logging_dir, job_id)
 
 # Read Images
 image_df = (
@@ -125,7 +130,7 @@ else:
         .table(sink_table)
     )
 
-    listener.set_stream(write_stream)
+    shutdown_listener.set_stream(write_stream)
     write_stream.awaitTermination()
 
 # COMMAND ----------
