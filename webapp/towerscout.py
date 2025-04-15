@@ -37,6 +37,12 @@ from azure.core.exceptions import ClientAuthenticationError
 import ts_secrets
 
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
+import numpy as np
+import random
+import pandas as pd
+from azure.core.exceptions import ClientAuthenticationError
+
+config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
 
 from flask import (
