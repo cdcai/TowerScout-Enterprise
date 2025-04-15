@@ -84,7 +84,6 @@ class StreamLogger:
         job_id: Job ID (can be None if ran from a notebook)
     """ 
     def __init__(self, log_path: str, job_id: str) -> None:
-        self.spark = spark
         self.job_id = job_id
 
         # Create Log File
