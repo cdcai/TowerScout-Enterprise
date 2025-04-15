@@ -11,6 +11,7 @@ webapp/model_params/*
 webapp/temp/*
 webapp/uploads/*
 webapp/flask_session/*
+webapp/config.*
 config.*
 towerscout.pem
 workspace.code-workspace
