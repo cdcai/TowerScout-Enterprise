@@ -25,7 +25,7 @@ class StreamShutdownListener(StreamingQueryListener):
         minutes: Number of minutes to shut stream off
     """
     def __init__(self, minutes: int):
-        self.max_duration = timedelta(minutes=timeout)
+        self.max_duration = timedelta(minutes=minutes)
         self._idle_start_time = None
         self._stream = None
         self._lock = threading.Lock()
