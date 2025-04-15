@@ -3,8 +3,7 @@ name: Deploy Flask App to Azure FTP
 on:
   push:
     branches:
-    - main
-    - main_dev   # Development branch
+    - dev   # Development branch
 
 jobs:
   deploy:
