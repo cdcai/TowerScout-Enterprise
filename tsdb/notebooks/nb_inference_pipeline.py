@@ -83,8 +83,10 @@ towerscout_inference_udf = make_towerscout_predict_udf(
 
 # Setup Graceful Shutdown
 shutdown_listener = StreamShutdownListener(timeout=60) # 60 minutes/1 hour
+logger = StreamLogger(logging_dir, job_id)
+
 spark.streams.addListener(shutdown_listener)
-logger = StreamLogger(spark, logging_dir, job_id)
+spark.streams.addListener(logger.listener)
 
 # Read Images
 image_df = (
