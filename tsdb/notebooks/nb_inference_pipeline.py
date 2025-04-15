@@ -82,7 +82,7 @@ towerscout_inference_udf = make_towerscout_predict_udf(
 # COMMAND ----------
 
 # Setup Graceful Shutdown
-shutdown_listener = StreamShutdownListener(timeout=60) # 60 minutes/1 hour
+shutdown_listener = StreamShutdownListener(minutes=5) # 60 minutes/1 hour
 logger = StreamLogger(logging_dir, job_id)
 
 spark.streams.addListener(shutdown_listener)
@@ -141,21 +141,6 @@ else:
 
     shutdown_listener.set_stream(write_stream)
     write_stream.awaitTermination()
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC
-# MAGIC       # Parameterize (available now stops the stream once available data has been processed)
-# MAGIC       # Option 1: Schedule the workflow to run every n minutes
-# MAGIC       # trigger is every n seconds, 5 minutes hard real-time requirement
-# MAGIC
-# MAGIC       # Option 2 (Default option for streams checks every 500ms for new files)
-# MAGIC       # Have stream run continuously between two times
-# MAGIC       # trigger = Continuous (processingTime="5 minutes") "10 seconds", "5 milliseconds"
-# MAGIC
-# MAGIC       # Option 3
-# MAGIC       # Trigger workflow on file arrival, but it only works on directories with less than 10,000 files
 
 # COMMAND ----------
 
