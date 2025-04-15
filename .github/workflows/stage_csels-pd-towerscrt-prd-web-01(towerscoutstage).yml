@@ -2,7 +2,7 @@
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 # More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
 
-name: Build and deploy Python app to Azure Web App - csels-pd-towerscrt-prd-web-01
+name: Build and deploy Python app to Azure Web App - csels-pd-towerscrt-prd-web-01 self hosted runner
 
 on:
   push:
@@ -11,8 +11,9 @@ on:
   workflow_dispatch:
 
 jobs:
+
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, edav, Dev]
     permissions:
       contents: read #This is required for actions/checkout
 
@@ -27,15 +28,19 @@ jobs:
       - name: Create and start virtual environment
         run: |
           python -m venv venv
-          source venv/bin/activate
+          .\venv\Scripts\Activate  # Correct command for PowerShell
       
       - name: Install dependencies
         run: pip install -r requirements.txt
         
       # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
+      - name: Create zip release file
+        run: |
+          Compress-Archive -Path ./* -DestinationPath release.zip
+        shell: powershell  # Use the default Windows PowerShell shell
 
-      - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
+  
+
 
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
@@ -46,7 +51,7 @@ jobs:
             !venv/
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, edav, Dev]
     needs: build
     environment:
       name: 'towerscoutstage'
@@ -58,8 +63,11 @@ jobs:
         with:
           name: python-app
 
-      - name: Unzip artifact for deployment
-        run: unzip release.zip
+      - name: Unzip release.zip
+        run: |
+          Expand-Archive -Path release.zip -DestinationPath ./ -Force
+        shell: powershell  # Ensure it uses PowerShell
+
 
       
       - name: 'Deploy to Azure Web App'
