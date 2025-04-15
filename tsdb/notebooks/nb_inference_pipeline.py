@@ -70,7 +70,14 @@ job_id = dbutils.notebook.entry_point.getDbutils().notebook().getContext().curre
 
 # Create our UDFs
 # Batch size is a very important parameter, since we iterate through images to process them
-towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, yolo_alias="aws", efficientnet_alias="aws", batch_size=100, num_workers=8)
+towerscout_inference_udf = make_towerscout_predict_udf(
+    catalog,
+    schema,
+    yolo_alias="aws",
+    efficientnet_alias="aws",
+    batch_size=100,
+    num_workers=8
+)
 
 # COMMAND ----------
 

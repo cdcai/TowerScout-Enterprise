@@ -22,9 +22,9 @@ class StreamShutdownListener(StreamingQueryListener):
         stream_job.awaitTermination()
 
     Args:
-        timeout: Number of minutes to shut stream off
+        minutes: Number of minutes to shut stream off
     """
-    def __init__(self, timeout: int):
+    def __init__(self, minutes: int):
         self.max_duration = timedelta(minutes=timeout)
         self._idle_start_time = None
         self._stream = None
