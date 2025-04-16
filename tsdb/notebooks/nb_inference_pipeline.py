@@ -16,6 +16,9 @@
 # MAGIC
 # MAGIC ## Outputs
 # MAGIC - Inference results for the processed images.
+# MAGIC
+# MAGIC ## Notes
+# MAGIC - We're using autoloader with file notifications to improve stream startup time; however, there are no SLA's or guarantees on the notifications. In the event notifications are missed, you may need to set a backfill interval
 
 # COMMAND ----------
 
