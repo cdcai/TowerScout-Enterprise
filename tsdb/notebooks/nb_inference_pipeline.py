@@ -62,10 +62,6 @@ else:
 
 # COMMAND ----------
 
-result
-
-# COMMAND ----------
-
 # table stuff
 image_directory_path = f"abfss://{container}@{datalake}.dfs.core.windows.net/{bronze_path}"
 sink_table = f"{catalog}.{schema}.{silver_table_name}"
@@ -146,7 +142,7 @@ else:
     )
 
     shutdown_listener.set_stream(write_stream)
-    # write_stream.awaitTermination()
+    write_stream.awaitTermination()
 
 # COMMAND ----------
 
