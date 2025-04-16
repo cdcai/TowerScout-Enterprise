@@ -60,8 +60,15 @@ else:
 
 # COMMAND ----------
 
+datalake = "davsynapseanalyticsdev" if env == "dev" else "edavsynapsedatalake"
+container = "ddphss-csels"
+
+# COMMAND ----------
+
 # table stuff
-image_directory_path = f"{bronze_path}/*/*"
+# image_directory_path = f"{bronze_path}/*/*"
+bronze_path = "PD/TowerScout/Volumes/images/maps/bronze"
+image_directory_path = f"abfss://{container}@{datalake}.dfs.core.windows.net/{bronze_path}"
 sink_table = f"{catalog}.{schema}.{silver_table_name}"
 
 # logging stuff
@@ -140,7 +147,7 @@ else:
     )
 
     shutdown_listener.set_stream(write_stream)
-    write_stream.awaitTermination()
+    # write_stream.awaitTermination()
 
 # COMMAND ----------
 
