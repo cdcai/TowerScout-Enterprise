@@ -49,6 +49,8 @@ if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_confi
     schema = result['schema_name']
     debug_mode = result['debug_mode'] == "true"
     bronze_path = result['bronze_path']
+    container = result['container']
+    datalake = result['datalake']
     silver_table_name = result['silver_table_name']
     writestream_trigger_args = result['writestream_trigger_args'].asDict()
     image_config = result['image_config'].asDict()
@@ -60,14 +62,11 @@ else:
 
 # COMMAND ----------
 
-datalake = "davsynapseanalyticsdev" if env == "dev" else "edavsynapsedatalake"
-container = "ddphss-csels"
+result
 
 # COMMAND ----------
 
 # table stuff
-# image_directory_path = f"{bronze_path}/*/*"
-bronze_path = "PD/TowerScout/Volumes/images/maps/bronze"
 image_directory_path = f"abfss://{container}@{datalake}.dfs.core.windows.net/{bronze_path}"
 sink_table = f"{catalog}.{schema}.{silver_table_name}"
 
