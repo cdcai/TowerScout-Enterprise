@@ -12,7 +12,8 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: 
+      group: edav-devops
     permissions:
       contents: read #This is required for actions/checkout
 
