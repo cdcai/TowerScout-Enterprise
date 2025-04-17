@@ -48,7 +48,8 @@ jobs:
             !venv/
 
   deploy:
-    runs-on: self-hosted
+    runs-on: 
+      group: edav-devops-prd
     needs: build
     environment:
       name: 'towerscoutstage'
