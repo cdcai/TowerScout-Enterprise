@@ -49,14 +49,3 @@ def compute_image_statistics(dataframe: DataFrame, image_column: str) -> DataFra
     TODO: Determine if this is the best place for this function
     """
     return dataframe.withColumn("statistics", F.expr(f"image_statistics_udf({image_column})"))
-
-
-@F.pandas_udf(returnType="array<array<integer>>")
-def sum_arrays(arrays: pd.Series) -> np.ndarray:
-    """
-    Sums all the arrays in the input Series. All arrays must be of same shape.
-    The return type hint `np.ndarray` indicates that the function returns 
-    a numpy array. This function is used to perform a grouped aggregation 
-    on a column containing 2D arrays. 
-    """
-    return arrays.sum(axis=0)
