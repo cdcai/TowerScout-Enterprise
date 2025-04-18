@@ -12,7 +12,8 @@
 #
 # the provider-independent part of maps
 #
-from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
+from azure.storage.blob import BlobServiceClient
+from azure.identity import ClientSecretCredential
 import os
 import aiofiles
 import requests
@@ -45,6 +46,8 @@ upload_containter = ""
 image_upload_dir = ""
 file_trigger_dir = ""
 var_environment = ""
+EDAV_storage_account_name = ""
+EDAV_container = ""
 inference_object_state = ""
 blob_service_client = None
 class Map:
@@ -91,7 +94,9 @@ class Map:
     def get_static_map_wh(
         self, lat=None, lng=None, zoom=19, sx=640, sy=640, crop_tiles=False
     ):
-    
+        # lat, lng - center
+        # sx, sy - map size in pixels
+
         sy_cropped = (
             int(sy * 0.96) if crop_tiles else sy
         )  # cut off bottom 4% if cropping requested
@@ -197,10 +202,10 @@ async def gather_urls(urls, fname, metadata, mapType, tilesMetaData, unique_dire
         start_time = time.time()
         await getuploadlocationinfo()
         await getEnvironmentinfo()
-
-        if var_environment == "App Services":
+        # Checking
+        if 'WEBSITE_SITE_NAME' in os.environ: 
             global inference_object_state
-            inference_object_state = os.getenv('inferencejobstate', 'Static')  
+            inference_object_state = os.getenv('inferencejobstate')  
         if inference_object_state == "Continuous":
             await uploadonebytefile()
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -350,6 +355,8 @@ async def getuploadlocationinfo():
         global image_upload_dir
         global file_trigger_dir
         global inference_object_state
+        global EDAV_storage_account_name
+        global EDAV_container
         
          # Check if the app is running in an Azure environment
         if 'WEBSITE_SITE_NAME' in os.environ:
@@ -362,6 +369,8 @@ async def getuploadlocationinfo():
         upload_containter = data["upload_container"]
         image_upload_dir = data["image_upload_dir"]
         file_trigger_dir = data["file_trigger_dir"]
+        EDAV_storage_account_name = data["EDAV_storage_account_name"]
+        EDAV_container = data["EDAV_container"]
         inference_object_state = data["inference_object_state"]
 
         
@@ -416,6 +425,7 @@ async def fetch_all(
                 session, tile["url"], fname, i, mapType, unique_directory, tile, blob_service_client
             )
             tasks.append(task)
+           
 
         results = await asyncio.gather(*tasks)
         return results
@@ -428,12 +438,39 @@ async def fetch_all(
 
 def createBlobServiceClient():
         
-        storageconnectionstring = ts_secrets.devSecrets.getSecret(
-            "TOWERSCOUTDEVSTORAGECONNSTR"
+        # storageconnectionstring = ts_secrets.keyVaultSecrets.getSecret(
+        #     "TOWERSCOUTDEVSTORAGECONNSTR"
+        # )
+        # blob_service_client = BlobServiceClient.from_connection_string(
+        #     storageconnectionstring
+        # )
+        blob_url = f"https://{EDAV_storage_account_name}.blob.core.windows.net"
+        if 'WEBSITE_SITE_NAME' in os.environ: 
+            
+            # Get environment variables
+            tenant_id = os.getenv("AZURE_TENANT_ID")
+            client_id = os.getenv("AZURE_CLIENT_ID")
+            client_secret = os.getenv("AZURE_CLIENT_SECRET")
+            storage_account_url = blob_url
+            # Authenticate with the Service Principal
+            credential = ClientSecretCredential(
+            tenant_id=tenant_id,
+            client_id=client_id,
+            client_secret=client_secret
+            )
+            # Create blob service client
+            blob_service_client = BlobServiceClient(
+            account_url=storage_account_url,
+            credential=credential
         )
-        blob_service_client = BlobServiceClient.from_connection_string(
-            storageconnectionstring
-        )
+            
+
+        else:
+            
+            # Authenticate using Managed Identity (via DefaultAzureCredential)
+            credential = DefaultAzureCredential()
+            blob_service_client = BlobServiceClient(account_url=blob_url, credential=credential)
+
         return blob_service_client
 #
 # radian conversion and Haversine distance
@@ -500,7 +537,7 @@ def appendMetadatatoImg(img, tileMetaData, mapType):
             exif_data = imgImage._getexif()
             exif_dict = piexif.load(exif_data)
             exif_dict["Exif"] = {**exif_dict["Exif"], **tileMetaData}
-            
+            # print(f"exif_dict: {exif_dict}")
         else:
             # Create a datetime object for the current time
             now = datetime.now()
@@ -562,10 +599,11 @@ async def uploadImagetodirUnqFileName(
         blob_client.upload_blob(blobcontent, overwrite=True, timeout=600)
         return blob_client.url
     except Exception as e:
+        print("error uploadImagetodirUnqFileName ts_maps.py")
         logging.error("Error at %s", "uploadImagetodirUnqFileName ts_maps.py", exc_info=e)
     except RuntimeError as e:
         logging.error("Error at %s", "uploadImagetodirUnqFileName ts_maps.py", exc_info=e)
-
+        print("error uploadImagetodirUnqFileName ts_maps.py")
 
 def generate_unique_directory_name(self):
     self.request_id = str(uuid.uuid4())[:8]  # Take first 8 characters of UUID
