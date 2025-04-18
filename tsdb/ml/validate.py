@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from pyspark.sql.functions import current_timestamp
+from pyspark.sql import SparkSession
 
 import ultralytics.utils as uutils
 from ultralytics.nn.tasks import DetectionModel
@@ -205,7 +206,7 @@ def update_benchmark_table(
     benchmark_table: str,
     overall_metrics: dict[str, float],
     per_class_metrics: dict[str, dict[str, float]],
-    model_metadata: dict,
+    model_metadata: dict[str, str|int],
 ) -> None:
     """
     This function updates the benchmark table with the supplied overall metrics, per class
@@ -218,6 +219,8 @@ def update_benchmark_table(
         per_class_metrics: a dictionary of the metrics (f1, precision, recall) for each class for the model
         model_metadata: a dictionary of the model metadata (uc_model_name, uc_model_version, model_uri) to include in the benchmark table
     """
+
+    spark = SparkSession.builder.getOrCreate()
 
     # must cast to float from numpy.float64 because PySpark FloatType can't take numpy floats.
     overall_metrics = {key: float(value) for key, value in overall_metrics.items()}
