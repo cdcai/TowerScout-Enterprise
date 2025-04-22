@@ -87,7 +87,7 @@ towerscout_inference_udf = make_towerscout_predict_udf(
 # COMMAND ----------
 
 # Setup Graceful Shutdown
-shutdown_listener = StreamShutdownListener(minutes=5) # 60 minutes/1 hour
+shutdown_listener = StreamShutdownListener(minutes=60) # 60 minutes/1 hour
 logger = StreamLogger(logging_dir, job_id)
 
 spark.streams.addListener(shutdown_listener)
