@@ -26,7 +26,7 @@ from ts_events import ExitEvents
 import ts_maps
 from ts_azmaps import AzureMap
 from ts_azmapmetrics import azTransactions
-from ts_readdetections import SilverTable
+import ts_readdetections
 from functools import reduce
 import asyncio
 import jwt
@@ -35,6 +35,12 @@ from datetime import timedelta
 import random
 from azure.core.exceptions import ClientAuthenticationError
 import ts_secrets
+
+config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
+import numpy as np
+import random
+import pandas as pd
+from azure.core.exceptions import ClientAuthenticationError
 
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
@@ -49,6 +55,7 @@ from flask import (
     session,
     Response,
     jsonify,
+    stream_with_context,
 )
 from flask_session import Session
 from waitress import serve
@@ -225,7 +232,15 @@ REDIRECT_URI = "https://csels-pd-towerscrt-dev-web-01.edav-dev-app.appserviceenv
 
 SCOPES = ["User.Read"]
 
+@app.route('/stream')
+def stream():
+    def generate():
+        for i in range(5):
+            yield f"data: Step {i + 1} at {time.strftime('%X')}\n\n"
+            time.sleep(1)
+        yield "event: done\ndata: true\n\n"
 
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 # main page route
 @app.route("/")
 def map_func():
@@ -544,7 +559,7 @@ def get_objects():
         # # Sending a request to databricks with a url to the bronze
 
         # # Need to Add code to read results from EDAV
-        stInstance = SilverTable()
+        stInstance = ts_readdetections.SilverTable()
         user_id = map.user_id
         request_id = map.request_id
 
@@ -839,7 +854,7 @@ def pollSilverTable():
         print(" session:", id(session))
         
         # # Need to Add code to read results from EDAV
-        stInstance = SilverTable()
+        stInstance = ts_readdetections.SilverTable()
         user_id = request.form.get("user_id")
         request_id = request.form.get("request_id")
         tilescount = int(request.form.get("tiles_count"))
@@ -860,6 +875,37 @@ def pollSilverTable():
     except SyntaxError as e:
             logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
 
+
+@app.route("/pollSilverTableWithLogs")
+def pollSilverTableWithLogs():
+    print("calling pollSilverTableWithLogs towerscout.py")
+    try:
+        
+        print(" session:", id(session))
+        
+        # # Need to Add code to read results from EDAV
+        stInstance = ts_readdetections.SilverTable()
+        user_id = request.args.get("user_id")
+        request_id = request.args.get("request_id")
+        tilescount = int(request.args.get("tiles_count"))
+        max_retries = tilescount*2
+        # jobDone = streamLogsandPollSilverTable(request_id, user_id, tilescount, max_retries, 10)
+        # logging.info("pollSilverTable completed")
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+        
+        return Response(stream_with_context(stInstance.poll_SilverTableJobDoneWithLogs(request_id, user_id, tilescount, max_retries, 10)), mimetype='text/event-stream')
+    except Exception as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+
+
 @app.route("/fetchBoundingBoxResults", methods=["POST"])
 def fetchBoundingBoxResults():
     try:
@@ -871,7 +917,7 @@ def fetchBoundingBoxResults():
         request_id = request.form.get("request_id")
         bounds = request.form.get("bounds")
         polygons = request.form.get("polygons")
-        stInstance = SilverTable()
+        stInstance = ts_readdetections.SilverTable()
 
         # cropping
         crop_tiles = False
@@ -1063,7 +1109,7 @@ def promoteSilverToGold():
         schema = data['schema']
         request_id = request.form.get("request_id")
         user_id = request.form.get("user_id")
-        stInstance = SilverTable()
+        stInstance = ts_readdetections.SilverTable()
         statement_id = ""
         print(f"SilverDetections:{SilverDetections}")
         # Construct dynamic SQL query based on bbox_dict
@@ -1086,7 +1132,7 @@ def pollquerystatus():
     try:
         success = ""
         statement_id = request.form.get("SQLstatement_id")
-        stinstance = SilverTable()
+        stinstance = ts_readdetections.SilverTable()
         success = stinstance.poll_query_status(statement_id)
         # abort if signaled
         if exit_events.query(id(session)):
@@ -1225,6 +1271,34 @@ def getazmaptransactions():
         result = "RuntimeError"
     finally:
         return result
+
+
+@app.route("/getClusterStatus", methods=["GET"])
+def getClusterStatus():
+    try:
+        result = "TERMINATED"
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            job_ID = os.getenv('Inference_JOBID')
+        else:     
+            tablesConfigFile = config_dir + "/config.dbjobid.json"
+            with open(tablesConfigFile, "r") as file:
+                data = json.load(file)
+                job_ID = data['Inference_JOBID']
+        result = ts_readdetections.get_clusterstatusfromjob(job_ID)
+        return result
+    except ClientAuthenticationError as e:
+        logging.error("ClientAuthenticationError at %s", "getClusterStatus towerscout.py", exc_info=e)
+        result="ClientAuthenticationError"
+        
+    except Exception as e:
+        logging.error("Error at %s", "getClusterStatus towerscout.py", exc_info=e)
+        
+    except RuntimeError as e:
+        logging.error("RuntimeError at %s", "getClusterStatus towerscout.py", exc_info=e)
+        result = "RuntimeError"
+    finally:
+        return result
+
 
 # download results as dataset for formal training /testing
 @app.route("/getdataset", methods=["POST"])
@@ -1518,7 +1592,7 @@ if __name__ == "__main__":
     # read maps api key (not in source code due to security reasons)
     # has to be an api key with access to maps, staticmaps and places
     # todo: deploy CDC-owned key in final version
-    mapkeys = ts_secrets.devSecrets.getSecret("AZUREMAPKEYS")
+    mapkeys = ts_secrets.getSecret("AZUREMAPKEYS")
     
     azure_api_key = mapkeys.split(";")[0]
     bing_api_key = mapkeys.split(";")[1]
