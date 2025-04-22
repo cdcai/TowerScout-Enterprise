@@ -13,8 +13,8 @@ on:
 jobs:
 
   build:
-    runs-on: 
-      group: edav-devops
+    runs-on: self-hosted
+      #group: edav-devops
     permissions:
       contents: read #This is required for actions/checkout
 
@@ -51,8 +51,8 @@ jobs:
             release.zip
             !venv/
   deploy:
-    runs-on: 
-      group: edav-devops
+    runs-on: self-hosted
+      #group: edav-devops
     needs: build
     environment:
       name: 'towerscoutdev'
