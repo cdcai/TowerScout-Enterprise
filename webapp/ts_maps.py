@@ -47,7 +47,6 @@ image_upload_dir = ""
 file_trigger_dir = ""
 var_environment = ""
 EDAV_storage_account_name = ""
-EDAV_container = ""
 inference_object_state = ""
 blob_service_client = None
 from azure.identity import ClientSecretCredential
@@ -364,7 +363,6 @@ async def getuploadlocationinfo():
         global file_trigger_dir
         global inference_object_state
         global EDAV_storage_account_name
-        global EDAV_container
         
          # Check if the app is running in an Azure environment
         if 'WEBSITE_SITE_NAME' in os.environ:
@@ -378,7 +376,6 @@ async def getuploadlocationinfo():
         image_upload_dir = data["image_upload_dir"]
         file_trigger_dir = data["file_trigger_dir"]
         EDAV_storage_account_name = data["EDAV_storage_account_name"]
-        EDAV_container = data["EDAV_container"]
         inference_object_state = data["inference_object_state"]
 
         
