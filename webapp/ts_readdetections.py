@@ -558,6 +558,7 @@ class SilverTable:
             'Content-Type': 'application/json',
         }
             while retries < max_retries:
+                originaldata = ""
                 try:
                     # if connection is None:
                     #      time.sleep(60)
@@ -567,6 +568,7 @@ class SilverTable:
                     print(f"SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "." + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
                     print(response.status_code)
                     if response.status_code == 200:
+                        originaldata = response.json()
                         result_data = response.json()
                         resultcount = result_data['result']['data_array'][0][0]
                         if (int(resultcount) >= tile_count):
@@ -599,7 +601,7 @@ class SilverTable:
                 
                 except Exception as e:
                     print(f"Exception silvertablejobdone. Retrying...{e}")
-                    
+                    print(f"original data: {str(originaldata)}")
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
@@ -694,6 +696,7 @@ class SilverTable:
                     print(f"SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
                     print(response.status_code)
                     if response.status_code == 200:
+                        originaldata = response.json()
                         result_data = response.json()
                         newTilesProcessCount = result_data['result']['data_array'][0][0]
                         
@@ -736,7 +739,7 @@ class SilverTable:
                 
                 except Exception as e:
                     print(f"Exception silvertablejobdone. Retrying...{e}")
-                    
+                    print(f"original data: {str(originaldata)}")
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
