@@ -7,7 +7,7 @@ name: Build and deploy Python app to Azure Web App - csels-pd-towerscrt-dev-web-
 on:
   push:
     branches:
-      - dev
+      
   workflow_dispatch:
 
 jobs:
