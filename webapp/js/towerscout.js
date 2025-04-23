@@ -69,6 +69,7 @@ function initAzureMap() {
     });
   }
   getazmapTransactioncountjs(2);
+  getClusterStatusjs();
 }
 
 
@@ -1725,6 +1726,7 @@ function getObjects(estimate) {
     });
 
   getazmapTransactioncountjs(2);
+  getClusterStatusjs();
   disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
 }
 function ProcessUserRequest(estimate)
@@ -1774,7 +1776,9 @@ function ProcessUserRequest(estimate)
     formData.append('estimate', "yes");
     
 
-    fetch("/uploadTileImages", { method: "POST", body: formData, })
+    fetch("/uploadTileImages", { method: "POST", body: formData,
+      credentials: 'include' // 👈 keeps cookies/session consistent 
+      })
       .then(result => result.text())
       .then(result => {
         if (Number(result) === -1) {
@@ -1790,7 +1794,7 @@ function ProcessUserRequest(estimate)
         if (estimate) {
           return;
         }
-
+        
         // actual retrieval process starts here
         nt = Number(result);
         enableProgress(nt);
@@ -1801,21 +1805,29 @@ function ProcessUserRequest(estimate)
         
         Detection.resetAll();
         formData.delete("estimate");
-        fetch("/uploadTileImages", { method: "POST", body: formData })
+        fetch("/uploadTileImages", { method: "POST", body: formData ,
+          credentials: 'include' // 👈 keeps cookies/session consistent 
+          })
           .then(response => response.json())
           .then(result => {
             console.log("Images uploaded ....");
             formData.append('user_id', result.user_id);
             formData.append('request_id', result.request_id);
             formData.append('tiles_count', result.tiles_count);
-            console.log("Delaying Polling Silver Table by 1 minute");
-            setTimeout(pollSilverTable, 60000);  // Start polling after 1 minute
+            console.log("Polling Cluster Status");
+
+            pollClusterStatusjs();
+            // if(clusterRunning == true){
+            //   console.log("Delaying Polling Silver Table by 1 minute");
+            //   setTimeout(pollSilverTableWithLogs, 60000);  // Start polling after 1 minute
+            // };
+             
             })  
           .catch(e => {
             console.log(e + ": "); disableProgress(0, 0);
           });
       });
-      
+     
       getazmapTransactioncountjs(2);
     } catch (error) {
       console.error('Error during main ProcessRequest:', error);
@@ -1824,73 +1836,7 @@ function ProcessUserRequest(estimate)
 
 }
 
-function pollSilverTableOld() {
-  // Create an AbortController instance to cancel the request after 5 minutes
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();  // Abort the request after 5 minutes
-    console.log("Request timed out after 4.9 minutes");
-    restartRequest();  // Restart the cycle after timeout
-  }, 290000);  // 4.9 minutes (290000 ms)
 
-  // Send the fetch request with the AbortController
-  fetch('/pollSilverTable', { signal: controller.signal, method: "POST", body: formData, })
-    .then(response => response.json())
-    .then(data => {
-      // If the response is true, stop the cycle
-      if (data === true) {
-        console.log("Condition met, stopping the cycle.");
-        clearTimeout(timeoutId);  // Clear timeout to prevent restart
-      } else {
-        console.log("Condition not met, restarting...");
-
-        restartRequest();  // Restart the cycle if condition is not met
-      }
-    })
-    .catch(error => {
-      // Handle any errors, including request timeout
-      if (error.name === 'AbortError') {
-        console.log('Fetch request was aborted due to timeout');
-      } else {
-        console.error('Error:', error);
-      }
-
-      // Restart the cycle in case of timeout or any error
-      restartRequest();
-    });
-}
-async function pollSilverTableRepeating() {
-  // Define the timeout duration (in milliseconds)
-  const TIMEOUT_DURATION = 290000; // 4.8 minutes
-  // Create an AbortController instance
-  const controller = new AbortController();
-  // Set a timeout to abort the request after the specified duration
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_DURATION);
-  try {
-    // Send the HTTP request
-    const response = await fetch('/pollSilverTable', { signal: controller.signal, method: "POST", body: formData, });  // API URL
-    const data = await response.json();  // Parse JSON response
-
-    console.log('Response:', data);
-
-    // Check if the response is true (e.g., based on a specific value in the response)
-    if (data.jobdone === true) {
-      // If the response is true, log and stop the loop
-      console.log('Request successful. Response:', data);
-      clearTimeout(timeoutId); // Clear the timeout if the request is successful
-      return true;  // End the function and stop further requests
-    } else {
-      // If the response is not successful, wait for 5 minutes and restart the request
-      console.log('Response not successful. Retrying 10 seconds ...');
-      restartRequest();  // Retry after 10 seconds
-    }
-  } catch (error) {
-    console.log('Error during request:', error);
-    // In case of error, wait for 10 seconds before retrying
-    clearTimeout(timeoutId); // Clear the timeout
-    restartRequest();  // Retry after 10 seconds
-  }
-}
 async function fetchWithTimeout(url, options, timeoutDuration) {
   const controller = new AbortController();  // Create an AbortController instance
   const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);  // Set the timeout for the request
@@ -1926,7 +1872,7 @@ async function pollSilverTable() {
   const RESTART_DELAY = 10000;  // Restart delay in milliseconds (e.g., 10 seconds)
   try {
     while (true) {
-      // console.log('Making request...');
+      
       const result = await fetchWithTimeout(url, options, TIMEOUT_DURATION);
       if (result.status === 502) {
         console.log('Error during pollSilverTable request:' + error);
@@ -1958,6 +1904,105 @@ async function pollSilverTable() {
   return pollSilverTable();
 }
 }
+
+function testSimpleEventSource(){
+  formData = new FormData();
+  formData.append('bounds', "abc");
+  formData.append('engine', "azure");
+  formData.append('provider', "azure");
+  formData.append('polygons', "testboundaries");
+  formData.append('estimate', "yes");
+  const params = new URLSearchParams(formData).toString();
+  const source = new EventSource('/stream');
+
+    source.onmessage = (event) => {
+      console.log('🔹 Message:' + event.data);
+      // output.innerHTML += `<p>${event.data}</p>`;
+    };
+
+    source.addEventListener('done', (event) => {
+      console.log('✅ Done:'+ event.data);
+      // output.innerHTML += `<p><strong>Process complete!</strong></p>`;
+      source.close();
+    });
+
+    source.onerror = (err) => {
+      console.log('❌ EventSource error:' + err);
+      // output.innerHTML += `<p style="color:red;">Error occurred. Connection closed.</p>`;
+      source.close();
+    };
+}
+
+async function pollSilverTableWithLogs() {
+  console.log("Started Polling Silver Table for detections....");
+  const url = '/pollSilverTableWithLogs';  // Endpoint URL
+  const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
+  const controller = new AbortController();  // Create an AbortController instance
+  // const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_DURATION);  // Set the timeout for the request
+  let timeoutHandle;
+  // const options = { method: 'POST', body: formData };  // Request body
+  // const formData = new FormData(document.querySelector('form'));
+  const params = new URLSearchParams(formData).toString();
+  
+  const RESTART_DELAY = 10000;  // Restart delay in milliseconds (e.g., 10 seconds)
+  try {
+   
+   
+
+      const eventSource = new EventSource(`/pollSilverTableWithLogs?${params}`);
+      let completed = false;
+      
+      eventSource.onmessage = (event) => {
+        // const jsonData = JSON.parse(event.data);
+        console.log('📩 Update: '+ event.data);
+      };
+      eventSource.addEventListener('done', (event) => {
+        completed = true;
+        
+        if (timeoutHandle) clearTimeout(timeoutHandle); // Clear any pending timeouts  // 🧼 stop the auto-reconnect
+        eventSource.close();
+        console.log('Polling complete.' + event.data);
+        console.log("Reverse geocoding and drawing bounding boxes ....");
+        drawBoundingBoxes();
+        
+        return true;
+       
+
+      });
+      timeoutHandle = setTimeout(async () => {
+        if (!completed && eventSource.readyState !== EventSource.CLOSED) {
+          console.log('⏱️ Closing connection after 5 minutes...');
+          eventSource.close();
+          
+        
+          console.log('⏱️ Reconnecting after 4.9 minutes...');
+          // Wait before sending another request (restart cycle after 10 seconds)
+          console.log('Waiting for 10 seconds before retrying...');
+          await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+          return pollSilverTableWithLogs();
+        
+        } // 4.9 minutes
+      }, TIMEOUT_DURATION);
+
+      eventSource.onerror = (error) => {
+        console.log('SSE error Polling Silver Table:' + error);
+        console.error("SSE error Polling Silver Table:", e);
+        eventSource.close();
+      };
+      
+    
+
+  
+} catch (error) {
+  console.log('Error during pollSilverTableWithLogs request:' + error);
+  // In case of error, wait for 10 seconds before retrying
+  eventSource.close();
+  console.log('Waiting for 10 seconds before retrying...');
+  await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+  return pollSilverTableWithLogs();
+}
+}
+
 
 async function pollquerystatus(startTime) {
   
@@ -2099,6 +2144,69 @@ function getazmapTransactioncountjs(intEnv) {
     .catch(error => {
       console.log(error);
     });
+
+}
+
+//get Cluster Status
+async function getClusterStatusjs(intEnv) {
+  param = intEnv
+  const response = await fetch('/getClusterStatus');
+  const message = await response.text();
+  document.getElementById('lblClusterStatusValue').innerText = message;
+  try{
+    if (message === 'RUNNING') {
+      document.getElementById('lblClusterStatusValue').style.backgroundColor = "green";
+    } else if (message === 'PENDING') {
+      document.getElementById('lblClusterStatusValue').style.backgroundColor = "blue";
+    } else {
+      document.getElementById('lblClusterStatusValue').style.backgroundColor = "red";
+    }
+
+    return message; 
+  } catch (error) {
+    console.error('Error fetching cluster status:', error);
+    return null; // or throw error, depending on your needs
+  }
+
+}
+
+//get Cluster Status
+async function pollClusterStatusjs() {
+  
+  const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
+  let timeoutHandle;  // Need to clear this before returning true
+  try {
+    // while (true) {
+      
+    const result = await getClusterStatusjs();
+     
+    if (result == 'RUNNING') {
+      console.log('Cluster is Running');
+      if (timeoutHandle) clearTimeout(timeoutHandle); // Clear any pending timeouts
+      // console.log("Delaying Polling Silver Table by 1 minute");
+      // setTimeout(pollSilverTableWithLogs, 60000);  // Start polling after 1 minute
+      return pollSilverTableWithLogs();
+    } else {
+        
+      console.log('Cluster status: ' + result);
+      console.log('Waiting for 5 minutes before retrying...');
+      timeoutHandle = setTimeout(() => {
+        pollClusterStatusjs(); // Recursive call after timeout
+      }, TIMEOUT_DURATION);
+    }
+
+      
+
+  
+} catch (error) {
+  
+  // In case of error, wait for 10 seconds before retrying
+  console.log('Error checking Cluster Status...');
+  console.log('Waiting for 5 minutes before retrying...');
+  timeoutHandle = setTimeout(() => {
+    pollClusterStatusjs(); // Recursive call after timeout
+  }, TIMEOUT_DURATION);
+}
 
 }
 

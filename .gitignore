@@ -13,6 +13,7 @@ webapp/uploads/*
 webapp/flask_session/*
 webapp/config.*
 config.*
+webapp/config.*
 towerscout.pem
 workspace.code-workspace
 test/*

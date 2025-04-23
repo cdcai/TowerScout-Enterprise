@@ -3,6 +3,9 @@ import calendar
 from datetime import datetime
 import requests
 import ts_secrets
+from requests.exceptions import ConnectionError, Timeout
+from azure.core.exceptions import ClientAuthenticationError
+from azure.mgmt.resource import SubscriptionClient
 
 class azTransactions:
    
@@ -13,23 +16,22 @@ class azTransactions:
   try:  
    
      # Azure Maps account details
-  
    if intEnv == 1:
         # Production
-     subscription_id = ts_secrets.prodSecrets.getSecret('TSAZMAPSUBSCRID')
-     resource_group_name = ts_secrets.prodSecrets.getSecret('TSAZMAPKEYRG')
-     account_name = ts_secrets.prodSecrets.getSecret('TSAZMAPACCOUNTNAME')
-     tenant_id = ts_secrets.prodSecrets.getSecret('TSAZMAPACCNTSPTENANTID')
-     client_id = ts_secrets.prodSecrets.getSecret('TSAZMAPACCNTSPCLIENTID')
-     client_secret = ts_secrets.prodSecrets.getSecret('TSAZMAPACCNTSPCLIENTSECRET')
+     subscription_id = ts_secrets.getSecret('TSAZMAPSUBSCRID')
+     resource_group_name = ts_secrets.getSecret('TSAZMAPKEYRG')
+     account_name = ts_secrets.getSecret('TSAZMAPACCOUNTNAME')
+     tenant_id = ts_secrets.getSecret('TSAZMAPACCNTSPTENANTID')
+     client_id = ts_secrets.getSecret('TSAZMAPACCNTSPCLIENTID')
+     client_secret = ts_secrets.getSecret('TSAZMAPACCNTSPCLIENTSECRET')
    elif intEnv == 2:
     # Dev
-     subscription_id = ts_secrets.devSecrets.getSecret('TSAZMAPSUBSCRID')
-     resource_group_name = ts_secrets.devSecrets.getSecret('TSAZMAPKEYRG')
-     account_name = ts_secrets.devSecrets.getSecret('TSAZMAPACCOUNTNAME')
-     tenant_id = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPTENANTID')
-     client_id = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPCLIENTID')
-     client_secret = ts_secrets.devSecrets.getSecret('TSAZMAPACCNTSPCLIENTSECRET')
+     subscription_id = ts_secrets.getSecret('TSAZMAPSUBSCRID')
+     resource_group_name = ts_secrets.getSecret('TSAZMAPKEYRG')
+     account_name = ts_secrets.getSecret('TSAZMAPACCOUNTNAME')
+     tenant_id = ts_secrets.getSecret('TSAZMAPACCNTSPTENANTID')
+     client_id = ts_secrets.getSecret('TSAZMAPACCNTSPCLIENTID')
+     client_secret = ts_secrets.getSecret('TSAZMAPACCNTSPCLIENTSECRET')
    
    # Define the time range and metrics to filter
    now = datetime.today()
@@ -63,29 +65,26 @@ class azTransactions:
 }
 
    # Make the GET request
-   response = requests.get(metrics_api_url, headers=headers, params=params)
+   response = requests.get(metrics_api_url, headers=headers, params=params,timeout=600)
 
    # Check the response
    if response.status_code == 200:
         metrics_data = response.json()
-        # print(str(calendar.month_name[now.month]) + " " + str(now.year) + " Transaction Count:", metrics_data['value'][0]['timeseries'][0]['data'][0]['count'])
-      #   return (str(calendar.month_name[now.month]) + " " + str(now.year) + " Transaction Count:", metrics_data['value'][0]['timeseries'][0]['data'][0]['count'])
    else:
-      #   return("Error: {response.status_code}, {response.text}")
       print(f"Error: {response.status_code}, {response.text}")
       raise RuntimeError("Error '" + response.status_code + ": " + response.text + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
    
  
    total_count = 0
-   # Check the response
-   if response.status_code == 200:
-    metrics_data = response.json()
-    # print("Metrics Data:", metrics_data)
+  #  # Check the response
+  #  if response.status_code == 200:
+  #   metrics_data = response.json()
+  #   # print("Metrics Data:", metrics_data)
      
-    # print("Value:", metrics_data['value'][0]['timeseries'])
-   else:
-    # print("Error:", response.status_code, response.text)
-    raise RuntimeError(response)
+  #   # print("Value:", metrics_data['value'][0]['timeseries'])
+  #  else:
+  #   # print("Error:", response.status_code, response.text)
+  #   raise RuntimeError(response)
 
    if "value" in metrics_data and len(metrics_data["value"]) > 0:
     for metric in metrics_data["value"]:
@@ -100,17 +99,23 @@ class azTransactions:
     month_name = now.strftime("%B")
     current_year = now.year
     return (month_name + " " + str(current_year) + " Azure map transaction count: " + str(total_count))
-    print(month_name + " " + str(current_year) + " transaction count: " + str(total_count))
+    # print(month_name + " " + str(current_year) + " transaction count: " + str(total_count))
    else:
-    raise RuntimeError("Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
-    print("Error:", response.status_code, response.text)
+      return("")
+    # raise RuntimeError("Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
+  except ClientAuthenticationError as e:
+    raise ClientAuthenticationError("Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
   except RuntimeError as e:
     raise RuntimeError("Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
-    print(e)
   except Exception as e:
     raise RuntimeError("Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
-    print(e)
-
+  except ConnectionError as e:
+    raise ConnectionError("Connection Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
+  except Timeout as e:
+    raise Timeout("Timeout Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
+  except requests.exceptions.RequestException as e:
+    raise requests.exceptions.RequestException("RequestException Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
+    
 # def callfunction():
 #  strtransactioncount =  azTransactions.getAZTransactionCount(2)
 #  return strtransactioncount
