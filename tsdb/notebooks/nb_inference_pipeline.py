@@ -16,9 +16,6 @@
 # MAGIC
 # MAGIC ## Outputs
 # MAGIC - Inference results for the processed images.
-# MAGIC
-# MAGIC ## Notes
-# MAGIC - We're using autoloader with file notifications to improve stream startup time; however, there are no SLA's or guarantees on the notifications. In the event notifications are missed, you may need to set a backfill interval
 
 # COMMAND ----------
 
@@ -34,7 +31,7 @@ spark.conf.set("spark.sql.files.ignoreMissingFiles", "true")
 from tsdb.utils.uc import CatalogInfo
 import tsdb.preprocessing.transformations as trf
 from tsdb.ml.infer import make_towerscout_predict_udf
-from tsdb.utils.streaming import StreamShutdownListener, StreamLogger
+from tsdb.utils.streaming import StreamShutdownListener
 
 # COMMAND ----------
 
@@ -52,8 +49,6 @@ if spark.catalog._jcatalog.tableExists("global_temp.global_temp_towerscout_confi
     schema = result['schema_name']
     debug_mode = result['debug_mode'] == "true"
     bronze_path = result['bronze_path']
-    container = result['container']
-    datalake = result['datalake']
     silver_table_name = result['silver_table_name']
     writestream_trigger_args = result['writestream_trigger_args'].asDict()
     image_config = result['image_config'].asDict()
@@ -66,32 +61,18 @@ else:
 # COMMAND ----------
 
 # table stuff
-image_directory_path = f"abfss://{container}@{datalake}.dfs.core.windows.net/{bronze_path}"
+image_directory_path = f"{bronze_path}/*/*"
 sink_table = f"{catalog}.{schema}.{silver_table_name}"
-
-# logging stuff
-logging_dir = f"/Volumes/edav_dev_csels/towerscout/misc/logs/"
-job_id = dbutils.notebook.entry_point.getDbutils().notebook().getContext().currentRunId().toString()
 
 # Create our UDFs
 # Batch size is a very important parameter, since we iterate through images to process them
-towerscout_inference_udf = make_towerscout_predict_udf(
-    catalog,
-    schema,
-    yolo_alias="aws",
-    efficientnet_alias="aws",
-    batch_size=100,
-    num_workers=8
-)
+towerscout_inference_udf = make_towerscout_predict_udf(catalog, schema, yolo_alias="aws", efficientnet_alias="aws", batch_size=100, num_workers=8)
 
 # COMMAND ----------
 
 # Setup Graceful Shutdown
-shutdown_listener = StreamShutdownListener(minutes=60) # 60 minutes/1 hour
-logger = StreamLogger(logging_dir, job_id)
-
-spark.streams.addListener(shutdown_listener)
-spark.streams.addListener(logger.listener)
+listener = StreamShutdownListener(timeout=240) # 240 minutes/4 hours
+spark.streams.addListener(listener)
 
 # Read Images
 image_df = (
@@ -144,8 +125,23 @@ else:
         .table(sink_table)
     )
 
-    shutdown_listener.set_stream(write_stream)
+    listener.set_stream(write_stream)
     write_stream.awaitTermination()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+# MAGIC       # Parameterize (available now stops the stream once available data has been processed)
+# MAGIC       # Option 1: Schedule the workflow to run every n minutes
+# MAGIC       # trigger is every n seconds, 5 minutes hard real-time requirement
+# MAGIC
+# MAGIC       # Option 2 (Default option for streams checks every 500ms for new files)
+# MAGIC       # Have stream run continuously between two times
+# MAGIC       # trigger = Continuous (processingTime="5 minutes") "10 seconds", "5 milliseconds"
+# MAGIC
+# MAGIC       # Option 3
+# MAGIC       # Trigger workflow on file arrival, but it only works on directories with less than 10,000 files
 
 # COMMAND ----------
 
