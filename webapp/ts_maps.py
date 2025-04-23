@@ -463,7 +463,7 @@ def createBlobServiceClient():
             # Get environment variables for prod
     tenant_id = data["tenant_id"]
     client_id = data["client_id"]
-    client_secret = data["client_secret"]
+    client_secret = ts_secrets.getSecret("TOWERSCOUT-APPSERVICES-SP")
     blob_url = f"https://{EDAV_storage_account_name}.blob.core.windows.net"
     storage_account_url = blob_url
             # Authenticate with the Service Principal
