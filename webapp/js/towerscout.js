@@ -1985,9 +1985,17 @@ async function pollSilverTableWithLogs() {
       }, TIMEOUT_DURATION);
 
       eventSource.onerror = (error) => {
-        console.log('SSE error Polling Silver Table:' + error);
-        console.error("SSE error Polling Silver Table:", e);
+        console.error('SSE connection error Polling Silver Table:', error);
         eventSource.close();
+        // Wait before sending another request (restart cycle after 10 seconds)
+        console.log('Waiting for 10 seconds before retrying...');
+        // Wait 10 seconds before starting the next process
+        setTimeout(() => {
+          console.log('Waiting for 10 seconds before retrying...');
+          return pollSilverTableWithLogs();
+        }, 10000); // 10,000 ms = 10 seconds
+        
+        
       };
       
     
