@@ -3,12 +3,15 @@ from requests.exceptions import Timeout, RequestException
 import os, time, logging, requests, ts_secrets, json, asyncio
 from databricks.sql.exc import RequestError
 from numpy.random import choice
+config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
-
-DATABRICKS_INSTANCE = ts_secrets.devSecrets.getSecret('DATABRICKS-INSTANCE')
-PERSONAL_ACCESS_TOKEN = ts_secrets.devSecrets.getSecret('DB-PERSONAL-ACCESS-TOKEN')
-WAREHOUSE_ID = ts_secrets.devSecrets.getSecret('WAREHOUSE-ID')
-SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
+DATABRICKS_INSTANCE = ""
+PERSONAL_ACCESS_TOKEN = ts_secrets.getSecret('DB-PERSONAL-ACCESS-TOKEN')
+WAREHOUSE_ID = ""
+SQL_STATEMENTS_ENDPOINT = ""
+CATALOG = ""
+SCHEMA = ""
+TABLE = ""
 class SilverTable:
     
                     # # # Testing existing data
@@ -17,6 +20,26 @@ class SilverTable:
                     
     def __init__(self):
         self.batch_size = 100
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            data = json.loads(os.getenv('dbinstance'))
+        else:     
+            dbinstancefile = config_dir + "/config.dbinstance.json"
+            with open(dbinstancefile, "r") as file:
+                data = json.load(file)
+        global DATABRICKS_INSTANCE
+        global WAREHOUSE_ID
+        global SQL_STATEMENTS_ENDPOINT
+        global SCHEMA
+        global CATALOG
+        global TABLE
+
+        DATABRICKS_INSTANCE = data["DATABRICKS_INSTANCE"]
+        WAREHOUSE_ID = data["WAREHOUSE_ID"]
+        SCHEMA = data["SCHEMA"]
+        CATALOG = data["CATALOG"]
+        TABLE = data["TABLE"]
+        SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
+
       # @retry(wait=wait_exponential(min=2, max=10), stop=stop_after_attempt(3))
     def fetchbboxes(self, request_id, user_id, tile_count):
         logging.info("Startinng ts_readdetections.py(fetchbboxes)")
@@ -28,14 +51,12 @@ class SilverTable:
                 jobdone = self.poll_SilverTableJobDone(
                     request_id, user_id, tile_count, max_retries
                 )
-                # jobdone = poll_table_for_record_count(
-                # request_id, user_id, tile_count, max_retries
-                # )
+            
                 if jobdone:
                     # # Testing existing data
                     # user_id = 'cnu4'
                     # request_id = '008d35a3'
-                    sql_query  = "SELECT bboxes from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
+                    sql_query  = "SELECT bboxes from edav_prd_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
                     # Set the payload for the request (include the query)
                     data = {
                         'statement': sql_query,
@@ -136,9 +157,7 @@ class SilverTable:
                 jobdone = self.poll_SilverTableJobDone(
                     request_id, user_id, tile_count, max_retries
                 )
-                # jobdone = poll_table_for_record_count(
-                # request_id, user_id, tile_count, max_retries
-                # )
+            
                 if jobdone:
                     connection = sql.connect(
                         server_hostname="adb-1881246389460182.2.azuredatabricks.net",
@@ -164,7 +183,7 @@ class SilverTable:
                     cursor = connection.cursor()
 
                     cursor.execute(
-                        "SELECT bboxes from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
+                        "SELECT bboxes from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '"
                         + user_id
                         + "' AND request_id = '"
                         + request_id
@@ -272,11 +291,11 @@ class SilverTable:
                     # # Testing existing data
                     # user_id = 'cnu4'
                     # request_id = '008d35a3'
-                    sql_query  = ("SELECT bboxes, "
+                    sql_query  = (f"SELECT bboxes, "
                     "concat(uuid,'.jpeg') AS filename, "
                     "image_path AS url, "
                     "uuid, image_hash "
-                    "FROM edav_dev_csels.towerscout.test_image_silver where user_id = '" + user_id + "' AND request_id = '" + request_id + "' "
+                    "FROM " + CATALOG + "." + SCHEMA + "." + TABLE + " where user_id = '" + user_id + "' AND request_id = '" + request_id + "' "
                     "ORDER BY image_id")
                     print(f"sql_query: {sql_query}")
                     
@@ -404,7 +423,7 @@ class SilverTable:
                     cursor = connection.cursor()
 
                     cursor.execute(
-                        "SELECT bboxes, concat(uuid,'.jpeg') AS filename, image_path AS url from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '"
+                        "SELECT bboxes, concat(uuid,'.jpeg') AS filename, image_path AS url from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '"
                         + user_id
                         + "' AND request_id = '"
                         + request_id
@@ -423,7 +442,7 @@ class SilverTable:
                     #     'filename', concat(uuid, '.jpeg')
 
                     #     ) as tiles
-                    #     FROM edav_dev_csels.towerscout.test_image_silver where request_id = ? AND user_id = ?
+                    #     FROM " + CATALOG + "." + SCHEMA + "."  + TABLE + " where request_id = ? AND user_id = ?
                     #     """
                     # cursor.execute(query, (request_id, user_id))
                     
@@ -525,7 +544,9 @@ class SilverTable:
         try:
         
             retries = 0
-            sql_query  = "SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
+            
+            sql_query  = (f"SELECT count(bboxes) "
+                          "FROM " + CATALOG + "." + SCHEMA + "." + TABLE + "  WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
 # Set the payload for the request (include the query)
             data = {
             'statement': sql_query,
@@ -537,15 +558,17 @@ class SilverTable:
             'Content-Type': 'application/json',
         }
             while retries < max_retries:
+                originaldata = ""
                 try:
                     # if connection is None:
                     #      time.sleep(60)
                         #  continue
                     # if not connection.open:
                     response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
-                    print(f"SELECT count(bboxes) from edav_dev_csels.towerscout.test_image_silver WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                    print(f"SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "." + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
                     print(response.status_code)
                     if response.status_code == 200:
+                        originaldata = response.json()
                         result_data = response.json()
                         resultcount = result_data['result']['data_array'][0][0]
                         if (int(resultcount) >= tile_count):
@@ -570,7 +593,7 @@ class SilverTable:
                     
                 except RequestError as e:
                     print("RequestError silvertablejobdone. Retrying...")
-                   
+                    
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
@@ -578,7 +601,7 @@ class SilverTable:
                 
                 except Exception as e:
                     print(f"Exception silvertablejobdone. Retrying...{e}")
-                    
+                    print(f"original data: {str(originaldata)}")
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
@@ -639,7 +662,145 @@ class SilverTable:
             logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
         finally:
             print("Finally. Retrying...")
+    
+    def poll_SilverTableJobDoneWithLogs(
+        self, request_id, user_id, tile_count, max_retries, delay=10
+        ):
+        print("calling poll_SilverTableJobDoneWithLogs")
+        # # Testing existing data
+        # user_id = 'cnu4'
+        # request_id = '7fe1cd27'
+        try:
+        
+            retries = 0
+            global totalTilesProcessed
+            totalTilesProcessed = 0
+            sql_query  = "SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
+# Set the payload for the request (include the query)
+            data = {
+            'statement': sql_query,
+            'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+        }
+        # Set the headers with the personal access token for authentication
+            headers = {
+            'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+            'Content-Type': 'application/json',
+        }
+            while retries < max_retries:
+                try:
+                    # if connection is None:
+                    #      time.sleep(60)
+                        #  continue
+                    # if not connection.open:
+                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    print(f"SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                    print(response.status_code)
+                    if response.status_code == 200:
+                        originaldata = response.json()
+                        result_data = response.json()
+                        newTilesProcessCount = result_data['result']['data_array'][0][0]
+                        
+                        if (int(newTilesProcessCount) >= tile_count):
+                            
+                            print("result count:", newTilesProcessCount)
+                            final_result = {"status": "Completed", "message": f"Task completed successfully. {newTilesProcessCount} Tiles out of {str(tile_count)} have been processed."}
+                            # yield f"data: {jsonify(final_result).data.decode('utf-8')}\n\n"
+                            yield f"event: done\ndata: Task completed successfully. All {str(tile_count)} tiles have been processed.\n\n"
+                            return True
+                        else:
+                            retries += 1
+                            logging.info(f"Number of retries: {retries}")
+                            if retries == max_retries:
+                                max_retries +=1
+                            if (int(newTilesProcessCount) > totalTilesProcessed):
+                                logging.info(f"{newTilesProcessCount} Tiles out of {str(tile_count)} have been processed.")
+                                # final_result = {"status": "Processing", "message": f"{newTilesProcessCount} Tiles out of {str(tile_count)} have been processed."}
+                                yield f"data: {newTilesProcessCount} Tiles out of {str(tile_count)} have been processed.\n\n"
+                                # yield f"{newTilesProcessCount} Tiles out of {str(tile_count)} have been processed."
+                                print(f"{newTilesProcessCount} Tiles out of {str(tile_count)} have been processed.")
+                                totalTilesProcessed = int(newTilesProcessCount)
+                            # raise Timeout("Forcing timeout error")
+                            time.sleep(delay)
+                    else:
+                        retries += 1
+                        logging.info(f"Number of retries: {retries}")
+                        if retries == max_retries:
+                            max_retries +=1
+                        time.sleep(delay)
                    
+                    
+                except RequestError as e:
+                    print("RequestError silvertablejobdone. Retrying...")
+                   
+                    retries += 1
+                    if retries >= max_retries:
+                        max_retries+=1
+                    time.sleep(delay)  # Wait before retrying
+                
+                except Exception as e:
+                    print(f"Exception silvertablejobdone. Retrying...{e}")
+                    print(f"original data: {str(originaldata)}")
+                    retries += 1
+                    if retries >= max_retries:
+                        max_retries+=1
+                    time.sleep(delay)  # Wait before retrying
+                except (Timeout,ConnectionError) as e:
+                    print("Timeout,ConnectionError occurred. Retrying...")
+                    
+                    retries += 1
+                    if retries >= max_retries:
+                        max_retries+=1
+                    time.sleep(delay)  # Wait before retrying
+                except SyntaxError as e:
+                    logging.info(f"result count:{newTilesProcessCount}")
+                    logging.error("SyntaxError at %s","ts_readdetections.py(poll_SilverTableJobDone)",
+                    exc_info=e)
+                    time.sleep(delay)
+                except RequestException as e:
+                    print("RequestException silvertablejobdone. Retrying...")
+                    retries += 1
+                    if retries >= max_retries:
+                        max_retries+=1
+                    time.sleep(delay)  # Wait before retrying
+                finally:
+                    print("Finally. Retrying sub process...")
+                        
+        except sql.InterfaceError as e:
+            logging.error(
+                "Interface Error at %s",
+                "ts_readdetections.py(poll_SilverTableJobDone)",
+                exc_info=e
+            )
+            
+        except sql.DatabaseError as e:
+            logging.error(
+                "Database Error at %s",
+                "ts_readdetections.py(poll_SilverTableJobDone)",
+                exc_info=e
+            )
+            
+        except sql.OperationalError as e:
+            logging.error(
+                "Operational Error at %s",
+                "ts_readdetections.py(poll_SilverTableJobDone)",
+                exc_info=e
+            )
+            
+        except Exception as e:
+           
+            logging.error(
+                "Error at %s",
+                "ts_readdetections.py(poll_SilverTableJobDone)",
+                exc_info=e
+            )
+           
+        except RuntimeError as e:
+            logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
+        except SyntaxError as e:
+            logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
+        finally:
+            print("Finally. Retrying...")
+                    
       
 
     def get_bboxesfortiles(self, tiles, events, id, request_id, user_id):
@@ -1211,3 +1372,95 @@ class SilverTable:
             logging.error("Error at %s", "ts_readdetections.py(check_query_status)", exc_info=e)
             return False, None
         
+# Function to get job run status using runs/list
+def get_clusterstatusfromjob(job_id):
+    if 'WEBSITE_SITE_NAME' in os.environ:
+        data = json.loads(os.getenv('dbinstance'))
+    else:     
+        dbinstancefile = config_dir + "/config.dbinstance.json"
+        with open(dbinstancefile, "r") as file:
+            data = json.load(file)
+    global DATABRICKS_INSTANCE
+    global WAREHOUSE_ID
+    global SQL_STATEMENTS_ENDPOINT
+    global SCHEMA
+    global CATALOG
+    global TABLE
+
+    DATABRICKS_INSTANCE = data["DATABRICKS_INSTANCE"]
+    WAREHOUSE_ID = data["WAREHOUSE_ID"]
+    SCHEMA = data["SCHEMA"]
+    CATALOG = data["CATALOG"]
+    TABLE = data["TABLE"]
+    SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
+    # Set up the headers for authentication
+    headers = {
+            "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}"
+        }
+
+    # Define the parameters for the API call
+     # Define the parameters for the API call, including active_only=false
+    params = {
+        'job_id': job_id,
+        'expand_tasks': 'true',
+        'active_only': 'true'
+    }
+   
+    url = f'https://{DATABRICKS_INSTANCE}/api/2.2/jobs/runs/list'
+    # Make the request to the Databricks API
+    response = requests.get(url, headers=headers, params=params)
+
+    # Check if the request was successful
+    if response.status_code == 200:
+        # Successfully retrieved job run details
+        job_run_info = response.json()
+        if (len(job_run_info)>0):
+            if(('existing_cluster' in job_run_info['runs'][0]['tasks'][0])):
+                clusterID = job_run_info['runs'][0]['tasks'][0]['existing_cluster_id']
+            elif(('cluster_instance' in job_run_info['runs'][0]['tasks'][0])):
+                clusterID = job_run_info['runs'][0]['tasks'][0]['cluster_instance']['cluster_id']
+            if(clusterID == 'undefined'):
+                return "TERMINATED"
+            else:
+                return get_cluster_status_from_databricks(clusterID)
+        else:
+            return "TERMINATED"
+        print(len(job_run_info))
+        print(job_run_info['runs'][0]['setup_duration'])
+        print(job_run_info['runs'][0]['state'])
+        print(job_run_info['runs'][0]['tasks'][0]['existing_cluster_id'])
+        # active_runs = [run for run in job_run_info['runs'] if run['state']['life_cycle_state'] == 'RUNNING']
+        # Non_active_runs = [run for run in job_run_info['runs']]
+        
+        # print((job_run_info))
+        # print(len(active_runs))
+        # print(len(Non_active_runs))
+        # # print(job_run_info['runs'])
+        # return job_run_info
+    else:
+        # If the request fails, return an error message
+        return {"error": "Failed to retrieve job run status", "message": response.json()}
+
+# Function to get the cluster status
+def get_cluster_status_from_databricks(cluster_id):
+    # Databricks API authentication headers
+    headers = {
+            "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}"
+        }
+    
+    # Define the parameters to be passed to the API
+    params = {'cluster_id': cluster_id}
+
+    url = f'https://{DATABRICKS_INSTANCE}/api/2.1/clusters/get'
+    # Make the request to the Databricks API
+    response = requests.get(url, headers=headers, params=params)
+
+    # Check the response status code
+    if response.status_code == 200:
+        # Successfully fetched cluster details
+        cluster_info = response.json()
+        print(cluster_info["state"])
+        return cluster_info["state"]
+    else:
+        # Return error message if the API request fails
+        return {"error": "Failed to retrieve cluster status", "message": response.json()}

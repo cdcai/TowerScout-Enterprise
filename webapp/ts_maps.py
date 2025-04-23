@@ -50,6 +50,7 @@ EDAV_storage_account_name = ""
 EDAV_container = ""
 inference_object_state = ""
 blob_service_client = None
+from azure.identity import ClientSecretCredential
 class Map:
 
     def __init__(self):
@@ -115,7 +116,7 @@ class Map:
         d_x = sx * ground_resolution
         d_y = sy_cropped * ground_resolution
 
-    
+        # print("d_lat", d_lat, "d_lng", d_lng)
         return (d_lat, d_lat_for_url, d_lng, d_y, d_x)
 
     #
@@ -240,7 +241,7 @@ async def rate_limited_fetch(
         # much impact on the time factor, especially with large number of tiles, when compared with exponentially increasing the time based on the
         # number of tiles
     try:
-        
+        # await asyncio.sleep(index * (1/50))
         # else:
         await asyncio.sleep(i * (1 / 10))
         await fetch(session, url, fname, i, mapType, unique_directory, tile, blob_service_client)
@@ -264,7 +265,7 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                 print(f"Error: HTTP status code {response.status}")
                 error_text = await response.text()
                 print(f"Error response: {error_text}")
-                
+                # response.raise_for_status()
             # #Extract metadata keys from the tile to append to the image
             tileMetadata = getTileMetaData(tile, mapType)
 
@@ -276,10 +277,13 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                 response.headers.get("Content-Type", "").lower()
                 == "application/vnd.mapbox-vector-tile"
             ):
-                
+                #    async with aiofiles.open(filename, mode='rb') as f:
+                #         azurevector_tile_data = await response.read()
+                #         azurevectortogeojson = vector_tile_to_geojson(azurevector_tile_data)
+                # print("Printing Content type " + response.headers.get('Content-Type', '').lower())
                 tile_data = await response.read()
                 tile = mapbox_vector_tile.decode(tile_data)
-                
+                # print(json.dumps(tile, indent=2))
                 json_data = {}
                 for layer_name, layer in tile.items():
                     json_data[layer_name] = {"features": []}
@@ -297,12 +301,14 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
             else:
                 # Create a unique container
                 upload_dir = image_upload_dir
-                
+                # print("image_upload_dir:" + image_upload_dir) 
                 directoryname = upload_dir + unique_directory
-                
+                # print("directoryname:" + image_upload_dir)
                 content = await response.read()
 
-                
+                # Code to write to Temp directory - This is required for now as there are other processes using these files
+                # Need to change all the processes to read from the AIX Team's container later
+                # async with aiofiles.open(filename, mode='wb') as f:
                 content_type = response.headers.get("Content-Type", "")
                 if (content_type.startswith("image/")) and (
                     Image.open(BytesIO(content)).mode != "RGB"
@@ -317,7 +323,8 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                             contentmeta, "ddphss-csels", directoryname, blobname, blob_service_client
                         )
                     )
-                    
+                    # await f.write(contentmeta)
+                    # await f.close()
                 else:
                     if content_type.startswith("image/"):
 
@@ -332,7 +339,8 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                                 contentmeta, upload_containter, directoryname, blobname, blob_service_client
                             )
                         )
-                       
+                        # await f.write(contentmeta)
+                        # await f.close()
                     else:
                         # Code to add the .txt file
                         # Adding code to write to the AIX container directory
@@ -425,7 +433,18 @@ async def fetch_all(
                 session, tile["url"], fname, i, mapType, unique_directory, tile, blob_service_client
             )
             tasks.append(task)
-           
+            # # Upload metadata .txt
+            # # if metadata:
+            # task = fetchimagemetadata(
+            #     session,
+            #     fname,
+            #     i,
+            #     mapType,
+            #     unique_directory,
+            #     tile,
+            #     blob_service_client
+            #     )
+            # tasks.append(task)
 
         results = await asyncio.gather(*tasks)
         return results
@@ -438,40 +457,34 @@ async def fetch_all(
 
 def createBlobServiceClient():
         
-        # storageconnectionstring = ts_secrets.keyVaultSecrets.getSecret(
-        #     "TOWERSCOUTDEVSTORAGECONNSTR"
-        # )
-        # blob_service_client = BlobServiceClient.from_connection_string(
-        #     storageconnectionstring
-        # )
-        blob_url = f"https://{EDAV_storage_account_name}.blob.core.windows.net"
-        if 'WEBSITE_SITE_NAME' in os.environ: 
-            
-            # Get environment variables
-            tenant_id = os.getenv("AZURE_TENANT_ID")
-            client_id = os.getenv("AZURE_CLIENT_ID")
-            client_secret = os.getenv("AZURE_CLIENT_SECRET")
-            storage_account_url = blob_url
+      # Check if the app is running in an Azure environment
+    if 'WEBSITE_SITE_NAME' in os.environ:
+        data = json.loads(os.getenv('imagedirectory'))
+    else:
+        imageConfigFile = config_dir + "/config.imagedirectory.json"
+        with open(imageConfigFile, "r") as file:
+            data = json.load(file)  # Load the JSON data into a Python dictionary
+    
+    EDAV_storage_account_name = data["EDAV_storage_account_name"]
+      
+            # Get environment variables for prod
+    tenant_id = data["tenant_id"]
+    client_id = data["client_id"]
+    client_secret = ts_secrets.getSecret("TOWERSCOUT-APPSERVICES-SP")
+    blob_url = f"https://{EDAV_storage_account_name}.blob.core.windows.net"
+    storage_account_url = blob_url
             # Authenticate with the Service Principal
-            credential = ClientSecretCredential(
-            tenant_id=tenant_id,
-            client_id=client_id,
-            client_secret=client_secret
-            )
-            # Create blob service client
-            blob_service_client = BlobServiceClient(
-            account_url=storage_account_url,
-            credential=credential
+    credential = ClientSecretCredential(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        client_secret=client_secret
         )
-            
-
-        else:
-            
-            # Authenticate using Managed Identity (via DefaultAzureCredential)
-            credential = DefaultAzureCredential()
-            blob_service_client = BlobServiceClient(account_url=blob_url, credential=credential)
-
-        return blob_service_client
+            # Create blob service client
+    blob_service_client = BlobServiceClient(
+    account_url=storage_account_url,
+    credential=credential)
+        
+    return blob_service_client
 #
 # radian conversion and Haversine distance
 #
