@@ -12,8 +12,7 @@
 #
 # the provider-independent part of maps
 #
-from azure.storage.blob import BlobServiceClient
-from azure.identity import ClientSecretCredential
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 import os
 import aiofiles
 import requests
@@ -46,7 +45,6 @@ upload_containter = ""
 image_upload_dir = ""
 file_trigger_dir = ""
 var_environment = ""
-EDAV_storage_account_name = ""
 inference_object_state = ""
 blob_service_client = None
 from azure.identity import ClientSecretCredential
@@ -202,10 +200,10 @@ async def gather_urls(urls, fname, metadata, mapType, tilesMetaData, unique_dire
         start_time = time.time()
         await getuploadlocationinfo()
         await getEnvironmentinfo()
-        # Checking
-        if 'WEBSITE_SITE_NAME' in os.environ: 
+
+        if var_environment == "App Services":
             global inference_object_state
-            inference_object_state = os.getenv('inferencejobstate')  
+            inference_object_state = os.getenv('inferencejobstate', 'Static')  
         if inference_object_state == "Continuous":
             await uploadonebytefile()
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -362,7 +360,6 @@ async def getuploadlocationinfo():
         global image_upload_dir
         global file_trigger_dir
         global inference_object_state
-        global EDAV_storage_account_name
         
          # Check if the app is running in an Azure environment
         if 'WEBSITE_SITE_NAME' in os.environ:
@@ -375,7 +372,6 @@ async def getuploadlocationinfo():
         upload_containter = data["upload_container"]
         image_upload_dir = data["image_upload_dir"]
         file_trigger_dir = data["file_trigger_dir"]
-        EDAV_storage_account_name = data["EDAV_storage_account_name"]
         inference_object_state = data["inference_object_state"]
 
         
@@ -609,11 +605,10 @@ async def uploadImagetodirUnqFileName(
         blob_client.upload_blob(blobcontent, overwrite=True, timeout=600)
         return blob_client.url
     except Exception as e:
-        print("error uploadImagetodirUnqFileName ts_maps.py")
         logging.error("Error at %s", "uploadImagetodirUnqFileName ts_maps.py", exc_info=e)
     except RuntimeError as e:
         logging.error("Error at %s", "uploadImagetodirUnqFileName ts_maps.py", exc_info=e)
-        print("error uploadImagetodirUnqFileName ts_maps.py")
+
 
 def generate_unique_directory_name(self):
     self.request_id = str(uuid.uuid4())[:8]  # Take first 8 characters of UUID
