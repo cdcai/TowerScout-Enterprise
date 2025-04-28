@@ -1726,7 +1726,6 @@ function getObjects(estimate) {
     });
 
   getazmapTransactioncountjs(2);
-  getClusterStatusjs();
   disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
 }
 function ProcessUserRequest(estimate)
@@ -1776,9 +1775,7 @@ function ProcessUserRequest(estimate)
     formData.append('estimate', "yes");
     
 
-    fetch("/uploadTileImages", { method: "POST", body: formData,
-      credentials: 'include' // 👈 keeps cookies/session consistent 
-      })
+    fetch("/uploadTileImages", { method: "POST", body: formData, })
       .then(result => result.text())
       .then(result => {
         if (Number(result) === -1) {
@@ -1805,9 +1802,7 @@ function ProcessUserRequest(estimate)
         
         Detection.resetAll();
         formData.delete("estimate");
-        fetch("/uploadTileImages", { method: "POST", body: formData ,
-          credentials: 'include' // 👈 keeps cookies/session consistent 
-          })
+        fetch("/uploadTileImages", { method: "POST", body: formData })
           .then(response => response.json())
           .then(result => {
             console.log("Images uploaded ....");
@@ -1817,17 +1812,14 @@ function ProcessUserRequest(estimate)
             console.log("Polling Cluster Status");
 
             pollClusterStatusjs();
-            // if(clusterRunning == true){
-            //   console.log("Delaying Polling Silver Table by 1 minute");
-            //   setTimeout(pollSilverTableWithLogs, 60000);  // Start polling after 1 minute
-            // };
-             
+            // console.log("Delaying Polling Silver Table by 1 minute");
+            // setTimeout(pollSilverTableWithLogs, 60000);  // Start polling after 1 minute
             })  
           .catch(e => {
             console.log(e + ": "); disableProgress(0, 0);
           });
       });
-     
+      
       getazmapTransactioncountjs(2);
     } catch (error) {
       console.error('Error during main ProcessRequest:', error);
@@ -1872,7 +1864,7 @@ async function pollSilverTable() {
   const RESTART_DELAY = 10000;  // Restart delay in milliseconds (e.g., 10 seconds)
   try {
     while (true) {
-      
+      // console.log('Making request...');
       const result = await fetchWithTimeout(url, options, TIMEOUT_DURATION);
       if (result.status === 502) {
         console.log('Error during pollSilverTable request:' + error);
@@ -1904,35 +1896,6 @@ async function pollSilverTable() {
   return pollSilverTable();
 }
 }
-
-function testSimpleEventSource(){
-  formData = new FormData();
-  formData.append('bounds', "abc");
-  formData.append('engine', "azure");
-  formData.append('provider', "azure");
-  formData.append('polygons', "testboundaries");
-  formData.append('estimate', "yes");
-  const params = new URLSearchParams(formData).toString();
-  const source = new EventSource('/stream');
-
-    source.onmessage = (event) => {
-      console.log('🔹 Message:' + event.data);
-      // output.innerHTML += `<p>${event.data}</p>`;
-    };
-
-    source.addEventListener('done', (event) => {
-      console.log('✅ Done:'+ event.data);
-      // output.innerHTML += `<p><strong>Process complete!</strong></p>`;
-      source.close();
-    });
-
-    source.onerror = (err) => {
-      console.log('❌ EventSource error:' + err);
-      // output.innerHTML += `<p style="color:red;">Error occurred. Connection closed.</p>`;
-      source.close();
-    };
-}
-
 async function pollSilverTableWithLogs() {
   console.log("Started Polling Silver Table for detections....");
   const url = '/pollSilverTableWithLogs';  // Endpoint URL
@@ -1985,17 +1948,9 @@ async function pollSilverTableWithLogs() {
       }, TIMEOUT_DURATION);
 
       eventSource.onerror = (error) => {
-        console.error('SSE connection error Polling Silver Table:', error);
+        // console.log('SSE error Polling Silver Table:' + error);
+        console.error("SSE error Polling Silver Table:", e);
         eventSource.close();
-        // Wait before sending another request (restart cycle after 10 seconds)
-        console.log('Waiting for 10 seconds before retrying...');
-        // Wait 10 seconds before starting the next process
-        setTimeout(() => {
-          console.log('Waiting for 10 seconds before retrying...');
-          return pollSilverTableWithLogs();
-        }, 10000); // 10,000 ms = 10 seconds
-        
-        
       };
       
     
@@ -2156,16 +2111,22 @@ function getazmapTransactioncountjs(intEnv) {
 }
 
 //get Cluster Status
-async function getClusterStatusjs(intEnv) {
-  param = intEnv
+async function getClusterStatusjs() {
+  
   const response = await fetch('/getClusterStatus');
   const message = await response.text();
+  const now = new Date(); // Get current date and time
   document.getElementById('lblClusterStatusValue').innerText = message;
+  document.getElementById('lblClusterStatusDtTime').innerText = now.toLocaleString();
+  document.getElementById('lblClusterStatusDtTime').removeAttribute("style");
+  document.getElementById('btnGetClusterStatus').removeAttribute("style");
   try{
     if (message === 'RUNNING') {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "green";
     } else if (message === 'PENDING') {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "blue";
+    } else if (message === 'RESIZING') {
+      document.getElementById('lblClusterStatusValue').style.backgroundColor = "yellow";
     } else {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "red";
     }
