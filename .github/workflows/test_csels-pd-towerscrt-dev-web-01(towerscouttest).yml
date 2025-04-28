@@ -63,8 +63,11 @@ jobs:
         with:
           name: python-app
 
-      - name: Unzip artifact for deployment
-        run: unzip release.zip
+      - name: Unzip release.zip
+        run: |
+          Expand-Archive -Path release.zip -DestinationPath ./ -Force
+        shell: powershell  # Ensure it uses PowerShell
+
 
       
       - name: 'Deploy to Azure Web App'
