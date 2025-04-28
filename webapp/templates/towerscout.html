@@ -85,7 +85,8 @@ Licensed under CC-BY-NC-SA-4.0
       
       
         <span style="display: block;width: 100%;"><label id="lblazmaptransactions" style="width: 100%; display: block;">Azure map Transaction count</label></span>
-        <span style="display: block;width: 100%;"><span style="display: block;width: 50%;float: left; padding-right: 10px;"><label style="float: right;">Cluser Status:</label></span><span style="width: 50%; display: block; float:right"><label id="lblClusterStatusValue" style="float: left;color: white;"></label></span></span>
+        
+        
       
     </div>
     
@@ -108,11 +109,12 @@ Licensed under CC-BY-NC-SA-4.0
       <br>
       <form id='providers' name='providers'>
       </form>
-      <br>
-      Active model:<br>
-      <br>
-      <form id='engines' name='engines'>
-      </form>
+      <br><br>
+      <label style="float: left;">Cluser Status:</label>
+      <label id="lblClusterStatusValue" style="color: white;"></label><br><br>
+      <label>Cluser Status last updated:</label><br>
+      <label id="lblClusterStatusDtTime" style="display: none;"></label><br><br>
+      <button id="btnGetClusterStatus" class="btn" onclick='getClusterStatusjs()' style="display: none;">Refresh Cluster Status</button>
     </div>
 
    
