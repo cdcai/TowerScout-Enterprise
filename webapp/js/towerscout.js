@@ -317,16 +317,7 @@ class AzureMap extends TSMap {
           style: 'light',
           buttons: ['draw-polygon', 'draw-line', 'draw-circle', 'draw-rectangle', 'edit-geometry', 'erase-geometry'] // Include only the desired tools
         }),
-        // toolbarOptions: {
-        //     point: false,       // Show the point button
-        //     line: true,        // Show the line button
-        //     polygon: true,    // Hide the polygon button
-        //     rectangle: true,   // Show the rectangle button
-        //     circle: true,      // Show the circle button
-        //     clear: true,       // Show the clear button
-        //     undo: true,        // Show the undo button
-        //     redo: true,       // Hide the redo button
-        // }
+       
       });
     var layers = this.drawingManager.getLayers();
     layers.lineLayer.setOptions({
@@ -507,8 +498,7 @@ class AzureMap extends TSMap {
         
         augmentDetections();
       }
-      // this.drawingManager?.getSource()?.clear();
-      // this.map.entities.clear();
+      
     } else {
       console.log('No shapes in the drawing manager.');
     }
@@ -1803,7 +1793,7 @@ function ProcessUserRequest(estimate)
         if (estimate) {
           return;
         }
-
+        
         // actual retrieval process starts here
         nt = Number(result);
         enableProgress(nt);
