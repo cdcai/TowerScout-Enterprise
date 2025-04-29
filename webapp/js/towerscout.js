@@ -317,7 +317,16 @@ class AzureMap extends TSMap {
           style: 'light',
           buttons: ['draw-polygon', 'draw-line', 'draw-circle', 'draw-rectangle', 'edit-geometry', 'erase-geometry'] // Include only the desired tools
         }),
-       
+        // toolbarOptions: {
+        //     point: false,       // Show the point button
+        //     line: true,        // Show the line button
+        //     polygon: true,    // Hide the polygon button
+        //     rectangle: true,   // Show the rectangle button
+        //     circle: true,      // Show the circle button
+        //     clear: true,       // Show the clear button
+        //     undo: true,        // Show the undo button
+        //     redo: true,       // Hide the redo button
+        // }
       });
     var layers = this.drawingManager.getLayers();
     layers.lineLayer.setOptions({
@@ -498,7 +507,8 @@ class AzureMap extends TSMap {
         
         augmentDetections();
       }
-      
+      // this.drawingManager?.getSource()?.clear();
+      // this.map.entities.clear();
     } else {
       console.log('No shapes in the drawing manager.');
     }
@@ -1775,7 +1785,9 @@ function ProcessUserRequest(estimate)
     formData.append('estimate', "yes");
     
 
-    fetch("/uploadTileImages", { method: "POST", body: formData, })
+    fetch("/uploadTileImages", { method: "POST", body: formData,
+      credentials: 'include' // 👈 keeps cookies/session consistent 
+      })
       .then(result => result.text())
       .then(result => {
         if (Number(result) === -1) {
@@ -1791,7 +1803,7 @@ function ProcessUserRequest(estimate)
         if (estimate) {
           return;
         }
-        
+
         // actual retrieval process starts here
         nt = Number(result);
         enableProgress(nt);
@@ -1802,7 +1814,9 @@ function ProcessUserRequest(estimate)
         
         Detection.resetAll();
         formData.delete("estimate");
-        fetch("/uploadTileImages", { method: "POST", body: formData })
+        fetch("/uploadTileImages", { method: "POST", body: formData ,
+          credentials: 'include' // 👈 keeps cookies/session consistent 
+          })
           .then(response => response.json())
           .then(result => {
             console.log("Images uploaded ....");
@@ -1948,9 +1962,15 @@ async function pollSilverTableWithLogs() {
       }, TIMEOUT_DURATION);
 
       eventSource.onerror = (error) => {
-        // console.log('SSE error Polling Silver Table:' + error);
-        console.error("SSE error Polling Silver Table:", e);
+        console.error('SSE connection error Polling Silver Table:', error);
         eventSource.close();
+        // Wait before sending another request (restart cycle after 10 seconds)
+        console.log('Waiting for 10 seconds before retrying...');
+        // Wait 10 seconds before starting the next process
+        setTimeout(() => {
+          console.log('Waiting for 10 seconds before retrying...');
+          return pollSilverTableWithLogs();
+        }, 10000); // 10,000 ms = 10 seconds
       };
       
     
@@ -2123,12 +2143,16 @@ async function getClusterStatusjs() {
   try{
     if (message === 'RUNNING') {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "green";
+      document.getElementById('lblClusterStatusValue').style.color = "white";
     } else if (message === 'PENDING') {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "blue";
+      document.getElementById('lblClusterStatusValue').style.color = "white";
     } else if (message === 'RESIZING') {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "yellow";
+      document.getElementById('lblClusterStatusValue').style.color = "black";
     } else {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "red";
+      document.getElementById('lblClusterStatusValue').style.color = "white";
     }
 
     return message; 
@@ -2141,7 +2165,7 @@ async function getClusterStatusjs() {
 
 //get Cluster Status
 async function pollClusterStatusjs() {
-  
+  let isFirstAttempt = true;
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
   let timeoutHandle;  // Need to clear this before returning true
   try {
@@ -2152,13 +2176,18 @@ async function pollClusterStatusjs() {
     if (result == 'RUNNING') {
       console.log('Cluster is Running');
       if (timeoutHandle) clearTimeout(timeoutHandle); // Clear any pending timeouts
-      // console.log("Delaying Polling Silver Table by 1 minute");
-      // setTimeout(pollSilverTableWithLogs, 60000);  // Start polling after 1 minute
-      return pollSilverTableWithLogs();
+      if (isFirstAttempt) {
+        isFirstAttempt = false; // Mark that we've handled the first attempt
+        console.log("Delaying polling of Silver Table by 1 minute.");
+        setTimeout(pollSilverTableWithLogs, 60000); // Wait 1 minute, then call
+      } else {
+        return pollSilverTableWithLogs(); // Immediately call on non-first attempts
+      }
     } else {
         
       console.log('Cluster status: ' + result);
       console.log('Waiting for 5 minutes before retrying...');
+      isFirstAttempt = false; // First attempt failed; no need to delay on next RUNNING
       timeoutHandle = setTimeout(() => {
         pollClusterStatusjs(); // Recursive call after timeout
       }, TIMEOUT_DURATION);
@@ -2172,6 +2201,7 @@ async function pollClusterStatusjs() {
   // In case of error, wait for 10 seconds before retrying
   console.log('Error checking Cluster Status...');
   console.log('Waiting for 5 minutes before retrying...');
+  isFirstAttempt = false; // First attempt failed; no need to delay on next RUNNING
   timeoutHandle = setTimeout(() => {
     pollClusterStatusjs(); // Recursive call after timeout
   }, TIMEOUT_DURATION);
