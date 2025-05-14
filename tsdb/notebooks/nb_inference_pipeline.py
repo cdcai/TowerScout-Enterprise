@@ -70,7 +70,7 @@ image_directory_path = f"abfss://{container}@{datalake}.dfs.core.windows.net/{br
 sink_table = f"{catalog}.{schema}.{silver_table_name}"
 
 # logging stuff
-logging_dir = f"/Volumes/edav_dev_csels/towerscout/misc/logs/"
+logging_dir = f"/Volumes/{catalog}/{schema}/misc/logs/"
 job_id = dbutils.notebook.entry_point.getDbutils().notebook().getContext().currentRunId().toString()
 
 # Create our UDFs
