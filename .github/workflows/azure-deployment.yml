@@ -46,13 +46,13 @@ jobs:
   
 
 
-      - name: Upload artifact for deployment jobs
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-app
-          path: |
-            release.zip
-            !venv/
+      #- name: Upload artifact for deployment jobs
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: python-app
+      #    path: |
+      #      release.zip
+      #      !venv/
   deploy:
     runs-on: self-hosted
       #group: edav-devops
@@ -62,10 +62,10 @@ jobs:
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     
     steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: python-app
+      #- name: Download artifact from build job
+      #  uses: actions/download-artifact@v4
+      #  with:
+      #    name: python-app
 
       - name: Unzip release.zip
         run: |
