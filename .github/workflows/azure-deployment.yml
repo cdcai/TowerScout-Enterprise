@@ -8,8 +8,8 @@ on:
   push:
     branches:
       - dev
-    paths-ignore:
-      - '.github/workflows/azure-deployment.yml'
+    #paths-ignore:
+    #  - '.github/workflows/azure-deployment.yml'
   workflow_dispatch:
 
 jobs:
@@ -61,10 +61,10 @@ jobs:
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     
     steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: python-app
+      #- name: Download artifact from build job
+      #  uses: actions/download-artifact@v4
+      #  with:
+      #    name: python-app
 
       - name: Unzip release.zip
         run: |
