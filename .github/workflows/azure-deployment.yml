@@ -8,8 +8,8 @@ on:
   push:
     branches:
       - dev
-    #paths-ignore:
-    #  - '.github/workflows/azure-deployment.yml'
+    paths-ignore:
+      - '.github/workflows/azure-deployment.yml'
   workflow_dispatch:
 
 jobs:
