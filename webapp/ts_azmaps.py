@@ -51,12 +51,12 @@ class AzureMap(Map):
         url = "https://atlas.microsoft.com/map/static?subscription-key=" + self.key
         url += "&zoom=18"  # + str(zoom) - Need to subtract zoom level by 1 to get the same scale
         url += (
-            "&tilesetId=microsoft.imagery&api-version=2024-04-01&center="
+            "&tilesetId=microsoft.imagery&api-version=2024-04-01&scale=2&center="
             + str(tile["lng"])
             + ","
             + str(tile["lat_for_url"])
         )
-        url += "&height=640&Width=640&format=jpeg&labels=false&showCountryBoundary=false&traffic=false&pointOfInterest=false&showRoadLabels=false&traffic=false"
+        url += "&height=640&Width=640&format=jpeg&labels=false&showCountryBoundary=false&traffic=false&pointOfInterest=false&showRoadLabels=false"
         
 
         return url
