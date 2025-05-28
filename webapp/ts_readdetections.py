@@ -2783,6 +2783,7 @@ def get_clusterstatusfromjob(job_id):
             else:
                 return get_cluster_status_from_databricks(clusterID)
         else:
+            return "TERMINATED"
             return {"error": f"Failed to retrieve job run status, url:{url}, Token: {PERSONAL_ACCESS_TOKEN}", "message": response.json()}
         print(len(job_run_info))
         print(job_run_info['runs'][0]['setup_duration'])
