@@ -415,7 +415,7 @@ class AzureMap extends TSMap {
             console.log(`Switched from ${currentStyle.style} to ${newStyle.style}`);
 
             if ((currentStyle.style === 'road' && newStyle.style === 'satellite') || (currentStyle.style === 'satellite' && newStyle.style === 'road')) {
-              console.log('Detected switch from Road to Satellite or Satellite to Road!');
+              // console.log('Detected switch from Road to Satellite or Satellite to Road!');
               const datasource = this.drawingManager.getSource();
               if (!this.map.sources.getById(datasource.getId())) {
                   this.map.sources.add(datasource);
