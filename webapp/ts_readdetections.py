@@ -663,7 +663,7 @@ class SilverTable:
             print("Finally. Retrying...")
     
     def poll_SilverTableJobDoneWithLogs(
-        self, request_id, user_id, tile_count, max_retries, delay=10
+        self, request_id, user_id, tile_count, max_retries, delay=20
         ):
         print("calling poll_SilverTableJobDoneWithLogs")
         # # Testing existing data
