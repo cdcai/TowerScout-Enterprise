@@ -901,7 +901,7 @@ def pollSilverTableWithLogs():
             exit_events.free(id(session))
             return "[]"
         
-        return Response(stream_with_context(stInstance.poll_SilverTableJobDoneWithLogs(request_id, user_id, tilescount, max_retries, 10)), mimetype='text/event-stream')
+        return Response(stream_with_context(stInstance.poll_SilverTableJobDoneWithLogs(request_id, user_id, tilescount, max_retries, 20)), mimetype='text/event-stream')
     except Exception as e:
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
     except RuntimeError as e:
@@ -1513,6 +1513,24 @@ def getClusterStatus():
         result = "RuntimeError"
     finally:
         return result
+
+
+@app.route("/ToggleTestEnvironment", methods=["GET"])
+def ToggleTestEnvironment():
+    try:
+        result = 'False'
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            result= os.getenv('ToggleTestEnvironment')
+        else:     
+            result= 'True'
+        return result
+    except Exception as e:
+        logging.error("Error at %s", "ToggleTestEnvironment towerscout.py", exc_info=e)
+        return "Exception"
+    except RuntimeError as e:
+        logging.error("RuntimeError at %s", "ToggleTestEnvironment towerscout.py", exc_info=e)
+        return "RuntimeError"
+    
 
 
 # download results as dataset for formal training /testing
