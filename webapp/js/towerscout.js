@@ -68,6 +68,7 @@ function initAzureMap() {
       setMap(this);
     });
   }
+  // ToggleTestEnvironment();
   getazmapTransactioncountjs(2);
   getClusterStatusjs();
 }
@@ -415,7 +416,7 @@ class AzureMap extends TSMap {
             console.log(`Switched from ${currentStyle.style} to ${newStyle.style}`);
 
             if ((currentStyle.style === 'road' && newStyle.style === 'satellite') || (currentStyle.style === 'satellite' && newStyle.style === 'road')) {
-              // console.log('Detected switch from Road to Satellite or Satellite to Road!');
+              console.log('Detected switch from Road to Satellite or Satellite to Road!');
               const datasource = this.drawingManager.getSource();
               if (!this.map.sources.getById(datasource.getId())) {
                   this.map.sources.add(datasource);
@@ -480,7 +481,7 @@ class AzureMap extends TSMap {
     this.map.events.add('drawingcomplete', this.drawingManager, () => { this.getDrawnBoundariesShapes() });
   }
 
-  
+
   getDrawnBoundariesShapes(){
     // There are no detections - user is drawing a boundary to search
     if (!detectionsList.hasChildNodes() && Detection_detections.length == 0){
@@ -517,7 +518,7 @@ class AzureMap extends TSMap {
         polys.push(poly);
     }
       else if (shape.data.geometry.type == "Point"){
-    
+
     
     }
       else if (shape.data.geometry.type == "LineString"){
@@ -795,7 +796,7 @@ class AzureMap extends TSMap {
         if (s.data.geometry.type === "Point") {
           const [lon, lat] = s.data.geometry.coordinates;
 
-          const offset = 0.000035; // Adjust for square size (~11m at equator)
+          const offset = 0.000025; // Adjust for square size (~11m at equator)
 
           // Create corners of square around the point
           const squareCoords = [
@@ -2242,7 +2243,8 @@ function drawBoundingBoxesTest(){
  
     console.log("Detection request in progress ....");
     const formData = new FormData();
-    request_id = 'a1f0868c';
+    // 2 Peachtree St NE, Atlanta, GA 30303
+    request_id = '77a4ab95';
     user_id = 'cnu4';
     formData.append('bounds', bounds);
     formData.append('user_id', user_id);
@@ -2469,7 +2471,7 @@ async function pollSilverTable() {
   const options = { method: 'POST', body: formData };  // Request body
 
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
-  const RESTART_DELAY = 20000;  // Restart delay in milliseconds (e.g., 20 seconds)
+  const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
     while (true) {
       // console.log('Making request...');
@@ -2477,7 +2479,7 @@ async function pollSilverTable() {
       if (result.status === 502) {
         console.log('Error during pollSilverTable request:' + error);
         // In case of error, wait for 10 seconds before retrying
-        console.log('Waiting for 20 seconds before retrying...');
+        console.log('Waiting for 60 seconds before retrying...');
         await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
         return pollSilverTable();
       }
@@ -2515,7 +2517,7 @@ async function pollSilverTableWithLogs() {
   // const formData = new FormData(document.querySelector('form'));
   const params = new URLSearchParams(formData).toString();
   
-  const RESTART_DELAY = 20000;  // Restart delay in milliseconds (e.g., 20 seconds)
+  const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
    
    
@@ -2548,7 +2550,7 @@ async function pollSilverTableWithLogs() {
         
           console.log('⏱️ Reconnecting after 4.9 minutes...');
           // Wait before sending another request (restart cycle after 10 seconds)
-          console.log('Waiting for 20 seconds before retrying...');
+          console.log('Waiting for 60 seconds before retrying...');
           await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
           return pollSilverTableWithLogs();
         
@@ -2574,7 +2576,7 @@ async function pollSilverTableWithLogs() {
   console.log('Error during pollSilverTableWithLogs request:' + error);
   // In case of error, wait for 10 seconds before retrying
   eventSource.close();
-  console.log('Waiting for 20 seconds before retrying...');
+  console.log('Waiting for 60 seconds before retrying...');
   await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
   return pollSilverTableWithLogs();
 }
@@ -2587,15 +2589,15 @@ async function pollquerystatus(startTime) {
   const url = '/pollquerystatus';  // Endpoint URL
   const options = { method: 'POST', body: formData };  // Request body
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
-  const RESTART_DELAY = 20000;  // Restart delay in milliseconds (e.g., 20 seconds)
+  const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
     while (true) {
       // console.log('Making request...');
       const result = await fetchWithTimeout(url, options, TIMEOUT_DURATION);
       if (result.status === 502) {
         console.log('Error during Polling merge query status:' + error);
-        // In case of error, wait for 20 seconds before retrying
-        console.log('Waiting for 20 seconds before retrying...');
+        // In case of error, wait for 60 seconds before retrying
+        console.log('Waiting for 60 seconds before retrying...');
         await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
         return pollquerystatus();
       }
@@ -2607,8 +2609,8 @@ async function pollquerystatus(startTime) {
         console.log('Polling Polling merge query status - Request failed or timed out');
       }
 
-      // Wait before sending another request (restart cycle after 20 seconds)
-      console.log('Waiting for 20 seconds before retrying...');
+      // Wait before sending another request (restart cycle after 60 seconds)
+      console.log('Waiting for 60 seconds before retrying...');
       await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
       return pollquerystatus();
 
@@ -2616,7 +2618,7 @@ async function pollquerystatus(startTime) {
   } catch (error) {
     console.log('Error during pollquerystatus request:' + error);
     // In case of error, wait for 10 seconds before retrying
-    console.log('Waiting for 20 seconds before retrying...');
+    console.log('Waiting for 60 seconds before retrying...');
     await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
     return pollquerystatus();
   }
@@ -2756,7 +2758,28 @@ async function getClusterStatusjs() {
   }
 
 }
+function ToggleTestEnvironment(){
+  let enableTestEnv = fetch('/ToggleTestEnvironment');
+  fetch('/ToggleTestEnvironment')
+    .then(response => {
 
+      return response.text();
+    })
+    .then(data => {
+      // Assign the response value to a variable
+      enableTestEnv = data;
+      if (enableTestEnv === 'True'){
+        document.getElementById("btnTest").removeAttribute("style");
+        document.getElementById("btnTestGold").removeAttribute("style");
+        }
+     
+    })
+    .catch(error => {
+      console.log(error);
+    });
+  
+
+}
 //get Cluster Status
 async function pollClusterStatusjs() {
   let isFirstAttempt = true;
@@ -2865,6 +2888,11 @@ function circleBoundary() {
 
 function drawnBoundary() {
   console.log("using custom boundary polygon(s)");
+  
+  
+    // // Clear existing boundaries
+    // currentMap.clearAll();
+    // Draw boundary
   let boundaries = currentMap.retrieveDrawnBoundaries();
   for (let b of boundaries) {
     // googleMap.addBoundary(b);
@@ -3375,7 +3403,7 @@ function PromoteSilverToGold(){
         // Looping through the updated(selected/unselected) detection array elements
         for (let det of DetectionsForTile) {
           // Exclude only newly added items
-          
+          // if (det.idInTile !== -1) {
             bboxes.push({
               'uuid': det.uuid,
               'image_hash': det.image_hash,
@@ -3389,7 +3417,7 @@ function PromoteSilverToGold(){
               'secondary': det.secondary,
             });
             //console.log(" including detection #" + (det.originalId));
-          
+          // }
 
         }
         tileRecords.push({
