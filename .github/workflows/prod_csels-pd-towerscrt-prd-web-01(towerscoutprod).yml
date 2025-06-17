@@ -8,8 +8,7 @@ on:
   push:
     branches:
       - prod
-    paths-ignore:
-      - '.github/workflows/*.yml'
+    
   workflow_dispatch:
 
 jobs:
