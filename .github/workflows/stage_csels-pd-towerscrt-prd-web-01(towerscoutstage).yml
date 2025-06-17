@@ -11,6 +11,7 @@ on:
     paths-ignore:
       - '.github/workflows/azure-deployment.yml'
       - '.github/workflows/stage_csels-pd-towerscrt-prd-web-01(towerscoutstage).yml'
+      - '.github/workflows/*.yml'
   workflow_dispatch:
 
 jobs:
