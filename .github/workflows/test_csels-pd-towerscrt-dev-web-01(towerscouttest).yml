@@ -9,8 +9,7 @@ on:
     branches:
       - test
     paths-ignore:
-      - '.github/workflows/azure-deployment.yml'
-      - '.github/workflows/test_csels-pd-towerscrt-dev-web-01(towerscouttest).yml'
+      - '.github/workflows/*.yml'
   workflow_dispatch:
 
 jobs:
