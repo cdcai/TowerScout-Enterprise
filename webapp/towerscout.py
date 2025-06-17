@@ -1513,8 +1513,6 @@ def getClusterStatus():
         result = "RuntimeError"
     finally:
         return result
-
-
 @app.route("/ToggleTestEnvironment", methods=["GET"])
 def ToggleTestEnvironment():
     try:
