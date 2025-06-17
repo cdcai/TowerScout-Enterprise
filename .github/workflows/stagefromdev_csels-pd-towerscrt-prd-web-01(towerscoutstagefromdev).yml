@@ -6,8 +6,8 @@ name: Build and deploy Python app to Azure Web App - csels-pd-towerscrt-dev-web-
 
 on:
   push:
-    branches:
-      - stagefromdev
+    #branches:
+    #  - stagefromdev
     paths-ignore:
       - '.github/workflows/azure-deployment.yml'
       - '.github/workflows/stagefromdev_csels-pd-towerscrt-prd-web-01(towerscoutstagefromdev).yml'
