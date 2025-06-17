@@ -10,6 +10,7 @@ on:
       - stage
     paths-ignore:
       - '.github/workflows/azure-deployment.yml'
+      - '.github/workflows/*.yml'
   workflow_dispatch:
 
 jobs:
