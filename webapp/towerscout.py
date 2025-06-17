@@ -37,9 +37,9 @@ from azure.core.exceptions import ClientAuthenticationError
 import ts_secrets
 
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
-import numpy as np
+
 import random
-import pandas as pd
+
 from azure.core.exceptions import ClientAuthenticationError
 
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
@@ -661,7 +661,11 @@ def get_objects():
                     "selected": True,
                     "tile": tile["id"],
                     "uuid": tile["uuid"],
-                    "image_hash": tile["image_hash"]
+                    "image_hash": tile["image_hash"],
+                    "lat": tile["lat"],
+                    "lng": tile["lng"],
+                    "w": tile["w"],
+                    "h": tile["h"],
                 }
             )
 
@@ -897,7 +901,7 @@ def pollSilverTableWithLogs():
             exit_events.free(id(session))
             return "[]"
         
-        return Response(stream_with_context(stInstance.poll_SilverTableJobDoneWithLogs(request_id, user_id, tilescount, max_retries, 10)), mimetype='text/event-stream')
+        return Response(stream_with_context(stInstance.poll_SilverTableJobDoneWithLogs(request_id, user_id, tilescount, max_retries, 20)), mimetype='text/event-stream')
     except Exception as e:
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
     except RuntimeError as e:
@@ -1061,7 +1065,11 @@ def fetchBoundingBoxResults():
                     "selected": True,
                     "tile": tile["id"],
                     "uuid": tile["uuid"],
-                    "image_hash": tile["image_hash"]
+                    "image_hash": tile["image_hash"],
+                    "lat": tile["lat"],
+                    "lng": tile["lng"],
+                    "w": tile["w"],
+                    "h": tile["h"],
                 }
             )
 
@@ -1095,6 +1103,200 @@ def fetchBoundingBoxResults():
     except SyntaxError as e:
             logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
 
+@app.route("/fetchBoundingBoxResultsGold", methods=["POST"])
+def fetchBoundingBoxResultsGold():
+    try:
+        print(" session:", id(session))
+        
+        tiles = []
+        start = time.time()
+        user_id = request.form.get("user_id")
+        request_id = request.form.get("request_id")
+        bounds = request.form.get("bounds")
+        polygons = request.form.get("polygons")
+        stInstance = ts_readdetections.GoldTable()
+
+        # cropping
+        crop_tiles = False
+
+        # make the polygons
+        polygons = json.loads(polygons)
+        # print(" parsed polygons:", polygons)
+        polygons = [ts_imgutil.make_boundary(p) for p in polygons]
+        print(" Shapely polygons:", polygons)
+        
+        provider = request.form.get("provider")
+        # empty results
+        results = []
+
+        # create a map provider object
+        map = None
+        if provider == "bing":
+            map = BingMap(bing_api_key)
+        elif provider == "google":
+            map = GoogleMap(google_api_key)
+        elif provider == "azure":
+            map = AzureMap(azure_api_key)
+
+        if map is None:
+            print(" could not instantiate map provider:", provider)
+
+         # divide the map into 640x640 parts
+        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
+        print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
+        # print(" Tile centers:")
+        # for c in tiles:
+        #   print("  ",c)
+       
+        tiles = [t for t in tiles if ts_maps.check_tile_against_bounds(t, bounds)]
+        tiles = [t for t in tiles if ts_imgutil.tileIntersectsPolygons(t, polygons)]
+        for i, tile in enumerate(tiles):
+            tile["id"] = i
+            
+        results_raw = stInstance.get_bboxesfortilesWithoutPolling(
+            tiles, exit_events, id(session), request_id, user_id
+        )
+        
+        logging.info("get_bboxesfortiles completed")
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+
+         # read metadata if present
+        for tile in tiles:
+            # if meta:
+            #     filename = user_id+"/"+fname+str(tile['id'])+".meta.txt"
+            #     with open(filename) as f:
+            #         tile['metadata'] = map.get_date(f.read())
+            #         # print(" metadata: "+tile['metadata'])
+            #         f.close
+            # else:
+            tile['metadata'] = ""
+        print("Before make_persistable_tile_results towerscout.py line 553")
+        # record some results in session for later saving if desired
+        session["detections"] = make_persistable_tile_results(tiles)
+        print("After make_persistable_tile_results towerscout.py line 556")
+        # # Only for localhost - Azure app services
+        # for chunk in results_raw:
+        #     if chunk:
+        #         print(f"tile results chunk: {chunk}")
+        # post-process the results
+               
+        results = []
+        for result, tile in zip(results_raw, tiles):
+            # print(f"tile['lng']: {tile['lng']}")
+            # print(f"tile['w']: {tile['w']}")
+            # print(f"tile['lat']: {tile['lat']}")
+            # print(f"tile['h']: {tile['h']}")
+            # adjust xyxy normalized results to lat, long pairs
+            for i, object in enumerate(result):
+                # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
+                object["silverx1"] = object["x1"]
+                object["silverx2"] = object["x2"]
+                object["silvery1"] = object["y1"]
+                object["silvery2"] = object["y2"]
+                object["x1"] = tile["lng"] - 0.5 * tile["w"] + object["x1"] * tile["w"]
+                object["x2"] = tile["lng"] - 0.5 * tile["w"] + object["x2"] * tile["w"]
+                object["y1"] = tile["lat"] + 0.5 * tile["h"] - object["y1"] * tile["h"]
+                object["y2"] = tile["lat"] + 0.5 * tile["h"] - object["y2"] * tile["h"]
+                object["tile"] = tile["id"]
+                object["id_in_tile"] = i
+                object["selected"] = object["secondary"] >= 0.35
+                object["uuid"] = tile["uuid"]
+                object["image_hash"] = tile["image_hash"]
+                
+            results += result
+
+        # mark results out of bounds or polygon
+        for o in results:
+            o["inside"] = ts_imgutil.resultIntersectsPolygons(
+                o["x1"], o["y1"], o["x2"], o["y2"], polygons
+            ) and ts_maps.check_bounds(o["x1"], o["y1"], o["x2"], o["y2"], bounds)
+            # print("in " if o['inside'] else "out ", end="")
+
+        # sort the results by lat, long, conf
+        results.sort(key=lambda x: x["y1"] * 2 * 180 + 2 * x["x1"] + x["conf"])
+
+        # # Commenting out this code - this code removes coordinates with less than 1 mile distance between them
+        # # assuming them to be duplicates. This is the original code.
+        # # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
+        # if len(results) > 1:
+        #     i = 0
+        #     while i < len(results) - 1:
+        #         if (
+        #             ts_maps.get_distance(
+        #                 results[i]["x1"],
+        #                 results[i]["y1"],
+        #                 results[i + 1]["x1"],
+        #                 results[i + 1]["y1"],
+        #             )
+        #             < 1
+        #         ):
+        #             print(" removing 1 duplicate result")
+        #             results.remove(results[i + 1])
+        #         else:
+        #             i += 1
+
+        # Adding tiles collection with corresponding id. id is needed for Silver to Gold Merge
+        # Using 10 for class in order to handle class values of 0/1 for selected/unselected detections while Promoting detections to Gold
+       
+        tile_results = []
+        for tile in tiles:
+            tile_results.append(
+                {
+                    "x1": tile["lng"] - 0.5 * tile["w"],
+                    "y1": tile["lat"] + 0.5 * tile["h"],
+                    "x2": tile["lng"] + 0.5 * tile["w"],
+                    "y2": tile["lat"] - 0.5 * tile["h"],
+                    "class": 10,
+                    "class_name": "tile",
+                    "conf": 1,
+                    "metadata": tile["metadata"],
+                    "url": tile["url"],
+                    "selected": True,
+                    "tile": tile["id"],
+                    "uuid": tile["uuid"],
+                    "image_hash": tile["image_hash"],
+                    "lat": tile["lat"],
+                    "lng": tile["lng"],
+                    "w": tile["w"],
+                    "h": tile["h"],
+                }
+            )
+
+        # all done
+        selected = str(reduce(lambda a, e: a + (e["selected"]), results, 0))
+        print(
+            " request complete,"
+            + str(len(results))
+            + " detections ("
+            + selected
+            + " selected), elapsed time: ",
+            (time.time() - start),
+        )
+        results = tile_results + results
+        # print()
+
+        exit_events.free(id(session))
+        print("Before results = json.dumps(results) towerscout.py line 638")
+        
+        # # Return the loaded data as JSON response
+        exit_events.free(id(session))
+        # return jsonify(results)
+        results = json.dumps(results)
+        print("After results = json.dumps(results) towerscout.py line 640")
+        session["results"] = results
+        return results
+    except Exception as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+
+
 @app.route('/promoteSilverToGold', methods=['POST'])
 def promoteSilverToGold():
     try:
@@ -1125,7 +1327,8 @@ def promoteSilverToGold():
         logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
     except SyntaxError as e:
         logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
-    
+
+  
     
 @app.route('/pollquerystatus', methods=['POST'])
 def pollquerystatus():
@@ -1251,7 +1454,19 @@ def drawResult(r, im):
         outline="red",
     )
 
-
+@app.route("/setDetectionInside", methods=["POST"])
+def setDetectionInside():
+    newDetections = json.loads(request.form.get("MissedDetections"))
+    bounds = request.form.get("bounds")
+    polygons = request.form.get("polygons")
+    for o in newDetections:
+       try:
+           o['inside'] = ts_imgutil.resultIntersectsPolygons(
+               o["x1"], o["y1"], o["x2"], o["y2"], polygons
+           ) and ts_maps.check_bounds(o["x1"], o["y1"], o["x2"], o["y2"], bounds)
+       except:
+           print(" Error in isDetectionInside")
+   
 @app.route("/getazmaptransactions", methods=["GET"])
 def getazmaptransactions():
     try:
@@ -1298,6 +1513,24 @@ def getClusterStatus():
         result = "RuntimeError"
     finally:
         return result
+
+
+@app.route("/ToggleTestEnvironment", methods=["GET"])
+def ToggleTestEnvironment():
+    try:
+        result = 'False'
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            result= os.getenv('ToggleTestEnvironment')
+        else:     
+            result= 'True'
+        return result
+    except Exception as e:
+        logging.error("Error at %s", "ToggleTestEnvironment towerscout.py", exc_info=e)
+        return "Exception"
+    except RuntimeError as e:
+        logging.error("RuntimeError at %s", "ToggleTestEnvironment towerscout.py", exc_info=e)
+        return "RuntimeError"
+    
 
 
 # download results as dataset for formal training /testing

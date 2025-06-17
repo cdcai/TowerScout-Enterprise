@@ -39,7 +39,7 @@ const reviewCheckBox = document.getElementById("review");
 // dynamically adjust confidence of visible predictions
 confSlider.oninput = adjustConfidence;
 reviewCheckBox.onchange = changeReviewMode;
-const DEFAULT_CONFIDENCE = 0.35
+const DEFAULT_CONFIDENCE = 0.35;
 let startTime = performance.now();
 var formData;
 
@@ -68,6 +68,7 @@ function initAzureMap() {
       setMap(this);
     });
   }
+  // ToggleTestEnvironment();
   getazmapTransactioncountjs(2);
   getClusterStatusjs();
 }
@@ -125,6 +126,102 @@ class TSMap {
   }
 }
 
+function isRectangleInsidePolygon(x1, y1, x2, y2, polygon) {
+  const corners = [
+      {x: x1, y: y1},
+      {x: x1, y: y2},
+      {x: x2, y: y1},
+      {x: x2, y: y2}
+  ];
+
+  return corners.every(corner => pointInPolygon(corner, polygon));
+}
+function pointInPolygon(point, polygon) {
+  let x = point.x, y = point.y;
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      let xi = polygon[i].x, yi = polygon[i].y;
+      let xj = polygon[j].x, yj = polygon[j].y;
+
+      let intersect = ((yi > y) !== (yj > y)) &&
+                      (x < (xj - xi) * (y - yi) / (yj - yi + Number.EPSILON) + xi);
+      if (intersect) inside = !inside;
+  }
+
+  return inside;
+}
+
+// function resultIntersectsPolygons(x1, y1, x2, y2, polygons) {
+//   if (polygons.length === 0) {
+//       return true;
+//   }
+
+//   const rect = [
+//       [x1, y1], [x2, y1],
+//       [x2, y2], [x1, y2],
+//       [x1, y1]
+//   ];
+
+//   for (const poly of polygons) {
+//       // Check edge intersections
+//       for (let i = 0; i < 4; i++) {
+//           const r1 = rect[i];
+//           const r2 = rect[i + 1];
+//           for (let j = 0; j < poly.length - 1; j++) {
+//               const p1 = poly[j];
+//               const p2 = poly[j + 1];
+//               if (segmentsIntersect(r1, r2, p1, p2)) {
+//                   return true;
+//               }
+//           }
+//       }
+
+//       // Check if rectangle is inside polygon
+//       if (pointInPolygon(rect[0], poly)) {
+//           return true;
+//       }
+
+//       // Check if polygon is inside rectangle
+//       if (pointInPolygon(poly[0], rect)) {
+//           return true;
+//       }
+//   }
+
+//   return false;
+// }
+function check_bounds(x1, y1, x2, y2, bounds){
+  const [south, west, north, east] = bounds.map(parseFloat);
+  return !(y1 < south || y2 > north || x2 < west || x1 > east);
+
+}
+
+
+// // Check if two line segments intersect
+// function segmentsIntersect(a1, a2, b1, b2) {
+//   const d = (b2[1] - b1[1]) * (a2[0] - a1[0]) - (b2[0] - b1[0]) * (a2[1] - a1[1]);
+//   if (d === 0) return false;
+
+//   const uA = ((b2[0] - b1[0]) * (a1[1] - b1[1]) - (b2[1] - b1[1]) * (a1[0] - b1[0])) / d;
+//   const uB = ((a2[0] - a1[0]) * (a1[1] - b1[1]) - (a2[1] - a1[1]) * (a1[0] - b1[0])) / d;
+
+//   return uA >= 0 && uA <= 1 && uB >= 0 && uB <= 1;
+// }
+
+// // Point-in-polygon using ray-casting
+// function pointInPolygon(point, vs) {
+//   let [x, y] = point;
+//   let inside = false;
+//   for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+//       const [xi, yi] = vs[i];
+//       const [xj, yj] = vs[j];
+
+//       const intersect = ((yi > y) !== (yj > y)) &&
+//           (x < (xj - xi) * (y - yi) / (yj - yi + 1e-10) + xi);
+//       if (intersect) inside = !inside;
+//   }
+//   return inside;
+// }
 
 
 /**
@@ -210,6 +307,13 @@ class AzureMap extends TSMap {
     this.map.events.add('ready', () => {
       // Now it's safe to load drawing tools and add sources/layers
       this.loadDrawingTools();
+      var drawingLayers = this.drawingManager.getLayers();
+      if (drawingLayers !== undefined){
+        this.map.events.add("click", drawingLayers.polygonLayer, (e) => {
+        // alert("Polygon clicked");
+      });
+      }
+      
       let datasource = new atlas.source.DataSource('searchResultDataSource');
       this.map.sources.add(datasource);
       //Add a layer for rendering point data.
@@ -304,9 +408,45 @@ class AzureMap extends TSMap {
           .append("<a>" + suggestionLabel + "</a>")
           .appendTo(ul);
       };
+
+      let currentStyle = this.map.getStyle();
+      this.map.events.add('styledata', () => {
+        const newStyle = this.map.getStyle();
+        if (currentStyle.style !== newStyle.style) {
+            console.log(`Switched from ${currentStyle.style} to ${newStyle.style}`);
+
+            if ((currentStyle.style === 'road' && newStyle.style === 'satellite') || (currentStyle.style === 'satellite' && newStyle.style === 'road')) {
+              console.log('Detected switch from Road to Satellite or Satellite to Road!');
+              const datasource = this.drawingManager.getSource();
+              if (!this.map.sources.getById(datasource.getId())) {
+                  this.map.sources.add(datasource);
+              }
+              
+            }
+
+            currentStyle = newStyle;
+        }
+      })
+      
+    this.map.setUserInteraction({
+      dragPanInteraction: true,
+      mouseWheelZoomInteraction: true,
+      doubleClickZoomInteraction: true,
+      touchZoomInteraction: true
+    });
+   
+    
     });
   }
+  reinitDrawingManager() {
+    const source = this.drawingManager.getSource();
 
+    // If layers were removed, this forces reinitialization
+    this.map.sources.remove(source);
+    this.map.sources.add(source);
+
+    // Optional: re-add shape layers if you have custom styling
+}
   loadDrawingTools() {
     // Load the DrawingTools module
     this.drawingManager = new atlas.drawing.DrawingManager(this.map,
@@ -315,9 +455,9 @@ class AzureMap extends TSMap {
         toolbar: new atlas.control.DrawingToolbar({
           position: 'top-left',
           style: 'light',
-          buttons: ['draw-polygon', 'draw-line', 'draw-circle', 'draw-rectangle', 'edit-geometry', 'erase-geometry'] // Include only the desired tools
+          buttons: ['draw-point','draw-polygon', 'draw-line', 'draw-circle', 'draw-rectangle', 'edit-geometry', 'erase-geometry'] // Include only the desired tools
         }),
-       
+        
       });
     var layers = this.drawingManager.getLayers();
     layers.lineLayer.setOptions({
@@ -327,38 +467,197 @@ class AzureMap extends TSMap {
     layers.polygonOutlineLayer.setOptions({
       strokeColor: 'blue'
     });
+    layers.pointLayer.setOptions({
+      iconOptions: {
+        image: 'pin-round-darkblue',  // Try other built-in Azure Maps icons
+        anchor: 'center',
+        size: 0.5,
+        allowOverlap: true
+      }
+    });
+   
     this.map.events.add('drawingchanging', this.drawingManager, (shape) => { this.measureShape(shape) });
     this.map.events.add('drawingchanged', this.drawingManager, (shape) => { this.measureShape(shape) });
-    this.map.events.add('drawingcomplete', this.drawingManager, () => { this.retrieveDrawnBoundaries() });
+    this.map.events.add('drawingcomplete', this.drawingManager, () => { this.getDrawnBoundariesShapes() });
   }
 
-  retrieveDrawnBoundaries() {
-    const shapes = this.drawingManager.getSource().shapes;
-    const polys = [];
 
-    if (shapes && shapes.length > 0) {
-      console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
-      for (let shape of shapes) {
-        let coordinates = [];
-        if ("circlePolygon" in shape) {
-          coordinates = shape.circlePolygon.geometry.coordinates[0];
-        } 
-        else if (shape.data.geometry.type == "Point"){
-          coordinates = shape.data.geometry.coordinates;
-        }
-        else {
-          coordinates = shape.data.geometry.coordinates[0];
-        }
-        const points = coordinates.map(coord => [coord[0], coord[1]]);
-        polys.push(new PolygonBoundary(points));
+  getDrawnBoundariesShapes(){
+    // There are no detections - user is drawing a boundary to search
+    if (!detectionsList.hasChildNodes() && Detection_detections.length == 0){
+      let boundaries = currentMap.retrieveDrawnBoundaries();
+      for (let b of boundaries) {
+        currentMap.addBoundary(b);
       }
-    } else {
-      console.log('No shapes in the drawing manager.');
     }
+    else{
+      // this.retrieveDrawnShapes();
+    }
+  }
+  retrieveDrawnBoundaries(){
+    // 1. Get shapes from Drawing Manager
+    let shapes = this.drawingManager.getSource().shapes;
+
+// 2. Prepare a new DataSource for map display
+    const existingCustomDataSource = currentMap.map.sources.getById('customDataSource');
+    var customDataSource = existingCustomDataSource ?? new atlas.source.DataSource('customDataSource');
+    if (!existingCustomDataSource) {
+       this.map.sources.add(customDataSource);
+    }
+    
+    let polygonFeature,coordinates,points,poly;
+    const polys=[];
+// 3. Loop through shapes and extract circle geometry
+    shapes.forEach(shape => {
+      if (shape.properties?.shape === 'Circle' || shape.circlePolygon) {
+        polygonFeature = new atlas.data.Feature(
+            new atlas.data.Polygon(shape.circlePolygon.geometry.coordinates)
+        );
+        // currentMap.boundaries.push(new PolygonBoundary(shape.circlePolygon.geometry.coordinates[0]));
+        poly = new PolygonBoundary(shape.circlePolygon.geometry.coordinates[0]);
+        polys.push(poly);
+    }
+      else if (shape.data.geometry.type == "Point"){
+
+    
+    }
+      else if (shape.data.geometry.type == "LineString"){
+        coordinates = shape.data.geometry.coordinates;
+        const isClosed = coordinates.length > 2 &&
+        coordinates[0][0] === coordinates[coordinates.length - 1][0] &&
+        coordinates[0][1] === coordinates[coordinates.length - 1][1];
+        
+        if (isClosed){
+          polygonFeature = new atlas.data.Feature(
+          new atlas.data.Polygon(coordinates)
+        );
+      // Push the boundaries
+        points = coordinates.map(coord => [coord[0], coord[1]]);
+        poly = new PolygonBoundary(points);
+      
+      }
+        
+        }
+      else {
+        coordinates = shape.data.geometry.coordinates[0];
+      // Create a polygon feature
+        polygonFeature = new atlas.data.Feature(new atlas.data.Polygon(coordinates));
+      // Push the boundaries
+        points = coordinates.map(coord => [coord[0], coord[1]]);
+        poly = new PolygonBoundary(points);
+      
+      }
+        
+        // Add to map's DataSource
+      if (polygonFeature != undefined){   
+        customDataSource.add(polygonFeature);
+      // Push boundaries to current map
+        polys.push(poly);
+        
+      // 4. Add a PolygonLayer to display the circle outline
+       
+        this.map.layers.add(new atlas.layer.LineLayer(customDataSource, null, {
+          strokeColor: 'blue',
+          strokeWidth: 2
+        }));
+      
+    }
+      // Remove from DrawingManager
+      if (shape.data.geometry.type !== "Point"){
+        this.drawingManager.getSource().remove(shape);
+        this.customDataSource.remove(shape);
+    }
+    });
     console.log(`Polys: ${polys}`);
     this.boundaries = polys;
     this.showBoundaries()
     return polys;
+  }
+  retrieveDrawnShapes(){
+    // 1. Get shapes from Drawing Manager
+    let shapes = this.drawingManager.getSource().shapes;
+
+// 2. Prepare a new DataSource for map display
+    
+    let customDataSource = new atlas.source.DataSource();
+    this.map.sources.add(customDataSource);
+    let polygonFeature;
+    let coordinates;
+// 3. Loop through shapes and extract circle geometry
+    shapes.forEach(shape => {
+    if (shape.properties?.shape === 'Circle' || shape.circlePolygon) {
+        polygonFeature = new atlas.data.Feature(
+            new atlas.data.Polygon(shape.circlePolygon.geometry.coordinates)
+        );
+        currentMap.boundaries.push(new PolygonBoundary(shape.circlePolygon.geometry.coordinates[0]));
+    }
+    else if (shape.data.geometry.type == "Point"){
+      coordinates = shape.data.geometry.coordinates;
+     
+      const lon = coordinates[0];
+      const lat = coordinates[1];
+
+      const offset = 0.000025; // approx ~111m (adjust based on zoom level and context)
+
+      // Define square polygon around the point
+      const squareCoords = [
+        [lon - offset, lat - offset],
+        [lon - offset, lat + offset],
+        [lon + offset, lat + offset],
+        [lon + offset, lat - offset],
+        [lon - offset, lat - offset] // close the polygon
+      ];
+
+    // Create a polygon feature
+      polygonFeature = new atlas.data.Feature(new atlas.data.Polygon(squareCoords));
+
+    
+        }
+    else if (shape.data.geometry.type == "LineString"){
+      coordinates = shape.data.geometry.coordinates;
+      const isClosed = coordinates.length > 2 &&
+        coordinates[0][0] === coordinates[coordinates.length - 1][0] &&
+        coordinates[0][1] === coordinates[coordinates.length - 1][1];
+        
+      if (isClosed){
+        polygonFeature = new atlas.data.Feature(
+        new atlas.data.Polygon(coordinates)
+      );
+      const points = coordinates.map(coord => [coord[0], coord[1]]);
+      const poly = new PolygonBoundary(points);
+      currentMap.addBoundary(poly);
+      }
+        
+        }
+    else {
+      coordinates = shape.data.geometry.coordinates[0];
+      // Create a polygon feature
+      polygonFeature = new atlas.data.Feature(new atlas.data.Polygon(coordinates));
+      const points = coordinates.map(coord => [coord[0], coord[1]]);
+      const poly = new PolygonBoundary(points);
+      currentMap.addBoundary(poly);
+        }
+        
+        // Add to map's DataSource
+    if (polygonFeature != undefined){   
+        customDataSource.add(polygonFeature);
+
+        
+        // 4. Add a PolygonLayer to display the circle outline
+       
+      this.map.layers.add(new atlas.layer.LineLayer(customDataSource, null, {
+        strokeColor: 'blue',
+        strokeWidth: 2
+      }));
+    }
+      // Remove from DrawingManager
+      if (shape.data.geometry.type !== "Point"){
+        this.drawingManager.getSource().remove(shape);
+      }
+
+      
+    });
+    
   }
 
   clearShapes() {
@@ -371,19 +670,33 @@ class AzureMap extends TSMap {
     
   }
 
+  clearCustomBoundaryShapes() {
+    const source = this.drawingManager.getSource();
+    const shapes = source.getShapes();
+    
+    if (shapes && shapes.length > 0) {
+      source.clear();
+    
+    }
+    this.drawingManager?.getSource()?.clear();
+
+    }
+ 
   clearAll() {
     Detection.resetAll();
     this.clearShapes();
-    
+    this.resetBoundaries();
+    this.clearAllCustomLayers();
+    this.clearCustomDataSource();
   }
   hideAllDataSources() {
     var layers = this.map.layers.getLayers();  // Get all layers on the map
 
     layers.forEach(function (layer) {
       // Check if the layer is associated with any DataSource
-      // if (layer.getSource()) {
+      
       layer.setOptions({ visible: false });  // Hide the layer
-      // }
+      
     });
     // console.log('All DataSource layers have been hidden');
   }
@@ -396,6 +709,9 @@ class AzureMap extends TSMap {
       this.customLayers = []; // Clear the array after removal
       
   } 
+  }
+  clearCustomDataSource(){
+    this.map.sources.getById('customDataSource')?.clear();
   }
   // Function to remove a layer by its id
   removeLayerById(layerId) {
@@ -469,16 +785,94 @@ class AzureMap extends TSMap {
 
   addShapes() {
     let shapes = this.drawingManager.getSource().shapes;
-
+    let x1;
+    let y1;
+    let x2;
+    let y2;
+    let bounds;
     if (shapes && shapes.length > 0) {
       console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
       for (let s of shapes) {
-        console.log("Adding " + s.getBounds().toString());
+        if (s.data.geometry.type === "Point") {
+          const [lon, lat] = s.data.geometry.coordinates;
+
+          const offset = 0.000025; // Adjust for square size (~11m at equator)
+
+          // Create corners of square around the point
+          const squareCoords = [
+              [lon - offset, lat - offset],
+              [lon - offset, lat + offset],
+              [lon + offset, lat + offset],
+              [lon + offset, lat - offset],
+              [lon - offset, lat - offset] // close polygon
+          ];
+          // Now create a Polygon shape from this square
+          const squarePolygon = new atlas.data.Feature(new atlas.data.Polygon([squareCoords]));
+          // Get bounds from the polygon feature
+          bounds = atlas.data.BoundingBox.fromData(squarePolygon);
+           // Get bounding box corners
+          x1 = bounds[0]; // West (min lon)
+          y1 = bounds[3]; // North (max lat)
+          x2 = bounds[2]; // East (max lon)
+          y2 = bounds[1]; // South (min lat)
+          console.log(`x1: ${x1}, y1: ${y1}, x2: ${x2}, y2: ${y2}`);
+          let PointDataSource = new atlas.source.DataSource();
+          // Optional: draw it on the map
+          PointDataSource.add(squarePolygon);
+          this.map.sources.add(PointDataSource);
+        }
+        else
+        {
+          console.log("Adding " + s.getBounds().toString());
         
-        let x1 = s.getBounds()[0];
-        let y1 = s.getBounds()[3];
-        let x2 = s.getBounds()[2];
-        let y2 = s.getBounds()[1];
+          x1 = s.getBounds()[0];
+          y1 = s.getBounds()[3];
+          x2 = s.getBounds()[2];
+          y2 = s.getBounds()[1];
+        }
+        // If a circle is drawn, draw a square using the center and radius of the circle
+        if (s.properties?.shape === 'Circle' || s.circlePolygon){
+          x1 = s.getBounds()[0];
+          y1 = s.getBounds()[1];
+          x2 = s.getBounds()[2];
+          y2 = s.getBounds()[3];
+          const centerLng = (x1 + x2) / 2;
+          const centerLat = (y1 + y2) / 2;
+          const center = [centerLng, centerLat];
+
+          // 3. Estimate radius in meters using getDistanceTo (from center to one edge)
+          const pointOnEdge = [x2, centerLat]; // East edge
+          const radius = atlas.math.getDistanceTo(center, pointOnEdge); // in meters
+
+          // 4. Use getDestination to find the square corners
+          const north = atlas.math.getDestination(center, radius, 0);    // bearing 0° (North)
+          const east = atlas.math.getDestination(center, radius, 90);    // 90° (East)
+          const south = atlas.math.getDestination(center, radius, 180);  // 180° (South)
+          const west = atlas.math.getDestination(center, radius, 270);   // 270° (West)
+
+          // 5. Construct square using those points
+          const squareCoords = [[
+            [west[0], north[1]],  // Top-left
+            [east[0], north[1]],  // Top-right
+            [east[0], south[1]],  // Bottom-right
+            [west[0], south[1]],  // Bottom-left
+            [west[0], north[1]]   // Closing loop
+          ]];
+
+          // Step 4: Create a polygon and add to map
+          const circleSquarePolygon = new atlas.data.Feature(new atlas.data.Polygon(squareCoords));
+          
+
+          let CircleSquareDataSource = new atlas.source.DataSource();
+          CircleSquareDataSource.add(circleSquarePolygon);
+          this.map.sources.add(CircleSquareDataSource);
+          x1 = s.getBounds()[0];
+          y1 = s.getBounds()[3];
+          x2 = s.getBounds()[2];
+          y2 = s.getBounds()[1];
+         
+        }
+        
 
         let tileIds = Tile.getTileIds(x1, y1, x2, y2);
         for (let tileId of tileIds) {
@@ -492,12 +886,27 @@ class AzureMap extends TSMap {
           y2 = Math.max(y2, tile.y2);
           y2 = Math.min(y2, tile.y1);
           let det = new Detection(x1, y1, x2, y2,
-            'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
-          det.update();
+            'ct', 1.0, tileId, -1 /*id_in_tile*/, true, true,1.0,0);
+          
+          tile = Tile_tiles[tileId];
+         
+          det["silverx1"] = (det["x1"] - (tile["lng"] - 0.5 * tile["w"])) / tile["w"];
+          det["silverx2"] = (det["x2"] - (tile["lng"] - 0.5 * tile["w"])) / tile["w"];
+
+          det["silvery1"] = (tile["lat"] + 0.5 * tile["h"] - det["y1"]) / tile["h"];
+          det["silvery2"] = (tile["lat"] + 0.5 * tile["h"] - det["y2"]) / tile["h"];
+          // }
+          
+
+          det["image_hash"] = tile["image_hash"];
+          det["uuid"] = tile["uuid"];
+          // det.update();
         }
         
-        augmentDetections();
       }
+        this.clearCustomBoundaryShapes();
+        augmentDetections(true);
+      
       
     } else {
       console.log('No shapes in the drawing manager.');
@@ -600,24 +1009,15 @@ class AzureMap extends TSMap {
           fillColor: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red fill
           strokeWidth: 1                  // Border width
         });
-        currentMap.map.layers.add(fillLayer);
+        currentMap.map.layers.add(fillLayer,null);
         this.customLayers.push(fillLayer);
         o.fillLayerID = fillLayer.id;;
-
-      }
-
-
-      if ((typeof listener !== 'undefined') && (o.classname != 'tile')) {
-        // Add click event to the layer using the 'addEventListener' method on the map
         this.map.events.add('click', fillLayer, function (e) {
-          // Check if the click happened inside the polygon
-          const clickedEntity = e.shapes[0];
-          if (clickedEntity) {
-            listener(clickedEntity);  // Call the listener function
-          }
+          // console.log('Polygon clicked:', e);
         });
-
       }
+          
+     
       return boundingBoxPolygon;
 
     }
@@ -1036,7 +1436,7 @@ class BingMap extends TSMap {
 
     return polys;
   }
-
+ 
   hasShapes() {
     let shapes = this.drawingManager.getPrimitives();
     return shapes && shapes.length > 0;
@@ -1044,15 +1444,75 @@ class BingMap extends TSMap {
 
   addShapes() {
     let shapes = this.drawingManager.getPrimitives();
+    let x1;
+    let y1;
+    let x2;
+    let y2;
 
     if (shapes && shapes.length > 0) {
       console.log('Retrieved ' + shapes.length + ' from the drawing manager.');
       for (let s of shapes) {
+        if (s.data.geometry.type == "Point"){
+          coordinates = s.data.geometry.coordinates;
+     
+          const lon = coordinates[0];
+          const lat = coordinates[1];
+
+          const offset = 0.0000175; // approx ~111m (adjust based on zoom level and context)
+
+      // Define square polygon around the point
+      // Compute bounding box corners
+          const west  = lon - offset;
+          const east  = lon + offset;
+          const north = lat + offset;
+          const south = lat - offset;
+          x1 = west;
+          y1 = north;
+          x2 = east;
+          y2 = south;
+        }
+        else{
+          x1 = s.geometry.boundingBox.getWest();
+          y1 = s.geometry.boundingBox.getNorth();
+          x2 = s.geometry.boundingBox.getEast();
+          y2 = s.geometry.boundingBox.getSouth();
+        }
+        // If a circle is drawn, draw a square using the center and radius of the circle
+        if (s.properties?.shape === 'Circle' || s.circlePolygon){
+         
+          const centerLng = (x1 + x2) / 2;
+          const centerLat = (y1 + y2) / 2;
+          const center = [centerLng, centerLat];
+
+          // 3. Estimate radius in meters using getDistanceTo (from center to one edge)
+          const pointOnEdge = [x2, centerLat]; // East edge
+          const radius = atlas.math.getDistanceTo(center, pointOnEdge); // in meters
+
+          // 4. Use getDestination to find the square corners
+          const north = atlas.math.getDestination(center, radius, 0);    // bearing 0° (North)
+          const east = atlas.math.getDestination(center, radius, 90);    // 90° (East)
+          const south = atlas.math.getDestination(center, radius, 180);  // 180° (South)
+          const west = atlas.math.getDestination(center, radius, 270);   // 270° (West)
+
+          // 5. Construct square using those points
+          const squareCoords = [[
+            [west[0], north[1]],  // Top-left
+            [east[0], north[1]],  // Top-right
+            [east[0], south[1]],  // Bottom-right
+            [west[0], south[1]],  // Bottom-left
+            [west[0], north[1]]   // Closing loop
+          ]];
+
+          // Step 4: Create a polygon and add to map
+          const circleSquarePolygon = new atlas.data.Feature(new atlas.data.Polygon(squareCoords));
+          
+          let CircleSquareDataSource = new atlas.source.DataSource();
+          CircleSquareDataSource.add(circleSquarePolygon);
+          this.map.sources.add(CircleSquareDataSource);
+          
+        }
         console.log("Adding " + s.geometry.bounds.toString());
-        let x1 = s.geometry.boundingBox.getWest();
-        let y1 = s.geometry.boundingBox.getNorth();
-        let x2 = s.geometry.boundingBox.getEast();
-        let y2 = s.geometry.boundingBox.getSouth();
+        
 
         let tileIds = Tile.getTileIds(x1, y1, x2, y2);
         for (let tileId of tileIds) {
@@ -1066,7 +1526,7 @@ class BingMap extends TSMap {
           y2 = Math.max(y2, tile.y2);
           y2 = Math.min(y2, tile.y1);
           let det = new Detection(x1, y1, x2, y2,
-            'added', 1.0, tileId, -1 /*id_in_tile*/, true, true);
+            'ct', 1.0, tileId, -1 /*id_in_tile*/, true, true);
           det.update();
         }
 
@@ -1087,6 +1547,7 @@ class BingMap extends TSMap {
       this.entities.clear();
     }
   }
+ 
 
   clearAll() {
     if (this.hasShapes) {
@@ -1262,7 +1723,7 @@ class Tile extends PlaceRect {
     Tile_tiles = [];
   }
 
-  constructor(x1, y1, x2, y2, metadata, url, tileID, uuid, image_hash, classname, classtype) {
+  constructor(x1, y1, x2, y2, metadata, url, tileID, uuid, image_hash, classname, classtype,lat,lng,w,h) {
     super(x1, y1, x2, y2, "#0000FF", "#0000FF", 0.0, "tile", classtype)
     this.metadata = metadata; // for Bing maps
     this.url = url;
@@ -1271,6 +1732,10 @@ class Tile extends PlaceRect {
     this.image_hash = image_hash;
     this.classname = classname;
     this.classtype = classtype;
+    this.lat = lat;
+    this.lng = lng;
+    this.w = w;
+    this.h = h;
 
     Tile_tiles.push(this);
   }
@@ -1388,13 +1853,16 @@ class Detection extends PlaceRect {
       det.id = i;
     }
   }
+
+  
   static generateList() {
     let currentAddr = "";
+    let sameAddressInside = "";
     let firstDet = null;
     let boxes = "<ul>";
     let count = 0;
     for (let det of Detection_detections) {
-      if (det.address !== currentAddr) {
+      if ((det.address !== currentAddr) || (det.address === currentAddr && (det.inside != sameAddressInside))) {
         if (currentAddr !== "") {
           boxes += "</ul></li>";
         }
@@ -1414,7 +1882,14 @@ class Detection extends PlaceRect {
         boxes += "<ul class='nested' id='towerslist" + det.id;
         boxes += "' style='text-indent:-25px; padding-left: 60px;'>";
         currentAddr = det.address;
+        
         firstDet = det;
+      }
+      if(det.address === currentAddr){
+        sameAddressInside = det.inside;
+      }
+      else{
+        sameAddressInside = "";
       }
       boxes += det.generateCheckBox();
       firstDet.maxConf = Math.max(det.conf, firstDet.maxConf); // record min conf in block header
@@ -1728,10 +2203,9 @@ function getObjects(estimate) {
   getazmapTransactioncountjs(2);
   disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
 }
-function ProcessUserRequest(estimate)
-{
-  try
-  {
+
+function drawBoundingBoxesTest(){
+  try{
     
     if (Detection_detections.length > 0) {
       if (!window.confirm("This will erase current detections. Proceed?")) {
@@ -1766,6 +2240,138 @@ function ProcessUserRequest(estimate)
     Detection.resetAll();
     // Tile.resetAll();
 
+ 
+    console.log("Detection request in progress ....");
+    const formData = new FormData();
+    // 2 Peachtree St NE, Atlanta, GA 30303
+    request_id = '77a4ab95';
+    user_id = 'cnu4';
+    formData.append('bounds', bounds);
+    formData.append('user_id', user_id);
+    formData.append('request_id', request_id);
+    formData.append('engine', engine);
+    formData.append('provider', provider);
+    formData.append('polygons', boundaries);
+    fetch("/fetchBoundingBoxResults", { method: "POST", body: formData })
+          .then(response => response.json())
+          .then(result => {
+            console.log("Processing ....");
+            processObjects(result, startTime);
+          })
+          .catch(e => {
+            console.log(e + " - drawBoundingBoxes: "); disableProgress(0, 0);
+          });
+        }
+    catch (error) {
+    console.log('Error during drawBoundingBoxes:', error);
+    
+    }  
+}
+function drawBoundingBoxesGoldTable(){
+  try{
+    
+    if (Detection_detections.length > 0) {
+      if (!window.confirm("This will erase current detections. Proceed?")) {
+      // erase the previous set of towers and tiles
+      currentMap.clearAll();
+      return;
+      }
+    }
+
+    let engine = $('input[name=model]:checked', '#engines').val()
+    let provider = $('input[name=provider]:checked', '#providers').val()
+    provider = provider.substring(0, provider.length - 9);
+
+
+    // now get the boundaries ready to ship
+    let bounds = currentMap.getBoundsUrl();
+
+    if (currentMap.boundaries.length === 0) {
+    if (currentMap.hasShapes()) {
+      drawnBoundary();
+    }
+    }
+
+    let boundaries = currentMap.getBoundariesStr();
+    if (estimate) {
+      console.log("Estimate request in progress ....");
+    } else {
+      console.log("Detection request in progress ....");
+    }
+
+    // erase the previous set of towers and tiles
+    Detection.resetAll();
+    // Tile.resetAll();
+
+ 
+    console.log("Detection request in progress ....");
+    const formData = new FormData();
+    request_id = 'cd7925ea';
+    user_id = 'cnu4';
+    formData.append('bounds', bounds);
+    formData.append('user_id', user_id);
+    formData.append('request_id', request_id);
+    formData.append('engine', engine);
+    formData.append('provider', provider);
+    formData.append('polygons', boundaries);
+    fetch("/fetchBoundingBoxResultsGold", { method: "POST", body: formData })
+          .then(response => response.json())
+          .then(result => {
+            console.log("Processing ....");
+            processObjects(result, startTime);
+          })
+          .catch(e => {
+            console.log(e + " - drawBoundingBoxes: "); disableProgress(0, 0);
+          });
+        }
+    catch (error) {
+    console.log('Error during drawBoundingBoxes:', error);
+    
+    }  
+}
+function ProcessUserRequest(estimate)
+{
+  try
+  {
+    
+    if (Detection_detections.length > 0) {
+      if (!window.confirm("This will erase current detections. Proceed?")) {
+      // erase the previous set of towers and tiles
+      currentMap.clearAll();
+      return;
+      }
+    }
+
+    let engine = $('input[name=model]:checked', '#engines').val()
+    let provider = $('input[name=provider]:checked', '#providers').val()
+    provider = provider.substring(0, provider.length - 9);
+
+    if (currentMap.hasShapes()) {
+      // If user drew the boundaries
+      drawnBoundary();
+      currentMap.clearCustomBoundaryShapes();
+    }
+    // now get the boundaries ready to ship
+    let bounds = currentMap.getBoundsUrl();
+
+    if (currentMap.boundaries.length === 0) {
+    if (currentMap.hasShapes()) {
+      drawnBoundary();
+    }
+    }
+    
+    
+    let boundaries = currentMap.getBoundariesStr();
+    if (estimate) {
+      console.log("Estimate request in progress ....");
+    } else {
+      console.log("Detection request in progress ....");
+    }
+
+    // erase the previous set of towers and tiles
+    Detection.resetAll();
+    // Tile.resetAll();
+
   // first, play the request, but get an estimate of the number of tiles
     formData = new FormData();
     formData.append('bounds', bounds);
@@ -1775,7 +2381,9 @@ function ProcessUserRequest(estimate)
     formData.append('estimate', "yes");
     
 
-    fetch("/uploadTileImages", { method: "POST", body: formData, })
+    fetch("/uploadTileImages", { method: "POST", body: formData,
+      credentials: 'include' // 👈 keeps cookies/session consistent 
+      })
       .then(result => result.text())
       .then(result => {
         if (Number(result) === -1) {
@@ -1786,12 +2394,12 @@ function ProcessUserRequest(estimate)
           + (Math.round(Number(result) * secsPerTile * 10) / 10) + " s");
         // Get from Dev  Key Vault by default. Need to create secrets in the Prod Key Vault
 
-        // let nt = estimateNumTiles(currentMap.getZoom());
+        
         // console.log("  Estimated tiles:" + nt);
         if (estimate) {
           return;
         }
-        
+
         // actual retrieval process starts here
         nt = Number(result);
         enableProgress(nt);
@@ -1802,7 +2410,9 @@ function ProcessUserRequest(estimate)
         
         Detection.resetAll();
         formData.delete("estimate");
-        fetch("/uploadTileImages", { method: "POST", body: formData })
+        fetch("/uploadTileImages", { method: "POST", body: formData ,
+          credentials: 'include' // 👈 keeps cookies/session consistent 
+          })
           .then(response => response.json())
           .then(result => {
             console.log("Images uploaded ....");
@@ -1861,7 +2471,7 @@ async function pollSilverTable() {
   const options = { method: 'POST', body: formData };  // Request body
 
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
-  const RESTART_DELAY = 10000;  // Restart delay in milliseconds (e.g., 10 seconds)
+  const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
     while (true) {
       // console.log('Making request...');
@@ -1869,7 +2479,7 @@ async function pollSilverTable() {
       if (result.status === 502) {
         console.log('Error during pollSilverTable request:' + error);
         // In case of error, wait for 10 seconds before retrying
-        console.log('Waiting for 10 seconds before retrying...');
+        console.log('Waiting for 60 seconds before retrying...');
         await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
         return pollSilverTable();
       }
@@ -1907,7 +2517,7 @@ async function pollSilverTableWithLogs() {
   // const formData = new FormData(document.querySelector('form'));
   const params = new URLSearchParams(formData).toString();
   
-  const RESTART_DELAY = 10000;  // Restart delay in milliseconds (e.g., 10 seconds)
+  const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
    
    
@@ -1940,7 +2550,7 @@ async function pollSilverTableWithLogs() {
         
           console.log('⏱️ Reconnecting after 4.9 minutes...');
           // Wait before sending another request (restart cycle after 10 seconds)
-          console.log('Waiting for 10 seconds before retrying...');
+          console.log('Waiting for 60 seconds before retrying...');
           await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
           return pollSilverTableWithLogs();
         
@@ -1948,9 +2558,15 @@ async function pollSilverTableWithLogs() {
       }, TIMEOUT_DURATION);
 
       eventSource.onerror = (error) => {
-        // console.log('SSE error Polling Silver Table:' + error);
-        console.error("SSE error Polling Silver Table:", e);
+        console.error('SSE connection error Polling Silver Table:', error);
         eventSource.close();
+        // Wait before sending another request (restart cycle after 10 seconds)
+        console.log('Waiting for 10 seconds before retrying...');
+        // Wait 10 seconds before starting the next process
+        setTimeout(() => {
+          console.log('Waiting for 10 seconds before retrying...');
+          return pollSilverTableWithLogs();
+        }, 10000); // 10,000 ms = 10 seconds
       };
       
     
@@ -1960,7 +2576,7 @@ async function pollSilverTableWithLogs() {
   console.log('Error during pollSilverTableWithLogs request:' + error);
   // In case of error, wait for 10 seconds before retrying
   eventSource.close();
-  console.log('Waiting for 10 seconds before retrying...');
+  console.log('Waiting for 60 seconds before retrying...');
   await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
   return pollSilverTableWithLogs();
 }
@@ -1973,15 +2589,15 @@ async function pollquerystatus(startTime) {
   const url = '/pollquerystatus';  // Endpoint URL
   const options = { method: 'POST', body: formData };  // Request body
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
-  const RESTART_DELAY = 10000;  // Restart delay in milliseconds (e.g., 10 seconds)
+  const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
     while (true) {
       // console.log('Making request...');
       const result = await fetchWithTimeout(url, options, TIMEOUT_DURATION);
       if (result.status === 502) {
         console.log('Error during Polling merge query status:' + error);
-        // In case of error, wait for 10 seconds before retrying
-        console.log('Waiting for 10 seconds before retrying...');
+        // In case of error, wait for 60 seconds before retrying
+        console.log('Waiting for 60 seconds before retrying...');
         await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
         return pollquerystatus();
       }
@@ -1993,8 +2609,8 @@ async function pollquerystatus(startTime) {
         console.log('Polling Polling merge query status - Request failed or timed out');
       }
 
-      // Wait before sending another request (restart cycle after 10 seconds)
-      console.log('Waiting for 10 seconds before retrying...');
+      // Wait before sending another request (restart cycle after 60 seconds)
+      console.log('Waiting for 60 seconds before retrying...');
       await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
       return pollquerystatus();
 
@@ -2002,7 +2618,7 @@ async function pollquerystatus(startTime) {
   } catch (error) {
     console.log('Error during pollquerystatus request:' + error);
     // In case of error, wait for 10 seconds before retrying
-    console.log('Waiting for 10 seconds before retrying...');
+    console.log('Waiting for 60 seconds before retrying...');
     await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
     return pollquerystatus();
   }
@@ -2123,12 +2739,16 @@ async function getClusterStatusjs() {
   try{
     if (message === 'RUNNING') {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "green";
+      document.getElementById('lblClusterStatusValue').style.color = "white";
     } else if (message === 'PENDING') {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "blue";
+      document.getElementById('lblClusterStatusValue').style.color = "white";
     } else if (message === 'RESIZING') {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "yellow";
+      document.getElementById('lblClusterStatusValue').style.color = "black";
     } else {
       document.getElementById('lblClusterStatusValue').style.backgroundColor = "red";
+      document.getElementById('lblClusterStatusValue').style.color = "white";
     }
 
     return message; 
@@ -2138,10 +2758,31 @@ async function getClusterStatusjs() {
   }
 
 }
+function ToggleTestEnvironment(){
+  let enableTestEnv = fetch('/ToggleTestEnvironment');
+  fetch('/ToggleTestEnvironment')
+    .then(response => {
 
+      return response.text();
+    })
+    .then(data => {
+      // Assign the response value to a variable
+      enableTestEnv = data;
+      if (enableTestEnv === 'True'){
+        document.getElementById("btnTest").removeAttribute("style");
+        document.getElementById("btnTestGold").removeAttribute("style");
+        }
+     
+    })
+    .catch(error => {
+      console.log(error);
+    });
+  
+
+}
 //get Cluster Status
 async function pollClusterStatusjs() {
-  
+  let isFirstAttempt = true;
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
   let timeoutHandle;  // Need to clear this before returning true
   try {
@@ -2152,13 +2793,18 @@ async function pollClusterStatusjs() {
     if (result == 'RUNNING') {
       console.log('Cluster is Running');
       if (timeoutHandle) clearTimeout(timeoutHandle); // Clear any pending timeouts
-      // console.log("Delaying Polling Silver Table by 1 minute");
-      // setTimeout(pollSilverTableWithLogs, 60000);  // Start polling after 1 minute
-      return pollSilverTableWithLogs();
+      if (isFirstAttempt) {
+        isFirstAttempt = false; // Mark that we've handled the first attempt
+        console.log("Delaying polling of Silver Table by 1 minute.");
+        setTimeout(pollSilverTableWithLogs, 60000); // Wait 1 minute, then call
+      } else {
+        return pollSilverTableWithLogs(); // Immediately call on non-first attempts
+      }
     } else {
         
       console.log('Cluster status: ' + result);
       console.log('Waiting for 5 minutes before retrying...');
+      isFirstAttempt = false; // First attempt failed; no need to delay on next RUNNING
       timeoutHandle = setTimeout(() => {
         pollClusterStatusjs(); // Recursive call after timeout
       }, TIMEOUT_DURATION);
@@ -2172,6 +2818,7 @@ async function pollClusterStatusjs() {
   // In case of error, wait for 10 seconds before retrying
   console.log('Error checking Cluster Status...');
   console.log('Waiting for 5 minutes before retrying...');
+  isFirstAttempt = false; // First attempt failed; no need to delay on next RUNNING
   timeoutHandle = setTimeout(() => {
     pollClusterStatusjs(); // Recursive call after timeout
   }, TIMEOUT_DURATION);
@@ -2194,7 +2841,7 @@ function processObjects(result, startTime) {
         r['class_name'], r['conf'], r['tile'], r['id_in_tile'], r['inside'], r['selected'], r['secondary'], r['class'], r['uuid'], r['image_hash'],
         r['silverx1'], r['silvery1'], r['silverx2'], r['silvery2']);
     } else if (r['class'] === 10) { // tile
-      let tile = new Tile(r['x1'], r['y1'], r['x2'], r['y2'], r['metadata'], r['url'], r['id'], r['uuid'], r['image_hash'], r['class_name'], r['class']);
+      let tile = new Tile(r['x1'], r['y1'], r['x2'], r['y2'], r['metadata'], r['url'], r['id'], r['uuid'], r['image_hash'], r['class_name'], r['class'],r['lat'],r['lng'],r['w'],r['h']);
     }
   }
   //console.log("" + Detection_detections.length + " detections.")
@@ -2241,6 +2888,11 @@ function circleBoundary() {
 
 function drawnBoundary() {
   console.log("using custom boundary polygon(s)");
+  
+  
+    // // Clear existing boundaries
+    // currentMap.clearAll();
+    // Draw boundary
   let boundaries = currentMap.retrieveDrawnBoundaries();
   for (let b of boundaries) {
     // googleMap.addBoundary(b);
@@ -2446,8 +3098,11 @@ function chunkArray(array, chunkSize) {
   }
   return result;
 }
-function augmentDetections() {
-  Detection_detectionsAugmented = 0;
+function augmentDetections(addnew = false) {
+  if (addnew != true){
+    Detection_detectionsAugmented = 0;
+  }
+  
   //for (let det of Detection_detections) {
   if (currentUI.value == "bing") {
 
@@ -2494,14 +3149,15 @@ function augmentDetections() {
         let coordinates = reverseloc.split(",").map(Number);
         batchItems.push({
           coordinates: coordinates,
-          resultTypes: ["Address"]
+          resultTypes: ["Address"],
+          OptionalID: det.id
         });
       }
     }
 
    
     const batchedItems = chunkArray(batchItems, BATCH_SIZE);
-
+    const existingdetectionslength = Detection_detections.length;
     batchedItems.forEach((batch, batchIndex) => {
       setTimeout(() => {
         $.ajax({
@@ -2509,13 +3165,19 @@ function augmentDetections() {
           type: 'POST',
           contentType: 'application/json',
           data: JSON.stringify({ batchItems: batch }),
-          success: function (result) {
+          success: async function (result) {
             for (let i = 0; i < result.batchItems.length; i++) {
               const features = result.batchItems[i].features;
               if (features && features.length > 0) {
                 const addr = features[0].properties.address.formattedAddress;
                 let detectionIndex = batchIndex * 99 + i;
+                if (addnew == true){
+                  // detectionIndex = Detection_detections.findIndex(item => item.id === batchItems[i].OptionalID);
+                  detectionIndex = result.batchItems[i]["optionalId"];
+                }
                 Detection_detections[detectionIndex].augment(addr);
+                
+                
               } else {
                 if(result.batchItems[i]['error'] != "")
                 {
@@ -2526,6 +3188,7 @@ function augmentDetections() {
                 console.log(`No address found for batch item ${batchIndex * 99 + i}`);
               }
             }
+            
             afterAugment();
           },
           error: function (error, status) {
@@ -2740,7 +3403,7 @@ function PromoteSilverToGold(){
         // Looping through the updated(selected/unselected) detection array elements
         for (let det of DetectionsForTile) {
           // Exclude only newly added items
-          if (det.idInTile !== -1) {
+          // if (det.idInTile !== -1) {
             bboxes.push({
               'uuid': det.uuid,
               'image_hash': det.image_hash,
@@ -2754,7 +3417,7 @@ function PromoteSilverToGold(){
               'secondary': det.secondary,
             });
             //console.log(" including detection #" + (det.originalId));
-          }
+          // }
 
         }
         tileRecords.push({
