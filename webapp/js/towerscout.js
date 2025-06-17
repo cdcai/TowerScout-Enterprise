@@ -597,7 +597,7 @@ class AzureMap extends TSMap {
       const lon = coordinates[0];
       const lat = coordinates[1];
 
-      const offset = 0.00002; // approx ~111m (adjust based on zoom level and context)
+      const offset = 0.000025; // approx ~111m (adjust based on zoom level and context)
 
       // Define square polygon around the point
       const squareCoords = [
