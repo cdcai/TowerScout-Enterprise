@@ -8,6 +8,9 @@ on:
   push:
     branches:
       - stagefromdev
+    paths-ignore:
+      - '.github/workflows/azure-deployment.yml'
+      - '.github/workflows/stagefromdev_csels-pd-towerscrt-prd-web-01(towerscoutstagefromdev).yml'
   workflow_dispatch:
 
 jobs:
