@@ -73,6 +73,6 @@ jobs:
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
-          app-name: 'csels-pd-towerscrt-prd-web-01'
+          app-name: 'csels-pd-towerscrt-prd-web-01(towerscoutprod)'
           slot-name: 'towerscoutprod'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_TOWERSCOUTPROD }}
