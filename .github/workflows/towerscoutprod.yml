@@ -75,4 +75,4 @@ jobs:
         with:
           app-name: 'csels-pd-towerscrt-prd-web-01'
           slot-name: 'towerscoutprod'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_574C94B6351F4E829B2C05710A5C21BF }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_TOWERSCOUTPROD }}
