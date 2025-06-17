@@ -7,9 +7,8 @@ name: Build and deploy Python app to Azure Web App - csels-pd-towerscrt-prd-web-
 on:
   push:
     branches:
-      - stage
+      - prod
     paths-ignore:
-      - '.github/workflows/azure-deployment.yml'
       - '.github/workflows/*.yml'
   workflow_dispatch:
 
@@ -55,7 +54,7 @@ jobs:
       #group: edav-devops-prd
     needs: build
     environment:
-      name: 'towerscoutstage'
+      name: 'towerscoutprod'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     
     steps:
@@ -75,5 +74,5 @@ jobs:
         id: deploy-to-webapp
         with:
           app-name: 'csels-pd-towerscrt-prd-web-01'
-          slot-name: 'towerscoutstage'
+          slot-name: 'towerscoutprod'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_574C94B6351F4E829B2C05710A5C21BF }}
