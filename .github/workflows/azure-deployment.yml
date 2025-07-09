@@ -67,9 +67,8 @@ jobs:
       #    name: python-app
 
       - name: Unzip release.zip
-        run: |
-          Expand-Archive -Path release.zip -DestinationPath ./ -Force
-        shell: powershell  # Ensure it uses PowerShell
+        run: unzip -o release.zip
+        shell: bash
 
 
       
