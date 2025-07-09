@@ -230,15 +230,38 @@ function check_bounds(x1, y1, x2, y2, bounds){
 * Use like this: `const data = await processRequest(url);`
 */
 async function processRequest(url, map) {
-  // Replace the domain placeholder to ensure the same Azure Maps is used throughout the app.
-  url = url.replace('{azMapsDomain}', atlas.getDomain());
+  // Check if it's a template-style URL (e.g. fuzzy search)
+  const isTemplate = url.includes('{azMapsDomain}');
 
-  // Get the authentication details from the map for use in the request.
-  var requestParams = map.authentication.signRequest({ url: url });
+  // Replace the domain placeholder if it's a template
+  if (isTemplate) {
+    url = url.replace('{azMapsDomain}', atlas.getDomain());
+  }
 
-  // Transform the request.
-  var transform = map.getServiceOptions().transformRequest;
-  if (transform) requestParams = transform(url);
+  let requestParams = {
+    url: url,
+    headers: {}
+  };
+
+  // Only sign the request if it's a template (map SDK URL)
+  if (isTemplate) {
+    requestParams = map.authentication.signRequest({ url: url });
+  }
+
+  // Apply transformRequest if defined (for debugging or proxy use)
+  const transform = map.getServiceOptions()?.transformRequest;
+  if (typeof transform === 'function') {
+    const transformed = transform(requestParams.url);
+    if (transformed?.url) {
+      requestParams = {
+        url: transformed.url,
+        headers: transformed.headers || {}
+      };
+    }
+  }
+
+  // // Log for debugging
+  // console.log("Final URL:", requestParams.url);
 
   const response = await fetch(requestParams.url, {
     method: 'GET',
@@ -322,19 +345,66 @@ class AzureMap extends TSMap {
       //Create a jQuery autocomplete UI widget.
       var geocodeServiceUrlTemplate = 'https://{azMapsDomain}/search/fuzzy/json?typeahead=true&api-version=1.0&query={query}&language=en-US&lon={lon}&lat={lat}&countrySet=US&view=Auto';
       $("#azureSearch").autocomplete({
-        minLength: 4,   //Don't ask for suggestions until atleast 3 characters have been typed. This will reduce costs by not making requests that will likely not have much relevance.
-        source: (request, response) => {
-          var center = this.map.getCamera().center;
+      minLength: 4,
+      delay: 300,
+      source: (request, response) => {
+  const term = request.term.trim();
+  const isZip = /^\d{5}(-\d{4})?$/.test(term); // ZIP or ZIP+4
+  const latLonMatch = term.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/); // Matches "lat, lon"
+  const isLatLon = latLonMatch !== null;
 
-          //Create a URL to the Azure Maps search service to perform the search.
-          var requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(request.term))
-            .replace('{lon}', center[0])    //Use a lat and lon value of the center the map to bais the results to the current map view.
-            .replace('{lat}', center[1])
+  let requestUrl;
 
-          processRequest(requestUrl, this.map).then(data => {
-            response(data.results);
-          });
-        },
+  if (isLatLon) {
+    // Handle reverse geocoding
+    const lat = latLonMatch[1];
+    const lon = latLonMatch[3];
+    requestUrl = `https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query=${lat},${lon}&subscription-key=${azure_api_key}`;
+  } else {
+    // Use fuzzy search for all other inputs
+    requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(term));
+
+    if (isZip) {
+      // Remove location bias for ZIP search
+      requestUrl = requestUrl.replace('&lon={lon}', '').replace('&lat={lat}', '');
+    } else {
+      // Add map center bias
+      const center = this.map.getCamera().center;
+      requestUrl = requestUrl.replace('{lon}', center[0]).replace('{lat}', center[1]);
+    }
+  }
+
+  processRequest(requestUrl, this.map).then(data => {
+    const suggestions = [];
+
+    const results = data.results || data.addresses || [];
+
+    results.forEach(item => {
+      const address = item.address || {};
+      const postalCode = address.postalCode || '';
+      const city = address.municipality || '';
+      const state = address.countrySubdivision || '';
+      const freeform = address.freeformAddress || `${item.position.lat}, ${item.position.lon}`;
+      const poiName = item.poi?.name;
+
+      let label = freeform;
+      if (postalCode && city && state) {
+        label = `${postalCode} - ${city}, ${state}`;
+      }
+      if (poiName) {
+        label = `${poiName} (${label})`;
+      }
+
+      suggestions.push({
+        ...item,
+        label: label,
+        value: label
+      });
+    });
+
+    response(suggestions);
+  });
+},
         select: (event, ui) => {
           event.preventDefault();
           document.getElementById("azureSearch").value = ui.item.address.freeformAddress
@@ -385,9 +455,7 @@ class AzureMap extends TSMap {
                 this.boundaries = polys;
               }
             });
-          }
-
-          //Zoom the map into the selected location.
+            //Zoom the map into the selected location.
           this.map.setCamera({
             bounds: [
               ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
@@ -395,6 +463,35 @@ class AzureMap extends TSMap {
             ],
             padding: 0
           });
+          }
+          // 🔍 Check for fuzzy result (with viewport) or reverse (with position)
+          if (ui.item?.viewport) {
+            this.map.setCamera({
+              bounds: [
+                ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
+                ui.item.viewport.btmRightPoint.lon, ui.item.viewport.topLeftPoint.lat
+              ],
+              padding: 0
+            });
+          } else if (ui.item?.position) {
+            // Reverse geocode result — center map using lat/lon
+            let lat, lon;
+
+            if (typeof ui.item.position === 'string') {
+              // Position is like "40.712967,-74.007301"
+              [lat, lon] = ui.item.position.split(',').map(parseFloat);
+            } else {
+              // Just in case Azure ever returns an object
+              lat = ui.item.position.lat;
+              lon = ui.item.position.lon;
+            }
+
+            this.map.setCamera({
+              center: [lon, lat],
+              zoom: 14
+            });
+          }
+          
         }
       }).autocomplete("instance")._renderItem = function (ul, item) {
         //Format the displayed suggestion to show the formatted suggestion string.
@@ -2333,7 +2430,10 @@ function ProcessUserRequest(estimate)
 {
   try
   {
-    
+    const now = new Date(); // Get current date and time
+    document.getElementById('lblSearchEndTime').style.display = "none";
+    document.getElementById('lblSearchStartTime').innerHTML = "Last Search Start Time: <br>" + now.toLocaleString();
+    document.getElementById('lblSearchStartTime').removeAttribute("style");
     if (Detection_detections.length > 0) {
       if (!window.confirm("This will erase current detections. Proceed?")) {
       // erase the previous set of towers and tiles
@@ -2516,8 +2616,13 @@ async function pollSilverTableWithLogs() {
   // const options = { method: 'POST', body: formData };  // Request body
   // const formData = new FormData(document.querySelector('form'));
   const params = new URLSearchParams(formData).toString();
-  
+  const tilecount = formData.get('tiles_count');
   const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
+  if (tilecount<100){
+     RESTART_DELAY = tilecount * 500;  // Restart delay in milliseconds (e.g., 60 seconds)
+    }
+    
+  // const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
    
    
@@ -2795,8 +2900,17 @@ async function pollClusterStatusjs() {
       if (timeoutHandle) clearTimeout(timeoutHandle); // Clear any pending timeouts
       if (isFirstAttempt) {
         isFirstAttempt = false; // Mark that we've handled the first attempt
-        console.log("Delaying polling of Silver Table by 1 minute.");
-        setTimeout(pollSilverTableWithLogs, 60000); // Wait 1 minute, then call
+        const tilecount = formData.get('tiles_count');
+        const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
+        if (tilecount<100){
+          RESTART_DELAY = tilecount * 500;  // Restart delay in milliseconds (e.g., 60 seconds)
+        }
+       
+        console.log("Delaying polling of Silver Table by " + Math.round((RESTART_DELAY/1000),2) + " seconds.");
+       
+        // setTimeout(pollSilverTableWithLogs, 60000); // Wait 1 minute, then call
+       
+        setTimeout(pollSilverTableWithLogs, RESTART_DELAY); // Wait 1 minute, then call
       } else {
         return pollSilverTableWithLogs(); // Immediately call on non-first attempts
       }
@@ -3139,6 +3253,9 @@ function augmentDetections(addnew = false) {
     let batchItems = [];
     if (Detection_detections.length == 0){
       console.log("Done. No detections found.");
+      const now = new Date(); // Get current date and time
+      document.getElementById('lblSearchEndTime').innerHTML = "Last Search End Time: <br>" + now.toLocaleString();
+      document.getElementById('lblSearchEndTime').removeAttribute("style");
     }
     else    {
        for (let i = 0; i < Detection_detections.length; i++) {
@@ -3218,7 +3335,9 @@ function afterAugment() {
 
   console.log("Adjusting Confidence ....");
   adjustConfidence();
-
+  const now = new Date(); // Get current date and time
+  document.getElementById('lblSearchEndTime').innerHTML = "Last Search End Time: <br>" + now.toLocaleString();
+  document.getElementById('lblSearchEndTime').removeAttribute("style");
   console.log("Done.");
 }
 
@@ -3582,7 +3701,7 @@ let progressTimer = null;
 let totalSecsEstimated = 0;
 let secsElapsed = 0;
 let numTiles = 0;
-let secsPerTile = 0.25;
+let secsPerTile = 0.6;
 let dataPoints = 0;
 
 function enableProgress(tiles) {
@@ -3590,7 +3709,13 @@ function enableProgress(tiles) {
 
   progressTimer = setInterval(progressFunction, 100);
   numTiles = tiles;
-  totalSecsEstimated = secsPerTile * numTiles;
+  if (numTiles<100){
+    totalSecsEstimated = secsPerTile * numTiles;
+  }
+  else{
+    totalSecsEstimated = 60;
+  }
+  
   secsElapsed = 0;
 }
 function fatalError(msg) {

@@ -114,9 +114,11 @@ Licensed under CC-BY-NC-SA-4.0
       <label id="lblClusterStatusValue" style="color: white;"></label><br><br>
       <label>Cluster Status last updated:</label><br>
       <label id="lblClusterStatusDtTime" style="display: none;"></label><br><br>
-      <button id="btnGetClusterStatus" class="btn" onclick='getClusterStatusjs()' style="display: none;">Refresh Cluster Status</button>
+      <button id="btnGetClusterStatus" class="btn" onclick='getClusterStatusjs()' style="display: none;">Refresh Cluster Status</button><br><br>
+      <label id="lblSearchStartTime" style="display: none;"></label><br><br>
+      <label id="lblSearchEndTime" style="display: none;"></label><br><br>
     </div>
-
+   
    
     <!--The div element for the map -->
     <div class="fmap" style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
@@ -133,6 +135,8 @@ Licensed under CC-BY-NC-SA-4.0
       <button id="btnTestGold" style="display: none;" class="btn" onclick='drawBoundingBoxesGoldTable()'>Find Gold towers</button>
       <button id="estimate" class="btn" onclick='ProcessUserRequest(true)'>Estimate tiles</button>
       <button id="find" class="btn" onclick='ProcessUserRequest()'>Find towers</button>
+      
+      
     </div>
 
     <div class="ffilter" id="ffilter" style="font-size: smaller;display:none">
