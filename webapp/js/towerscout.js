@@ -260,8 +260,6 @@ async function processRequest(url, map) {
     }
   }
 
-  // // Log for debugging
-  // console.log("Final URL:", requestParams.url);
 
   const response = await fetch(requestParams.url, {
     method: 'GET',
@@ -2961,6 +2959,7 @@ function processObjects(result, startTime) {
   //console.log("" + Detection_detections.length + " detections.")
   
   augmentDetections();
+ 
   disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
 }
 
@@ -3012,6 +3011,9 @@ function drawnBoundary() {
     // googleMap.addBoundary(b);
     currentMap.addBoundary(b);
   }
+  
+  
+  
 }
 
 function clearBoundaries() {
