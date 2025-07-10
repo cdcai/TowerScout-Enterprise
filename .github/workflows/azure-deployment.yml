@@ -28,10 +28,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Create and start virtual environment
+      - name: Create and activate virtual environment
+        shell: powershell
         run: |
           python -m venv venv
-          .\venv\Scripts\Activate  # Correct command for PowerShell
+          .\venv\Scripts\Activate
+          python --version
       
       - name: Install dependencies
         run: pip install -r requirements.txt
