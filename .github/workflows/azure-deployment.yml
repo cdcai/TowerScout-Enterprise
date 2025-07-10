@@ -19,6 +19,7 @@ jobs:
       - self-hosted
       - Windows
       - X64
+      - L383058
     permissions:
       contents: read #This is required for actions/checkout
 
