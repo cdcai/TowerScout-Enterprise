@@ -2615,9 +2615,9 @@ async function pollSilverTableWithLogs() {
   // const formData = new FormData(document.querySelector('form'));
   const params = new URLSearchParams(formData).toString();
   const tilecount = formData.get('tiles_count');
-  const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
+  var RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   if (tilecount<100){
-     RESTART_DELAY = tilecount * 500;  // Restart delay in milliseconds (e.g., 60 seconds)
+     RESTART_DELAY = tilecount * 5000;  // Restart delay in milliseconds (e.g., 5 seconds per tile)
     }
     
   // const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
@@ -2899,9 +2899,9 @@ async function pollClusterStatusjs() {
       if (isFirstAttempt) {
         isFirstAttempt = false; // Mark that we've handled the first attempt
         const tilecount = formData.get('tiles_count');
-        const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
+        var RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
         if (tilecount<100){
-          RESTART_DELAY = tilecount * 500;  // Restart delay in milliseconds (e.g., 60 seconds)
+          RESTART_DELAY = tilecount * 5000;  // Restart delay in milliseconds (e.g., 5 seconds per tile)
         }
        
         console.log("Delaying polling of Silver Table by " + Math.round((RESTART_DELAY/1000),2) + " seconds.");
