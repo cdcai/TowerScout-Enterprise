@@ -68,7 +68,7 @@ function initAzureMap() {
       setMap(this);
     });
   }
-  ToggleTestEnvironment();
+  // ToggleTestEnvironment();
   getazmapTransactioncountjs(2);
   getClusterStatusjs();
 }
