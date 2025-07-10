@@ -31,8 +31,7 @@ jobs:
       - name: Create and start virtual environment
         run: |
           python -m venv venv
-          #.\venv\Scripts\Activate  # Correct command for PowerShell
-          .\venv\Scripts\Activate.ps1
+          source venv/bin/activate  # Correct command for bash
       
       - name: Install dependencies
         run: pip install -r requirements.txt
