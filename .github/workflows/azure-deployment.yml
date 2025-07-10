@@ -79,3 +79,4 @@ jobs:
           app-name: 'csels-pd-towerscrt-dev-web-01'
           slot-name: 'towerscoutdev'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_30C48FEAEE0E493DB701B1A20F915C81 }}
+
