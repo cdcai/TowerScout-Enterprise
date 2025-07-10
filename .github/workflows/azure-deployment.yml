@@ -16,8 +16,8 @@ jobs:
 
   build:
     runs-on:
-      - self-hosted
       - L383058
+      - TowerScout
     permissions:
       contents: read #This is required for actions/checkout
 
