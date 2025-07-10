@@ -73,10 +73,9 @@ jobs:
       #  with:
       #    name: python-app
 
-      - name: Unzip release package
-        shell: powershell
-        run: |
-          Expand-Archive -Path release.zip -DestinationPath ./ -Force
+      - name: Unzip release.zip
+        shell: cmd
+        run: powershell -Command "Expand-Archive -Path 'release.zip' -DestinationPath '.' -Force"
 
 
 
