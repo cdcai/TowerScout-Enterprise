@@ -28,15 +28,18 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Create and activate virtual environment
+      - name: Set up Python virtual environment and install dependencies
         shell: powershell
         run: |
           python -m venv venv
-          .\venv\Scripts\Activate
+          $env:Path = "$PWD\venv\Scripts;$env:Path"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
           python --version
+
       
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      # - name: Install dependencies
+      #   run: pip install -r requirements.txt
         
       # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
       - name: Create zip release file
