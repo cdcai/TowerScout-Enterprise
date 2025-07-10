@@ -29,8 +29,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Set up Python virtual environment and install dependencies
-        shell: pwsh
+      - name: Create and activate virtual environment
+        shell: powershell
         run: |
           python -m venv venv
           $env:Path = "$PWD\venv\Scripts;$env:Path"
