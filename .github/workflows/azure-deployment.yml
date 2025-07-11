@@ -9,7 +9,7 @@ on:
     branches:
       - dev
     paths-ignore:
-      - '.github/workflows/azure-deployment.yml'
+      - '.github/workflows/*.yml'
   workflow_dispatch:
 
 jobs:
@@ -29,28 +29,19 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Create and activate virtual environment
-        shell: powershell
+      - name: Create and start virtual environment
         run: |
           python -m venv venv
-          $env:Path = "$PWD\venv\Scripts;$env:Path"
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          python --version
-
-
+          .\venv\Scripts\Activate  # Correct command for PowerShell
       
-      # - name: Install dependencies
-      #   run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
         
       # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
       - name: Create zip release file
-        shell: powershell
         run: |
-          $files = Get-ChildItem -Path $PWD -Exclude 'release.zip'  # Avoid zipping the output itself
-          Compress-Archive -Path $files -DestinationPath release.zip -Force
-        working-directory: ${{ github.workspace }}
-
+          Compress-Archive -Path ./* -DestinationPath release.zip
+        shell: powershell  # Use the default Windows PowerShell shell
 
   
 
@@ -77,9 +68,9 @@ jobs:
       #    name: python-app
 
       - name: Unzip release.zip
-        shell: cmd
-        run: powershell -Command "Expand-Archive -Path 'release.zip' -DestinationPath '.' -Force"
-
+        run: |
+          Expand-Archive -Path release.zip -DestinationPath ./ -Force
+        shell: powershell  # Ensure it uses PowerShell
 
 
       
