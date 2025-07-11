@@ -71,6 +71,7 @@ jobs:
         run: |
           Expand-Archive -Path release.zip -DestinationPath ./ -Force
         shell: powershell  # Ensure it uses PowerShell
+        working-directory: ${{ github.workspace }}
 
 
       
