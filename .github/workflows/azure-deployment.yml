@@ -9,15 +9,14 @@ on:
     branches:
       - dev
     paths-ignore:
-      - '.github/workflows/azure-deployment.yml'
-      
+      - '.github/workflows/*.yml'
   workflow_dispatch:
 
 jobs:
 
   build:
-    runs-on: self-hosted
-      #group: edav-devops
+    runs-on:
+      - TowerScout
     permissions:
       contents: read #This is required for actions/checkout
 
@@ -32,10 +31,14 @@ jobs:
       - name: Create and start virtual environment
         run: |
           python -m venv venv
-          .\venv\Scripts\Activate  # Correct command for PowerShell
+          .\venv\Scripts\Activate.ps1  # Correct command for PowerShell
       
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m venv venv
+          .\venv\Scripts\Activate.ps1
+          pip install -r requirements.txt
+        shell: powershell
         
       # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
       - name: Create zip release file
@@ -54,7 +57,7 @@ jobs:
      #       release.zip
      #       !venv/
   deploy:
-    runs-on: self-hosted
+    runs-on: TowerScout
       #group: edav-devops
     needs: build
     environment:
@@ -68,8 +71,10 @@ jobs:
       #    name: python-app
 
       - name: Unzip release.zip
-        run: unzip -o release.zip
-        shell: bash
+        run: |
+          Expand-Archive -Path release.zip -DestinationPath ./ -Force
+        shell: powershell  # Ensure it uses PowerShell
+        
 
 
       
@@ -80,3 +85,4 @@ jobs:
           app-name: 'csels-pd-towerscrt-dev-web-01'
           slot-name: 'towerscoutdev'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_30C48FEAEE0E493DB701B1A20F915C81 }}
+
