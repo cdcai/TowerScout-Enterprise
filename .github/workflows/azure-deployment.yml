@@ -45,9 +45,12 @@ jobs:
         
       # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
       - name: Create zip release file
+        shell: powershell
         run: |
-          Compress-Archive -Path ./* -DestinationPath release.zip
-        shell: powershell  # Use the default Windows PowerShell shell
+          $files = Get-ChildItem -Path $PWD -Exclude 'release.zip'  # Avoid zipping the output itself
+          Compress-Archive -Path $files -DestinationPath release.zip -Force
+        working-directory: ${{ github.workspace }}
+
 
   
 
