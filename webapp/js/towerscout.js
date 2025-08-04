@@ -346,63 +346,64 @@ class AzureMap extends TSMap {
       minLength: 4,
       delay: 300,
       source: (request, response) => {
-  const term = request.term.trim();
-  const isZip = /^\d{5}(-\d{4})?$/.test(term); // ZIP or ZIP+4
-  const latLonMatch = term.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/); // Matches "lat, lon"
-  const isLatLon = latLonMatch !== null;
+          const term = request.term.trim();
+          const isZip = /^\d{5}(-\d{4})?$/.test(term); // ZIP or ZIP+4
+          const latLonMatch = term.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/); // Matches "lat, lon"
+          const isLatLon = latLonMatch !== null;
 
-  let requestUrl;
+          let requestUrl;
 
-  if (isLatLon) {
-    // Handle reverse geocoding
-    const lat = latLonMatch[1];
-    const lon = latLonMatch[3];
-    requestUrl = `https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query=${lat},${lon}&subscription-key=${azure_api_key}`;
-  } else {
-    // Use fuzzy search for all other inputs
-    requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(term));
+          if (isLatLon) {
+            // // Handle reverse geocoding
+            // const lat = latLonMatch[1];
+            // const lon = latLonMatch[3];
+            // requestUrl = `https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query=${lat},${lon}&subscription-key=${azure_api_key}`;
+            return;
+          } else {
+            // Use fuzzy search for all other inputs
+            requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(term));
 
-    if (isZip) {
-      // Remove location bias for ZIP search
-      requestUrl = requestUrl.replace('&lon={lon}', '').replace('&lat={lat}', '');
-    } else {
-      // Add map center bias
-      const center = this.map.getCamera().center;
-      requestUrl = requestUrl.replace('{lon}', center[0]).replace('{lat}', center[1]);
-    }
-  }
+            if (isZip) {
+              // Remove location bias for ZIP search
+              requestUrl = requestUrl.replace('&lon={lon}', '').replace('&lat={lat}', '');
+            } else {
+              // Add map center bias
+              const center = this.map.getCamera().center;
+              requestUrl = requestUrl.replace('{lon}', center[0]).replace('{lat}', center[1]);
+            }
+          }
 
-  processRequest(requestUrl, this.map).then(data => {
-    const suggestions = [];
+          processRequest(requestUrl, this.map).then(data => {
+            const suggestions = [];
 
-    const results = data.results || data.addresses || [];
+            const results = data.results || data.addresses || [];
 
-    results.forEach(item => {
-      const address = item.address || {};
-      const postalCode = address.postalCode || '';
-      const city = address.municipality || '';
-      const state = address.countrySubdivision || '';
-      const freeform = address.freeformAddress || `${item.position.lat}, ${item.position.lon}`;
-      const poiName = item.poi?.name;
+            results.forEach(item => {
+              const address = item.address || {};
+              const postalCode = address.postalCode || '';
+              const city = address.municipality || '';
+              const state = address.countrySubdivision || '';
+              const freeform = address.freeformAddress || `${item.position.lat}, ${item.position.lon}`;
+              const poiName = item.poi?.name;
 
-      let label = freeform;
-      if (postalCode && city && state) {
-        label = `${postalCode} - ${city}, ${state}`;
-      }
-      if (poiName) {
-        label = `${poiName} (${label})`;
-      }
+              let label = freeform;
+              if (postalCode && city && state) {
+                label = `${postalCode} - ${city}, ${state}`;
+              }
+              if (poiName) {
+                label = `${poiName} (${label})`;
+              }
 
-      suggestions.push({
-        ...item,
-        label: label,
-        value: label
-      });
-    });
+              suggestions.push({
+                ...item,
+                label: label,
+                value: label
+              });
+            });
 
-    response(suggestions);
-  });
-},
+            response(suggestions);
+          });
+        },
         select: (event, ui) => {
           event.preventDefault();
           document.getElementById("azureSearch").value = ui.item.address.freeformAddress
@@ -503,7 +504,111 @@ class AzureMap extends TSMap {
           .append("<a>" + suggestionLabel + "</a>")
           .appendTo(ul);
       };
+      $("#azureSearch").on("keydown", (event) => { // Use arrow function here
+        if (event.key === "Enter") {
+          const term = $("#azureSearch").val().trim(); // Directly reference the input element
+          const latLonMatch = term.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/); // Matches "lat, lon"
 
+          if (latLonMatch) {
+            // Handle reverse geocoding
+            const lat = latLonMatch[1];
+            const lon = latLonMatch[3];
+            const requestUrl = `https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query=${lat},${lon}&subscription-key=${azure_api_key}`;
+
+            // Call your processRequest function to fetch the result
+            processRequest(requestUrl, this.map).then(data => {
+              const results = data.results || data.addresses || [];
+
+              if (results.length > 0) {
+                const uiItem = {
+                  address: {
+                    freeformAddress: results[0].address.freeformAddress // Set the freeform address
+                  },
+                  position: {
+                    lat: results[0].position.lat,
+                    lon: results[0].position.lon
+                  },
+                  viewport: results[0].viewport // Assuming you want to use the viewport as well
+                };
+
+                // // Set the input value to the freeform address
+                // document.getElementById("azureSearch").value = uiItem.address.freeformAddress;
+
+                // Remove any previous added data from the map.
+                datasource.clear();
+
+                // Handle geometry if available
+                const geometryId = results[0]?.dataSources?.geometry?.id; // Adjust as necessary
+                if (geometryId) {
+                  fetchGeometry(geometryId).then(geometryData => {
+                    const polys = [];
+
+                    const extractPoints = (coords) => {
+                      return coords.map(coord => [coord[0], coord[1]]);
+                    };
+
+                    if (geometryData) {
+                      let coordinates = geometryData.additionalData[0].geometryData.features[0].geometry.coordinates;
+                      if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "MultiPolygon") {
+                        coordinates.map(polygon => {
+                          const multiPolygon = new atlas.data.Polygon(polygon);
+                          datasource.add(new atlas.data.Feature(multiPolygon));
+                          const points = extractPoints(multiPolygon.coordinates[0]);
+                          polys.push(new PolygonBoundary(points));
+                        });
+                      } else if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "Polygon") {
+                        const polygon = new atlas.data.Polygon(coordinates);
+                        datasource.add(new atlas.data.Feature(polygon));
+                        const points = extractPoints(polygon.coordinates[0]);
+                        polys.push(new PolygonBoundary(points));
+                      }
+
+                      const polygonStyle = {
+                        fillColor: 'rgba(0, 0, 255, 0.5)',
+                        strokeColor: 'blue',
+                        strokeWidth: 1
+                      };
+
+                      const polygonLayer = new atlas.layer.PolygonLayer(datasource, 'searchResultPolygon', {
+                        fillColor: polygonStyle.fillColor,
+                        strokeColor: polygonStyle.strokeColor,
+                        strokeWidth: polygonStyle.strokeWidth
+                      });
+                      this.map.layers.add(polygonLayer);
+
+                      this.boundaries = polys;
+                    }
+                  });
+                }
+
+                // Zoom the map into the selected location
+                if (uiItem.viewport) {
+                  this.map.setCamera({
+                    bounds: [
+                      uiItem.viewport.topLeftPoint.lon, uiItem.viewport.btmRightPoint.lat,
+                      uiItem.viewport.btmRightPoint.lon, uiItem.viewport.topLeftPoint.lat
+                    ],
+                    padding: 0
+                  });
+                } else if (uiItem.position) {
+                  // Center map using lat/lon
+                  this.map.setCamera({
+                    bounds: [
+                      lon, lat,
+                      lon, lat
+                    ],
+                    padding: 0
+                  });
+                }
+              } else {
+                console.log("No results found.");
+              }
+            });
+          } else {
+            // console.log("Invalid input. Please enter a valid address or lat, lon.");
+          }
+        }
+      });
       let currentStyle = this.map.getStyle();
       this.map.events.add('styledata', () => {
         const newStyle = this.map.getStyle();
