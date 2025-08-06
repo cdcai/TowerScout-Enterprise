@@ -1,0 +1,79 @@
+<annotation>
+<size>
+  <width>1280</width>
+  <height>1280</height>
+  <depth>3</depth>
+</size>
+<object>
+  <bndbox>
+    <xmin>76</xmin>
+    <xmax>140</xmax>
+    <ymin>50</ymin>
+    <ymax>109</ymax>
+  </bndbox>
+</object>
+<object>
+  <bndbox>
+    <xmin>150</xmin>
+    <xmax>215</xmax>
+    <ymin>91</ymin>
+    <ymax>150</ymax>
+  </bndbox>
+</object>
+<object>
+  <bndbox>
+    <xmin>143</xmin>
+    <xmax>208</xmax>
+    <ymin>140</ymin>
+    <ymax>201</ymax>
+  </bndbox>
+</object>
+<object>
+  <bndbox>
+    <xmin>50</xmin>
+    <xmax>103</xmax>
+    <ymin>1191</ymin>
+    <ymax>1239</ymax>
+  </bndbox>
+</object>
+<object>
+  <bndbox>
+    <xmin>641</xmin>
+    <xmax>686</xmax>
+    <ymin>11</ymin>
+    <ymax>48</ymax>
+  </bndbox>
+</object>
+<object>
+  <bndbox>
+    <xmin>431</xmin>
+    <xmax>478</xmax>
+    <ymin>289</ymin>
+    <ymax>336</ymax>
+  </bndbox>
+</object>
+<object>
+  <bndbox>
+    <xmin>453</xmin>
+    <xmax>498</xmax>
+    <ymin>305</ymin>
+    <ymax>350</ymax>
+  </bndbox>
+</object>
+<object>
+  <bndbox>
+    <xmin>625</xmin>
+    <xmax>673</xmax>
+    <ymin>0</ymin>
+    <ymax>25</ymax>
+  </bndbox>
+</object>
+<object>
+  <bndbox>
+    <xmin>0</xmin>
+    <xmax>42</xmax>
+    <ymin>0</ymin>
+    <ymax>31</ymax>
+  </bndbox>
+</object>
+</annotation>
