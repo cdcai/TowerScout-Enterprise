@@ -628,6 +628,33 @@ class AzureMap extends TSMap {
         }
       })
       
+      this.map.getCanvasContainer().addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+      });
+      this.map.events.add('contextmenu', (e) => {
+        // const geoPosition = this.map(e.position);
+        const contextMenu = document.getElementById('mapContextMenu');
+
+        // Store coordinates on the menu element for later use
+        contextMenu.dataset.lat = e.position[1];
+        contextMenu.dataset.lng = e.position[0];
+        const coordsText = `${e.position[1]}, ${e.position[0]}`;
+         // Display coordinates in the div
+        document.getElementById('coordText').innerText = `Copy coordinates lat,lng: ${coordsText}`;
+        // Use the original event for screen coordinates
+        const pageX = e.originalEvent.pageX;
+        const pageY = e.originalEvent.pageY;
+
+        contextMenu.style.left = `${pageX}px`;
+        contextMenu.style.top = `${pageY}px`;
+        contextMenu.style.display = 'block';
+      });
+      this.map.events.add('click', () => {
+        document.getElementById('mapContextMenu').style.display = 'none';
+      });
+     
+
+
     this.map.setUserInteraction({
       dragPanInteraction: true,
       mouseWheelZoomInteraction: true,
@@ -1189,6 +1216,29 @@ class AzureMap extends TSMap {
         currentMap.map.layers.add(fillLayer);
         this.customLayers.push(fillLayer);
         o.fillLayerID = fillLayer.id;
+        
+        this.map.events.add('contextmenu', fillLayer, (e) => {
+          const contextMenu = document.getElementById('mapContextMenu');
+
+          // Convert pixel position to geographic coordinates
+          const position = e.position; // or pixelToPosition
+          const lat = position[1];
+          const lng = position[0];
+
+          // Store coords in dataset for copy action
+          contextMenu.dataset.lat = lat;
+          contextMenu.dataset.lng = lng;
+
+          // Show readable coordinates in the div
+          document.getElementById('coordText').innerText = `Copy coordinates (lat,lng): ${lat}, ${lng}`;
+
+          // Show context menu at mouse position
+          const pageX = e.originalEvent.pageX;
+          const pageY = e.originalEvent.pageY;
+          contextMenu.style.left = `${pageX}px`;
+          contextMenu.style.top = `${pageY}px`;
+          contextMenu.style.display = 'block';
+        });
       }
       else {
         var dataSource = new atlas.source.DataSource(null);
@@ -4008,6 +4058,19 @@ function assignAriaLabelsToMapControl() {
 window.addEventListener('load', () => {
   assignAriaLabelsToMapControl();
 });
-
+document.addEventListener('DOMContentLoaded', function () {
+    const menu = document.getElementById('mapContextMenu');
+    menu.addEventListener('click', function () {
+      const lat = this.dataset.lat;
+      const lng = this.dataset.lng;
+      const coordsText = `${lat}, ${lng}`;
+      
+      navigator.clipboard.writeText(coordsText).then(() => {
+        console.log(`Coordinates copied:${coordsText}`);
+      });
+      
+      this.style.display = 'none';
+    });
+  });
 
 console.log("TowerScout initialized.");
