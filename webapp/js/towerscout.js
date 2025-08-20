@@ -68,7 +68,7 @@ function initAzureMap() {
       setMap(this);
     });
   }
-  // ToggleTestEnvironment();
+  ToggleTestEnvironment();
   getazmapTransactioncountjs(2);
   getClusterStatusjs();
 }
@@ -230,15 +230,36 @@ function check_bounds(x1, y1, x2, y2, bounds){
 * Use like this: `const data = await processRequest(url);`
 */
 async function processRequest(url, map) {
-  // Replace the domain placeholder to ensure the same Azure Maps is used throughout the app.
-  url = url.replace('{azMapsDomain}', atlas.getDomain());
+  // Check if it's a template-style URL (e.g. fuzzy search)
+  const isTemplate = url.includes('{azMapsDomain}');
 
-  // Get the authentication details from the map for use in the request.
-  var requestParams = map.authentication.signRequest({ url: url });
+  // Replace the domain placeholder if it's a template
+  if (isTemplate) {
+    url = url.replace('{azMapsDomain}', atlas.getDomain());
+  }
 
-  // Transform the request.
-  var transform = map.getServiceOptions().transformRequest;
-  if (transform) requestParams = transform(url);
+  let requestParams = {
+    url: url,
+    headers: {}
+  };
+
+  // Only sign the request if it's a template (map SDK URL)
+  if (isTemplate) {
+    requestParams = map.authentication.signRequest({ url: url });
+  }
+
+  // Apply transformRequest if defined (for debugging or proxy use)
+  const transform = map.getServiceOptions()?.transformRequest;
+  if (typeof transform === 'function') {
+    const transformed = transform(requestParams.url);
+    if (transformed?.url) {
+      requestParams = {
+        url: transformed.url,
+        headers: transformed.headers || {}
+      };
+    }
+  }
+
 
   const response = await fetch(requestParams.url, {
     method: 'GET',
@@ -322,17 +343,65 @@ class AzureMap extends TSMap {
       //Create a jQuery autocomplete UI widget.
       var geocodeServiceUrlTemplate = 'https://{azMapsDomain}/search/fuzzy/json?typeahead=true&api-version=1.0&query={query}&language=en-US&lon={lon}&lat={lat}&countrySet=US&view=Auto';
       $("#azureSearch").autocomplete({
-        minLength: 4,   //Don't ask for suggestions until atleast 3 characters have been typed. This will reduce costs by not making requests that will likely not have much relevance.
-        source: (request, response) => {
-          var center = this.map.getCamera().center;
+      minLength: 4,
+      delay: 300,
+      source: (request, response) => {
+          const term = request.term.trim();
+          const isZip = /^\d{5}(-\d{4})?$/.test(term); // ZIP or ZIP+4
+          const latLonMatch = term.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/); // Matches "lat, lon"
+          const isLatLon = latLonMatch !== null;
 
-          //Create a URL to the Azure Maps search service to perform the search.
-          var requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(request.term))
-            .replace('{lon}', center[0])    //Use a lat and lon value of the center the map to bais the results to the current map view.
-            .replace('{lat}', center[1])
+          let requestUrl;
+
+          if (isLatLon) {
+            // // Handle reverse geocoding
+            // const lat = latLonMatch[1];
+            // const lon = latLonMatch[3];
+            // requestUrl = `https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query=${lat},${lon}&subscription-key=${azure_api_key}`;
+            return;
+          } else {
+            // Use fuzzy search for all other inputs
+            requestUrl = geocodeServiceUrlTemplate.replace('{query}', encodeURIComponent(term));
+
+            if (isZip) {
+              // Remove location bias for ZIP search
+              requestUrl = requestUrl.replace('&lon={lon}', '').replace('&lat={lat}', '');
+            } else {
+              // Add map center bias
+              const center = this.map.getCamera().center;
+              requestUrl = requestUrl.replace('{lon}', center[0]).replace('{lat}', center[1]);
+            }
+          }
 
           processRequest(requestUrl, this.map).then(data => {
-            response(data.results);
+            const suggestions = [];
+
+            const results = data.results || data.addresses || [];
+
+            results.forEach(item => {
+              const address = item.address || {};
+              const postalCode = address.postalCode || '';
+              const city = address.municipality || '';
+              const state = address.countrySubdivision || '';
+              const freeform = address.freeformAddress || `${item.position.lat}, ${item.position.lon}`;
+              const poiName = item.poi?.name;
+
+              let label = freeform;
+              if (postalCode && city && state) {
+                label = `${postalCode} - ${city}, ${state}`;
+              }
+              if (poiName) {
+                label = `${poiName} (${label})`;
+              }
+
+              suggestions.push({
+                ...item,
+                label: label,
+                value: label
+              });
+            });
+
+            response(suggestions);
           });
         },
         select: (event, ui) => {
@@ -385,9 +454,7 @@ class AzureMap extends TSMap {
                 this.boundaries = polys;
               }
             });
-          }
-
-          //Zoom the map into the selected location.
+            //Zoom the map into the selected location.
           this.map.setCamera({
             bounds: [
               ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
@@ -395,6 +462,35 @@ class AzureMap extends TSMap {
             ],
             padding: 0
           });
+          }
+          // 🔍 Check for fuzzy result (with viewport) or reverse (with position)
+          if (ui.item?.viewport) {
+            this.map.setCamera({
+              bounds: [
+                ui.item.viewport.topLeftPoint.lon, ui.item.viewport.btmRightPoint.lat,
+                ui.item.viewport.btmRightPoint.lon, ui.item.viewport.topLeftPoint.lat
+              ],
+              padding: 0
+            });
+          } else if (ui.item?.position) {
+            // Reverse geocode result — center map using lat/lon
+            let lat, lon;
+
+            if (typeof ui.item.position === 'string') {
+              // Position is like "40.712967,-74.007301"
+              [lat, lon] = ui.item.position.split(',').map(parseFloat);
+            } else {
+              // Just in case Azure ever returns an object
+              lat = ui.item.position.lat;
+              lon = ui.item.position.lon;
+            }
+
+            this.map.setCamera({
+              center: [lon, lat],
+              zoom: 14
+            });
+          }
+          
         }
       }).autocomplete("instance")._renderItem = function (ul, item) {
         //Format the displayed suggestion to show the formatted suggestion string.
@@ -408,7 +504,111 @@ class AzureMap extends TSMap {
           .append("<a>" + suggestionLabel + "</a>")
           .appendTo(ul);
       };
+      $("#azureSearch").on("keydown", (event) => { // Use arrow function here
+        if (event.key === "Enter") {
+          const term = $("#azureSearch").val().trim(); // Directly reference the input element
+          const latLonMatch = term.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/); // Matches "lat, lon"
 
+          if (latLonMatch) {
+            // Handle reverse geocoding
+            const lat = latLonMatch[1];
+            const lon = latLonMatch[3];
+            const requestUrl = `https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query=${lat},${lon}&subscription-key=${azure_api_key}`;
+
+            // Call your processRequest function to fetch the result
+            processRequest(requestUrl, this.map).then(data => {
+              const results = data.results || data.addresses || [];
+
+              if (results.length > 0) {
+                const uiItem = {
+                  address: {
+                    freeformAddress: results[0].address.freeformAddress // Set the freeform address
+                  },
+                  position: {
+                    lat: results[0].position.lat,
+                    lon: results[0].position.lon
+                  },
+                  viewport: results[0].viewport // Assuming you want to use the viewport as well
+                };
+
+                // // Set the input value to the freeform address
+                // document.getElementById("azureSearch").value = uiItem.address.freeformAddress;
+
+                // Remove any previous added data from the map.
+                datasource.clear();
+
+                // Handle geometry if available
+                const geometryId = results[0]?.dataSources?.geometry?.id; // Adjust as necessary
+                if (geometryId) {
+                  fetchGeometry(geometryId).then(geometryData => {
+                    const polys = [];
+
+                    const extractPoints = (coords) => {
+                      return coords.map(coord => [coord[0], coord[1]]);
+                    };
+
+                    if (geometryData) {
+                      let coordinates = geometryData.additionalData[0].geometryData.features[0].geometry.coordinates;
+                      if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "MultiPolygon") {
+                        coordinates.map(polygon => {
+                          const multiPolygon = new atlas.data.Polygon(polygon);
+                          datasource.add(new atlas.data.Feature(multiPolygon));
+                          const points = extractPoints(multiPolygon.coordinates[0]);
+                          polys.push(new PolygonBoundary(points));
+                        });
+                      } else if (geometryData.additionalData[0].geometryData.features[0].geometry.type === "Polygon") {
+                        const polygon = new atlas.data.Polygon(coordinates);
+                        datasource.add(new atlas.data.Feature(polygon));
+                        const points = extractPoints(polygon.coordinates[0]);
+                        polys.push(new PolygonBoundary(points));
+                      }
+
+                      const polygonStyle = {
+                        fillColor: 'rgba(0, 0, 255, 0.5)',
+                        strokeColor: 'blue',
+                        strokeWidth: 1
+                      };
+
+                      const polygonLayer = new atlas.layer.PolygonLayer(datasource, 'searchResultPolygon', {
+                        fillColor: polygonStyle.fillColor,
+                        strokeColor: polygonStyle.strokeColor,
+                        strokeWidth: polygonStyle.strokeWidth
+                      });
+                      this.map.layers.add(polygonLayer);
+
+                      this.boundaries = polys;
+                    }
+                  });
+                }
+
+                // Zoom the map into the selected location
+                if (uiItem.viewport) {
+                  this.map.setCamera({
+                    bounds: [
+                      uiItem.viewport.topLeftPoint.lon, uiItem.viewport.btmRightPoint.lat,
+                      uiItem.viewport.btmRightPoint.lon, uiItem.viewport.topLeftPoint.lat
+                    ],
+                    padding: 0
+                  });
+                } else if (uiItem.position) {
+                  // Center map using lat/lon
+                  this.map.setCamera({
+                    bounds: [
+                      lon, lat,
+                      lon, lat
+                    ],
+                    padding: 0
+                  });
+                }
+              } else {
+                console.log("No results found.");
+              }
+            });
+          } else {
+            // console.log("Invalid input. Please enter a valid address or lat, lon.");
+          }
+        }
+      });
       let currentStyle = this.map.getStyle();
       this.map.events.add('styledata', () => {
         const newStyle = this.map.getStyle();
@@ -428,6 +628,33 @@ class AzureMap extends TSMap {
         }
       })
       
+      this.map.getCanvasContainer().addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+      });
+      this.map.events.add('contextmenu', (e) => {
+        // const geoPosition = this.map(e.position);
+        const contextMenu = document.getElementById('mapContextMenu');
+
+        // Store coordinates on the menu element for later use
+        contextMenu.dataset.lat = e.position[1];
+        contextMenu.dataset.lng = e.position[0];
+        const coordsText = `${e.position[1]}, ${e.position[0]}`;
+         // Display coordinates in the div
+        document.getElementById('coordText').innerText = `Copy coordinates lat,lng: ${coordsText}`;
+        // Use the original event for screen coordinates
+        const pageX = e.originalEvent.pageX;
+        const pageY = e.originalEvent.pageY;
+
+        contextMenu.style.left = `${pageX}px`;
+        contextMenu.style.top = `${pageY}px`;
+        contextMenu.style.display = 'block';
+      });
+      this.map.events.add('click', () => {
+        document.getElementById('mapContextMenu').style.display = 'none';
+      });
+     
+
+
     this.map.setUserInteraction({
       dragPanInteraction: true,
       mouseWheelZoomInteraction: true,
@@ -989,6 +1216,29 @@ class AzureMap extends TSMap {
         currentMap.map.layers.add(fillLayer);
         this.customLayers.push(fillLayer);
         o.fillLayerID = fillLayer.id;
+        
+        this.map.events.add('contextmenu', fillLayer, (e) => {
+          const contextMenu = document.getElementById('mapContextMenu');
+
+          // Convert pixel position to geographic coordinates
+          const position = e.position; // or pixelToPosition
+          const lat = position[1];
+          const lng = position[0];
+
+          // Store coords in dataset for copy action
+          contextMenu.dataset.lat = lat;
+          contextMenu.dataset.lng = lng;
+
+          // Show readable coordinates in the div
+          document.getElementById('coordText').innerText = `Copy coordinates (lat,lng): ${lat}, ${lng}`;
+
+          // Show context menu at mouse position
+          const pageX = e.originalEvent.pageX;
+          const pageY = e.originalEvent.pageY;
+          contextMenu.style.left = `${pageX}px`;
+          contextMenu.style.top = `${pageY}px`;
+          contextMenu.style.display = 'block';
+        });
       }
       else {
         var dataSource = new atlas.source.DataSource(null);
@@ -2333,7 +2583,10 @@ function ProcessUserRequest(estimate)
 {
   try
   {
-    
+    const now = new Date(); // Get current date and time
+    document.getElementById('lblSearchEndTime').style.display = "none";
+    document.getElementById('lblSearchStartTime').innerHTML = "Last Search Start Time: <br>" + now.toLocaleString();
+    document.getElementById('lblSearchStartTime').removeAttribute("style");
     if (Detection_detections.length > 0) {
       if (!window.confirm("This will erase current detections. Proceed?")) {
       // erase the previous set of towers and tiles
@@ -2516,8 +2769,13 @@ async function pollSilverTableWithLogs() {
   // const options = { method: 'POST', body: formData };  // Request body
   // const formData = new FormData(document.querySelector('form'));
   const params = new URLSearchParams(formData).toString();
-  
-  const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
+  const tilecount = formData.get('tiles_count');
+  var RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
+  if (tilecount<100){
+     RESTART_DELAY = tilecount * 5000;  // Restart delay in milliseconds (e.g., 5 seconds per tile)
+    }
+    
+  // const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
    
    
@@ -2795,8 +3053,17 @@ async function pollClusterStatusjs() {
       if (timeoutHandle) clearTimeout(timeoutHandle); // Clear any pending timeouts
       if (isFirstAttempt) {
         isFirstAttempt = false; // Mark that we've handled the first attempt
-        console.log("Delaying polling of Silver Table by 1 minute.");
-        setTimeout(pollSilverTableWithLogs, 60000); // Wait 1 minute, then call
+        const tilecount = formData.get('tiles_count');
+        var RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
+        if (tilecount<100){
+          RESTART_DELAY = tilecount * 5000;  // Restart delay in milliseconds (e.g., 5 seconds per tile)
+        }
+       
+        console.log("Delaying polling of Silver Table by " + Math.round((RESTART_DELAY/1000),2) + " seconds.");
+       
+        // setTimeout(pollSilverTableWithLogs, 60000); // Wait 1 minute, then call
+       
+        setTimeout(pollSilverTableWithLogs, RESTART_DELAY); // Wait 1 minute, then call
       } else {
         return pollSilverTableWithLogs(); // Immediately call on non-first attempts
       }
@@ -2847,6 +3114,7 @@ function processObjects(result, startTime) {
   //console.log("" + Detection_detections.length + " detections.")
   
   augmentDetections();
+ 
   disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
 }
 
@@ -2898,6 +3166,9 @@ function drawnBoundary() {
     // googleMap.addBoundary(b);
     currentMap.addBoundary(b);
   }
+  
+  
+  
 }
 
 function clearBoundaries() {
@@ -3139,6 +3410,9 @@ function augmentDetections(addnew = false) {
     let batchItems = [];
     if (Detection_detections.length == 0){
       console.log("Done. No detections found.");
+      const now = new Date(); // Get current date and time
+      document.getElementById('lblSearchEndTime').innerHTML = "Last Search End Time: <br>" + now.toLocaleString();
+      document.getElementById('lblSearchEndTime').removeAttribute("style");
     }
     else    {
        for (let i = 0; i < Detection_detections.length; i++) {
@@ -3218,7 +3492,9 @@ function afterAugment() {
 
   console.log("Adjusting Confidence ....");
   adjustConfidence();
-
+  const now = new Date(); // Get current date and time
+  document.getElementById('lblSearchEndTime').innerHTML = "Last Search End Time: <br>" + now.toLocaleString();
+  document.getElementById('lblSearchEndTime').removeAttribute("style");
   console.log("Done.");
 }
 
@@ -3582,7 +3858,7 @@ let progressTimer = null;
 let totalSecsEstimated = 0;
 let secsElapsed = 0;
 let numTiles = 0;
-let secsPerTile = 0.25;
+let secsPerTile = 0.6;
 let dataPoints = 0;
 
 function enableProgress(tiles) {
@@ -3590,7 +3866,13 @@ function enableProgress(tiles) {
 
   progressTimer = setInterval(progressFunction, 100);
   numTiles = tiles;
-  totalSecsEstimated = secsPerTile * numTiles;
+  if (numTiles<100){
+    totalSecsEstimated = secsPerTile * numTiles;
+  }
+  else{
+    totalSecsEstimated = 60;
+  }
+  
   secsElapsed = 0;
 }
 function fatalError(msg) {
@@ -3776,6 +4058,19 @@ function assignAriaLabelsToMapControl() {
 window.addEventListener('load', () => {
   assignAriaLabelsToMapControl();
 });
-
+document.addEventListener('DOMContentLoaded', function () {
+    const menu = document.getElementById('mapContextMenu');
+    menu.addEventListener('click', function () {
+      const lat = this.dataset.lat;
+      const lng = this.dataset.lng;
+      const coordsText = `${lat}, ${lng}`;
+      
+      navigator.clipboard.writeText(coordsText).then(() => {
+        console.log(`Coordinates copied:${coordsText}`);
+      });
+      
+      this.style.display = 'none';
+    });
+  });
 
 console.log("TowerScout initialized.");
