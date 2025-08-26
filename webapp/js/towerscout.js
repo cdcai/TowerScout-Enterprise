@@ -196,34 +196,6 @@ function check_bounds(x1, y1, x2, y2, bounds){
 
 }
 
-
-// // Check if two line segments intersect
-// function segmentsIntersect(a1, a2, b1, b2) {
-//   const d = (b2[1] - b1[1]) * (a2[0] - a1[0]) - (b2[0] - b1[0]) * (a2[1] - a1[1]);
-//   if (d === 0) return false;
-
-//   const uA = ((b2[0] - b1[0]) * (a1[1] - b1[1]) - (b2[1] - b1[1]) * (a1[0] - b1[0])) / d;
-//   const uB = ((a2[0] - a1[0]) * (a1[1] - b1[1]) - (a2[1] - a1[1]) * (a1[0] - b1[0])) / d;
-
-//   return uA >= 0 && uA <= 1 && uB >= 0 && uB <= 1;
-// }
-
-// // Point-in-polygon using ray-casting
-// function pointInPolygon(point, vs) {
-//   let [x, y] = point;
-//   let inside = false;
-//   for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-//       const [xi, yi] = vs[i];
-//       const [xj, yj] = vs[j];
-
-//       const intersect = ((yi > y) !== (yj > y)) &&
-//           (x < (xj - xi) * (y - yi) / (yj - yi + 1e-10) + xi);
-//       if (intersect) inside = !inside;
-//   }
-//   return inside;
-// }
-
-
 /**
 * This is a reusable function that sets the Azure Maps platform domain,
 * signs the request, and makes use of any transformRequest set on the map.
@@ -355,9 +327,6 @@ class AzureMap extends TSMap {
 
           if (isLatLon) {
             // // Handle reverse geocoding
-            // const lat = latLonMatch[1];
-            // const lon = latLonMatch[3];
-            // requestUrl = `https://atlas.microsoft.com/search/address/reverse/json?api-version=1.0&query=${lat},${lon}&subscription-key=${azure_api_key}`;
             return;
           } else {
             // Use fuzzy search for all other inputs
@@ -530,9 +499,6 @@ class AzureMap extends TSMap {
                   },
                   viewport: results[0].viewport // Assuming you want to use the viewport as well
                 };
-
-                // // Set the input value to the freeform address
-                // document.getElementById("azureSearch").value = uiItem.address.freeformAddress;
 
                 // Remove any previous added data from the map.
                 datasource.clear();
@@ -2454,131 +2420,6 @@ function getObjects(estimate) {
   disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
 }
 
-function drawBoundingBoxesTest(){
-  try{
-    
-    if (Detection_detections.length > 0) {
-      if (!window.confirm("This will erase current detections. Proceed?")) {
-      // erase the previous set of towers and tiles
-      currentMap.clearAll();
-      return;
-      }
-    }
-
-    let engine = $('input[name=model]:checked', '#engines').val()
-    let provider = $('input[name=provider]:checked', '#providers').val()
-    provider = provider.substring(0, provider.length - 9);
-
-
-    // now get the boundaries ready to ship
-    let bounds = currentMap.getBoundsUrl();
-
-    if (currentMap.boundaries.length === 0) {
-    if (currentMap.hasShapes()) {
-      drawnBoundary();
-    }
-    }
-
-    let boundaries = currentMap.getBoundariesStr();
-    if (estimate) {
-      console.log("Estimate request in progress ....");
-    } else {
-      console.log("Detection request in progress ....");
-    }
-
-    // erase the previous set of towers and tiles
-    Detection.resetAll();
-    // Tile.resetAll();
-
- 
-    console.log("Detection request in progress ....");
-    const formData = new FormData();
-    // 2 Peachtree St NE, Atlanta, GA 30303
-    request_id = '77a4ab95';
-    user_id = 'cnu4';
-    formData.append('bounds', bounds);
-    formData.append('user_id', user_id);
-    formData.append('request_id', request_id);
-    formData.append('engine', engine);
-    formData.append('provider', provider);
-    formData.append('polygons', boundaries);
-    fetch("/fetchBoundingBoxResults", { method: "POST", body: formData })
-          .then(response => response.json())
-          .then(result => {
-            console.log("Processing ....");
-            processObjects(result, startTime);
-          })
-          .catch(e => {
-            console.log(e + " - drawBoundingBoxes: "); disableProgress(0, 0);
-          });
-        }
-    catch (error) {
-    console.log('Error during drawBoundingBoxes:', error);
-    
-    }  
-}
-function drawBoundingBoxesGoldTable(){
-  try{
-    
-    if (Detection_detections.length > 0) {
-      if (!window.confirm("This will erase current detections. Proceed?")) {
-      // erase the previous set of towers and tiles
-      currentMap.clearAll();
-      return;
-      }
-    }
-
-    let engine = $('input[name=model]:checked', '#engines').val()
-    let provider = $('input[name=provider]:checked', '#providers').val()
-    provider = provider.substring(0, provider.length - 9);
-
-
-    // now get the boundaries ready to ship
-    let bounds = currentMap.getBoundsUrl();
-
-    if (currentMap.boundaries.length === 0) {
-    if (currentMap.hasShapes()) {
-      drawnBoundary();
-    }
-    }
-
-    let boundaries = currentMap.getBoundariesStr();
-    if (estimate) {
-      console.log("Estimate request in progress ....");
-    } else {
-      console.log("Detection request in progress ....");
-    }
-
-    // erase the previous set of towers and tiles
-    Detection.resetAll();
-    // Tile.resetAll();
-
- 
-    console.log("Detection request in progress ....");
-    const formData = new FormData();
-    request_id = 'cd7925ea';
-    user_id = 'cnu4';
-    formData.append('bounds', bounds);
-    formData.append('user_id', user_id);
-    formData.append('request_id', request_id);
-    formData.append('engine', engine);
-    formData.append('provider', provider);
-    formData.append('polygons', boundaries);
-    fetch("/fetchBoundingBoxResultsGold", { method: "POST", body: formData })
-          .then(response => response.json())
-          .then(result => {
-            console.log("Processing ....");
-            processObjects(result, startTime);
-          })
-          .catch(e => {
-            console.log(e + " - drawBoundingBoxes: "); disableProgress(0, 0);
-          });
-        }
-    catch (error) {
-    console.log('Error during drawBoundingBoxes:', error);
-    
-    }  
-}
 function ProcessUserRequest(estimate)
 {
   try
@@ -2764,10 +2605,7 @@ async function pollSilverTableWithLogs() {
   const url = '/pollSilverTableWithLogs';  // Endpoint URL
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
   const controller = new AbortController();  // Create an AbortController instance
-  // const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_DURATION);  // Set the timeout for the request
   let timeoutHandle;
-  // const options = { method: 'POST', body: formData };  // Request body
-  // const formData = new FormData(document.querySelector('form'));
   const params = new URLSearchParams(formData).toString();
   const tilecount = formData.get('tiles_count');
   var RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
@@ -2775,7 +2613,6 @@ async function pollSilverTableWithLogs() {
      RESTART_DELAY = tilecount * 5000;  // Restart delay in milliseconds (e.g., 5 seconds per tile)
     }
     
-  // const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   try {
    
    
@@ -2784,7 +2621,6 @@ async function pollSilverTableWithLogs() {
       let completed = false;
       
       eventSource.onmessage = (event) => {
-        // const jsonData = JSON.parse(event.data);
         console.log('📩 Update: '+ event.data);
       };
       eventSource.addEventListener('done', (event) => {
@@ -2882,33 +2718,7 @@ async function pollquerystatus(startTime) {
   }
 }
 
-async function pollSilverTableSimple() {
- 
-  try {
-    // Send the HTTP request
-    const response = await fetch('/pollSilverTable', {method: "POST", body: formData, });  // API URL
-    const data = await response.json();  // Parse JSON response
 
-    console.log('Response:', data);
-
-    // Check if the response is true (e.g., based on a specific value in the response)
-    if (data.jobdone === true) {
-      // If the response is true, log and stop the loop
-      console.log('Request successful. Response:', data);
-      // clearTimeout(timeoutId); // Clear the timeout if the request is successful
-      return true;  // End the function and stop further requests
-    } else {
-      // If the response is not successful, wait for 5 minutes and restart the request
-      console.log('Response not successful. Retrying 10 seconds ...');
-      // restartRequest();  // Retry after 10 seconds
-    }
-  } catch (error) {
-    console.log('Error during request:', error);
-    // // In case of error, wait for 10 seconds before retrying
-    // clearTimeout(timeoutId); // Clear the timeout
-    // restartRequest();  // Retry after 10 seconds
-  }
-}
 // Function to restart the request cycle after each attempt
 function restartRequest() {
   setTimeout(pollSilverTable, 10000);  // Restart the cycle every 10 seconds
@@ -3060,8 +2870,6 @@ async function pollClusterStatusjs() {
         }
        
         console.log("Delaying polling of Silver Table by " + Math.round((RESTART_DELAY/1000),2) + " seconds.");
-       
-        // setTimeout(pollSilverTableWithLogs, 60000); // Wait 1 minute, then call
        
         setTimeout(pollSilverTableWithLogs, RESTART_DELAY); // Wait 1 minute, then call
       } else {

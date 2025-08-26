@@ -76,16 +76,7 @@ class azTransactions:
    
  
    total_count = 0
-  #  # Check the response
-  #  if response.status_code == 200:
-  #   metrics_data = response.json()
-  #   # print("Metrics Data:", metrics_data)
-     
-  #   # print("Value:", metrics_data['value'][0]['timeseries'])
-  #  else:
-  #   # print("Error:", response.status_code, response.text)
-  #   raise RuntimeError(response)
-
+  
    if "value" in metrics_data and len(metrics_data["value"]) > 0:
     for metric in metrics_data["value"]:
         for time_series in metric["timeseries"]:
@@ -93,7 +84,6 @@ class azTransactions:
                     # Accumulate the total counts
                     daily_total = data_point.get("count") or data_point.get("average") or 0
                     total_count += daily_total
-    # Get the month name
     # Get the month name
     
     month_name = now.strftime("%B")
@@ -116,14 +106,4 @@ class azTransactions:
   except requests.exceptions.RequestException as e:
     raise requests.exceptions.RequestException("RequestException Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
     
-# def callfunction():
-#  strtransactioncount =  azTransactions.getAZTransactionCount(2)
-#  return strtransactioncount
-
-# def printfunction():
-#   intcall = callfunction()
-#   print(intcall)
-  
-
-# printfunction()
  
