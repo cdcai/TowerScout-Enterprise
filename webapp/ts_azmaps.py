@@ -22,10 +22,7 @@ from azure.keyvault.secrets import SecretClient
 
 
 class AzureMap(Map):
-    # VAULT_URL = os.environ["https://towerscout-mapkeyvault.vault.azure.net/"]
-    # credential = DefaultAzureCredential()
-    # client = SecretClient(vault_url=VAULT_URL, credential=credential)
-
+    
     def __init__(self, api_key):
         self.key = api_key
         self.has_metadata = False
@@ -34,11 +31,7 @@ class AzureMap(Map):
     def get_mapkey():
         credential = DefaultAzureCredential()
 
-        # secret_client = SecretClient(vault_url="https://towerscout-mapkeyvault.vault.azure.net/", credential=credential)
-        # secretazuremapkey = secret_client.get_secret("TowerScout-Azuremapkey")
-
-        # print(secretazuremapkey.name)
-        # print(secretazuremapkey)
+      
 
     def get_url(
         self, tile, zoom=19, size="640,640", sc=2, fmt="jpeg", maptype="satellite"

@@ -39,7 +39,7 @@ class BingMap(Map):
     def get_meta_url(
         self, tile, zoom=19, size="640,640", sc=2, fmt="jpeg", maptype="satellite"
     ):
-        # https://dev.virtualearth.net/REST/V1/Imagery/Metadata/Aerial/40.714550167322159,-74.007124900817871?zl=15&o=xml&key=
+        
         url = "http://dev.virtualearth.net/REST/v1/Imagery/Metadata/AerialWithLabels/"
         url += (
             str(tile["lat"]) + "," + str(tile["lng"]) + "/" + str(zoom) + "?"

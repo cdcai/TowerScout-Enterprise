@@ -274,10 +274,7 @@ async def fetch(session, url, fname, i, mapType, unique_directory, tile, blob_se
                 response.headers.get("Content-Type", "").lower()
                 == "application/vnd.mapbox-vector-tile"
             ):
-                #    async with aiofiles.open(filename, mode='rb') as f:
-                #         azurevector_tile_data = await response.read()
-                #         azurevectortogeojson = vector_tile_to_geojson(azurevector_tile_data)
-                # print("Printing Content type " + response.headers.get('Content-Type', '').lower())
+                
                 tile_data = await response.read()
                 tile = mapbox_vector_tile.decode(tile_data)
                 # print(json.dumps(tile, indent=2))

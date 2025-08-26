@@ -228,7 +228,6 @@ CLIENT_ID = ""
 CLIENT_SECRET = ""
 TENANT_ID = ""
 AUTHORITY = "https://login.microsoftonline.com/" + TENANT_ID
-REDIRECT_URI = "https://csels-pd-towerscrt-dev-web-01.edav-dev-app.appserviceenvironment.net/towerscoutmainnodetection/getAToken"
 
 SCOPES = ["User.Read"]
 
@@ -290,41 +289,6 @@ def _build_msal_app():
     return msal.ConfidentialClientApplication(
         CLIENT_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET
     )
-
-
-# Route to initiate the authentication process (redirects to Microsoft login)
-@app.route("/login")
-def login():
-    msal_app = _build_msal_app()
-
-    # Create the authorization URL to redirect the user for login (if not already logged in)
-    auth_url = msal_app.get_authorization_request_url(SCOPES, redirect_uri=REDIRECT_URI)
-    return redirect(auth_url)
-
-
-# Callback route to handle the response from Microsoft after login
-@app.route("/towerscoutmainnodetection/getAToken")
-def authorized():
-    code = request.args.get("code")
-
-    if not code:
-        return "Authorization failed", 400
-
-    msal_app = _build_msal_app()
-
-    # Exchange the authorization code for an access token
-    result = msal_app.acquire_token_by_authorization_code(
-        code, scopes=SCOPES, redirect_uri=REDIRECT_URI
-    )
-
-    if "access_token" in result:
-        # Store the user's information (including user_id) in the session
-        session["user"] = result.get("id_token_claims")
-        # return redirect(url_for('/'))
-        # now render the map.html template, inserting the key
-        return render_template("towerscout.html", bing_map_key=bing_api_key, dev=dev)
-    else:
-        return "Error: Unable to acquire token", 400
 
 
 @app.after_request
@@ -405,33 +369,7 @@ def get_objects():
         response.headers['Keep-Alive'] = 'timeout=600, max=100'  # Keep alive for 10 minutes, max 100 requests
 
         print(" session:", id(session))
-        # print("session(user_id)",session['user'])
-        # id_token = request.headers.get('X-MS-TOKEN-AAD-ID-TOKEN')
-        # logging.info("id_token:{id_token}")
-        # auth_code = request.args.get("code")
-        # print("auth_code:", auth_code)
-        # # user_id = get_ms_entra_ID(auth_code)
-        # # logging.info(f"user_id:{user_id}")
-        # # Get the token from the Authorization header
-        # auth_header = request.headers.get("Authorization")
-        # print("auth_header", auth_header)
-        # if auth_header:
-        #     # Extract the token (after 'Bearer ' prefix)
-        #     token = auth_header.split(" ")[1]
-
-        #     # Get the user ID from the token
-        #     user_id = get_user_id_from_token(token)
-        #     session["user_id"] = user_id
-        #     if user_id:
-        #         print(
-        #             jsonify(
-        #                 {"message": "Welcome to the Home page!", "user_id": user_id}
-        #             )
-        #         )
-        #     else:
-        #         print(jsonify({"error": "Unable to extract user ID"}), 400)
-        # else:
-        #     print(jsonify({"error": "Authorization header missing"}), 401)
+       
         # check whether this session is over its limit
         if "tiles" not in session:
             session["tiles"] = 0
@@ -446,19 +384,7 @@ def get_objects():
         # engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
-        # id_token = request.headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
-        # access_token = request.headers.get("X-MS-TOKEN-AAD-ACCESS-TOKEN")
-        # user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
-        # user_name = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
-        # print("id_token:", id_token)
-        # print("access_token:", access_token)
-        # print("user_id:", user_id)
-        # print("user_name:", user_name)
-        # print("incoming detection request:")
-        # print(" bounds:", bounds)
-        # # print(" engine:", engine)
-        # print(" map provider:", provider)
-        # print(" polygons:", polygons)
+        
 
         # cropping
         crop_tiles = False
@@ -587,10 +513,7 @@ def get_objects():
         # record some results in session for later saving if desired
         session["detections"] = make_persistable_tile_results(tiles)
         print("After make_persistable_tile_results towerscout.py line 556")
-        # # Only for localhost - Azure app services
-        # for chunk in results_raw:
-        #     if chunk:
-        #         print(f"tile results chunk: {chunk}")
+       
         # post-process the results
         results = []
         for result, tile in zip(results_raw, tiles):
@@ -700,33 +623,7 @@ def get_objects():
 def uploadTileImages():
     try:
         print(" session:", id(session))
-        # print("session(user_id)",session['user'])
-        # id_token = request.headers.get('X-MS-TOKEN-AAD-ID-TOKEN')
-        # logging.info("id_token:{id_token}")
-        # auth_code = request.args.get("code")
-        # print("auth_code:", auth_code)
-        # # user_id = get_ms_entra_ID(auth_code)
-        # # logging.info(f"user_id:{user_id}")
-        # # Get the token from the Authorization header
-        # auth_header = request.headers.get("Authorization")
-        # print("auth_header", auth_header)
-        # if auth_header:
-        #     # Extract the token (after 'Bearer ' prefix)
-        #     token = auth_header.split(" ")[1]
-
-        #     # Get the user ID from the token
-        #     user_id = get_user_id_from_token(token)
-        #     session["user_id"] = user_id
-        #     if user_id:
-        #         print(
-        #             jsonify(
-        #                 {"message": "Welcome to the Home page!", "user_id": user_id}
-        #             )
-        #         )
-        #     else:
-        #         print(jsonify({"error": "Unable to extract user ID"}), 400)
-        # else:
-        #     print(jsonify({"error": "Authorization header missing"}), 401)
+       
         # check whether this session is over its limit
         if "tiles" not in session:
             session["tiles"] = 0
@@ -740,20 +637,7 @@ def uploadTileImages():
         # engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
-        # id_token = request.headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
-        # access_token = request.headers.get("X-MS-TOKEN-AAD-ACCESS-TOKEN")
-        # user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
-        # user_name = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
-        # print("id_token:", id_token)
-        # print("access_token:", access_token)
-        # print("user_id:", user_id)
-        # print("user_name:", user_name)
-        # print("incoming detection request:")
-        # print(" bounds:", bounds)
-        # # print(" engine:", engine)
-        # print(" map provider:", provider)
-        # print(" polygons:", polygons)
-
+        
         # cropping
         crop_tiles = False
 
@@ -839,9 +723,7 @@ def uploadTileImages():
             tile['filename'] = user_id+"/"+fname+str(i)+".jpeg"
         
         session["tilesinsession"] = tiles
-        print(" tilesinsession:",str(session["tilesinsession"]))
-        print(" tilesinsession:",session["tilesinsession"])
-        print(" tiles:",tiles)
+        
 
         return jsonify({"user_id": user_id, "request_id": unique_direcotry, "tiles_count": len(tiles)})
     except Exception as e:
@@ -893,8 +775,7 @@ def pollSilverTableWithLogs():
         request_id = request.args.get("request_id")
         tilescount = int(request.args.get("tiles_count"))
         max_retries = tilescount*2
-        # jobDone = streamLogsandPollSilverTable(request_id, user_id, tilescount, max_retries, 10)
-        # logging.info("pollSilverTable completed")
+       
         # abort if signaled
         if exit_events.query(id(session)):
             print(" client aborted request.")
@@ -973,22 +854,13 @@ def fetchBoundingBoxResults():
 
          # read metadata if present
         for tile in tiles:
-            # if meta:
-            #     filename = user_id+"/"+fname+str(tile['id'])+".meta.txt"
-            #     with open(filename) as f:
-            #         tile['metadata'] = map.get_date(f.read())
-            #         # print(" metadata: "+tile['metadata'])
-            #         f.close
-            # else:
+           
             tile['metadata'] = ""
         print("Before make_persistable_tile_results towerscout.py line 553")
         # record some results in session for later saving if desired
         session["detections"] = make_persistable_tile_results(tiles)
         print("After make_persistable_tile_results towerscout.py line 556")
-        # # Only for localhost - Azure app services
-        # for chunk in results_raw:
-        #     if chunk:
-        #         print(f"tile results chunk: {chunk}")
+       
         # post-process the results
                
         results = []
@@ -1186,11 +1058,7 @@ def fetchBoundingBoxResultsGold():
                
         results = []
         for result, tile in zip(results_raw, tiles):
-            # print(f"tile['lng']: {tile['lng']}")
-            # print(f"tile['w']: {tile['w']}")
-            # print(f"tile['lat']: {tile['lat']}")
-            # print(f"tile['h']: {tile['h']}")
-            # adjust xyxy normalized results to lat, long pairs
+            
             for i, object in enumerate(result):
                 # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
                 object["silverx1"] = object["x1"]
@@ -1541,9 +1409,7 @@ def send_dataset():
     tiles = session["detections"]
     meta = session["metadata"]
 
-    # print(" raw inclusions:", request.form.get("include"))
-    # print(" inclusions:", include)
-    # print(" last result:", json.dumps(tiles))
+   
 
     # filter to keep only "included" (i.e. selected and meeting threshold) detections
     keep_detections = set([])
