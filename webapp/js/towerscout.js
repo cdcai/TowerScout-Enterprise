@@ -3787,7 +3787,6 @@ function parseZipcodeResult(result) {
 // init actions
 console = new myConsole();
 
-// fillEngines();
 fillProviders();
 confSlider.value = Math.round(Detection_minConfidence * 100);
 
