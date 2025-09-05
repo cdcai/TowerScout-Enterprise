@@ -3231,7 +3231,7 @@ function augmentDetections(addnew = false) {
         let coordinates = reverseloc.split(",").map(Number);
         batchItems.push({
           coordinates: coordinates,
-          resultTypes: ["Address"],
+          resultTypes: ["Address","Neighborhood","PopulatedPlace","Postcode1","AdminDivision1","AdminDivision2","CountryRegion"],
           OptionalID: det.id
         });
       }
