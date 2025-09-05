@@ -3144,9 +3144,6 @@ function setMap(newMap = currentMap) {
     currentMap.setCenter(center);
   }
 
-  // // move all rectangles over to the new map
-  // Tile_tiles.forEach(t => t.update(currentMap));
-  // Detection_detections.forEach(d => d.update(currentMap))
 }
 
 function adjustConfidence() {
