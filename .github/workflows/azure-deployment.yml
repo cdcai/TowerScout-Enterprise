@@ -14,8 +14,9 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
-      #group: edav-devops
+    runs-on: 
+      - TowerScout
+      #group: edav-devops-prd
     permissions:
       contents: read #This is required for actions/checkout
 
@@ -54,7 +55,7 @@ jobs:
       #      !venv/
 
   deploy:
-    runs-on: self-hosted
+    runs-on: TowerScout
       #group: edav-devops
     needs: build
     environment:
