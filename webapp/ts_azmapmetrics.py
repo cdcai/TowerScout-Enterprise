@@ -89,10 +89,9 @@ class azTransactions:
     month_name = now.strftime("%B")
     current_year = now.year
     return (month_name + " " + str(current_year) + " Azure map transaction count: " + str(total_count))
-    # print(month_name + " " + str(current_year) + " transaction count: " + str(total_count))
    else:
       return("")
-    # raise RuntimeError("Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
+    
   except ClientAuthenticationError as e:
     raise ClientAuthenticationError("Error '" + e + "' occured at in ts_azmapMetircs.py while getting Azure maps metrics")
   except RuntimeError as e:
