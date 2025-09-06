@@ -154,9 +154,7 @@ class SilverTable:
                 # request_id, user_id, tile_count, max_retries
                 # )
                 if jobdone:
-                    # # Testing existing data
-                    # user_id = 'cnu4'
-                    # request_id = '008d35a3'
+                    
                     sql_query  = (f"SELECT bboxes, "
                     "concat(uuid,'.jpeg') AS filename, "
                     "image_path AS url, "
