@@ -53,16 +53,7 @@ class AzureMap(Map):
         
 
         return url
-        #Original one
-        url = "https://atlas.microsoft.com/map/static?subscription-key=" + self.key
-        url += "&zoom=18&trafficLayer=microsoft.traffic.relative.main"  # + str(zoom) - Need to subtract zoom level by 1 to get the same scale
-        url += (
-            "&tilesetId=microsoft.imagery&api-version=2024-04-01&language=en-us&center="
-            + str(tile["lng"])
-            + ","
-            + str(tile["lat_for_url"])
-        )
-        url += "&height=640&Width=640&view=auto&layer=hybrid&format=jpeg&maptype=satellite&scale=2"
+       
     def get_meta_url(
         self, tile, zoom=19, size="640,640", sc=2, fmt="jpeg", maptype="satellite"
     ):
