@@ -2,20 +2,21 @@
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 # More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
 
-name: Build and deploy Python app to Azure Web App - csels-pd-towerscrt-dev-web-01
+name: Build and deploy Python app to Azure Web App - csels-pd-towerscrt-prd-web-01
 
 on:
   push:
     branches:
-      - test
+      - prod
     paths-ignore:
       - '.github/workflows/*.yml'
   workflow_dispatch:
 
 jobs:
-   build:
-    runs-on: TowerScout
-      #group: edav-devops
+  build:
+    runs-on: 
+      - TowerScout
+      #group: edav-devops-prd
     permissions:
       contents: read #This is required for actions/checkout
 
@@ -35,14 +36,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
         
-      # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
+     # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
       - name: Create zip release file
         run: |
           Compress-Archive -Path ./* -DestinationPath release.zip
         shell: powershell  # Use the default Windows PowerShell shell
-
-  
-
 
       #- name: Upload artifact for deployment jobs
       #  uses: actions/upload-artifact@v4
@@ -51,12 +49,13 @@ jobs:
       #    path: |
       #      release.zip
       #      !venv/
-   deploy:
+
+  deploy:
     runs-on: TowerScout
-      #group: edav-devops
+      #group: edav-devops-prd
     needs: build
     environment:
-      name: 'towerscouttest'
+      name: 'towerscoutprod'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     
     steps:
@@ -70,12 +69,11 @@ jobs:
           Expand-Archive -Path release.zip -DestinationPath ./ -Force
         shell: powershell  # Ensure it uses PowerShell
 
-
       
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
-          app-name: 'csels-pd-towerscrt-dev-web-01'
-          slot-name: 'towerscouttest'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_45D687A6AA194904B5DAF700FC70D5EE }}
+          app-name: 'csels-pd-towerscrt-prd-web-01'
+          slot-name: 'towerscoutprod'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_CB253D5148164789AAE99B25F1C528E1 }}
