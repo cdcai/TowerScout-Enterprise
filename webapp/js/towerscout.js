@@ -42,7 +42,9 @@ reviewCheckBox.onchange = changeReviewMode;
 const DEFAULT_CONFIDENCE = 0.35;
 let startTime = performance.now();
 var formData;
-
+var globaluser_id;
+var globalrequest_id;
+var CurrentSearcharea = "nonrural";
 
 
 // Initialize and add the map
@@ -886,6 +888,7 @@ class AzureMap extends TSMap {
     this.resetBoundaries();
     this.clearAllCustomLayers();
     this.clearCustomDataSource();
+    ToggleSearchArea('nonrural');
   }
   hideAllDataSources() {
     var layers = this.map.layers.getLayers();  // Get all layers on the map
@@ -3224,7 +3227,7 @@ function augmentDetections(addnew = false) {
       document.getElementById('lblSearchEndTime').removeAttribute("style");
     }
     else {
-      if (Detection_detections.length > 25) {//(addresstype === "urban"){
+      if (CurrentSearcharea === 'nonrural') {//(addresstype === "urban"){
         for (let i = 0; i < Detection_detections.length; i++) {
           let det = Detection_detections[i];
           if (det.address === "") {
@@ -3284,7 +3287,7 @@ function augmentDetections(addnew = false) {
           }, 1000 * batchIndex);
         });
       }
-      else {
+      else { //search area is rural
         for (let i = 0; i < Detection_detections.length; i++) {
           let det = Detection_detections[i];
           if (det.address === "") {
@@ -3309,7 +3312,7 @@ function augmentDetections(addnew = false) {
 
                     det.augment(address);
                     afterAugment();
-                    console.log(`[${i + 1}] → ${address}`);
+                    // console.log(`[${i + 1}] → ${address}`);
                   })
                   .catch(err => {
                     // results.push({ lat, lon, address: 'ERROR' });
@@ -3320,6 +3323,7 @@ function augmentDetections(addnew = false) {
 
             } catch (err) {
               console.error(`Error retrying simple reverse geocode:`, err);
+              ToggleSearchArea('nonrural');
             }
 
           }
@@ -3348,6 +3352,7 @@ function afterAugment() {
   document.getElementById('lblSearchEndTime').innerHTML = "Last Search End Time: <br>" + now.toLocaleString();
   document.getElementById('lblSearchEndTime').removeAttribute("style");
   console.log("Done.");
+  ToggleSearchArea('nonrural');
 }
 
 
@@ -3909,6 +3914,33 @@ function assignAriaLabelsToMapControl() {
 window.addEventListener('load', () => {
   assignAriaLabelsToMapControl();
 });
+function ToggleSearchArea(searcharea){
+  if (searcharea==='rural'){
+    document.getElementById('rural').checked = true;
+    document.getElementById('nonrural').checked = false;
+    CurrentSearcharea = 'rural';
+  }
+  else{
+    document.getElementById('nonrural').checked = true;
+    document.getElementById('rural').checked = false;
+    CurrentSearcharea = 'nonrural';
+  }
+}
+function addEventListenertosearcharea(){
+  let selectedRadio = null;
+  const radios = document.querySelectorAll('input[type="nonrural"][name="rural"]');
+
+  radios.forEach(radio => {
+    radio.addEventListener('click', function () {
+      if (selectedRadio === this) {
+        this.checked = false;
+        selectedRadio = null;
+      } else {
+        selectedRadio = this;
+      }
+    });
+  });
+}
 document.addEventListener('DOMContentLoaded', function () {
   const menu = document.getElementById('mapContextMenu');
   menu.addEventListener('click', function () {
