@@ -147,13 +147,6 @@ zipcode_lock = threading.Lock()
 zipcode_provider = None
 
 
-# def start_zipcodes():
-#     global zipcode_provider
-#     with zipcode_lock:
-#         print("instantiating zipcode frame, could take 10 seconds ...")
-#         zipcode_provider = Zipcode_Provider()
-
-
 # Flask boilerplate stuff
 app = Flask(__name__)
 
