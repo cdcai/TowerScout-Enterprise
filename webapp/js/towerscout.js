@@ -154,44 +154,6 @@ function pointInPolygon(point, polygon) {
   return inside;
 }
 
-// function resultIntersectsPolygons(x1, y1, x2, y2, polygons) {
-//   if (polygons.length === 0) {
-//       return true;
-//   }
-
-//   const rect = [
-//       [x1, y1], [x2, y1],
-//       [x2, y2], [x1, y2],
-//       [x1, y1]
-//   ];
-
-//   for (const poly of polygons) {
-//       // Check edge intersections
-//       for (let i = 0; i < 4; i++) {
-//           const r1 = rect[i];
-//           const r2 = rect[i + 1];
-//           for (let j = 0; j < poly.length - 1; j++) {
-//               const p1 = poly[j];
-//               const p2 = poly[j + 1];
-//               if (segmentsIntersect(r1, r2, p1, p2)) {
-//                   return true;
-//               }
-//           }
-//       }
-
-//       // Check if rectangle is inside polygon
-//       if (pointInPolygon(rect[0], poly)) {
-//           return true;
-//       }
-
-//       // Check if polygon is inside rectangle
-//       if (pointInPolygon(poly[0], rect)) {
-//           return true;
-//       }
-//   }
-
-//   return false;
-// }
 function check_bounds(x1, y1, x2, y2, bounds) {
   const [south, west, north, east] = bounds.map(parseFloat);
   return !(y1 < south || y2 > north || x2 < west || x1 > east);
