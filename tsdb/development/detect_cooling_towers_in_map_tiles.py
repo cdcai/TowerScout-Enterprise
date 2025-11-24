@@ -74,13 +74,13 @@ bing_api_key = dbutils.secrets.get(scope=towerscout_secrets_scope, key="bing_api
 azure_api_key = dbutils.secrets.get(scope=towerscout_secrets_scope, key="azure_api_key")
 google_api_key = dbutils.secrets.get(scope=towerscout_secrets_scope, key="google_api_key")
 
-# Define MAX_TILES, MAX_TILES_SESSION, and any other constants here
-print(bing_api_key)
-print(azure_api_key)
-print(google_api_key)
-print("The Bing_API_KEY is set: " + str(bing_api_key != "actual_bing_api_key_value"))  #This key will be updated to an actual key
-print("The Azure_API_KEY is set: " + str(azure_api_key.endswith("31JHPM"))) #This key will be updated to an actual key
-print("The Google_API_KEY is set: " + str(google_api_key != "actual_google_api_key_value")) #This key will be updated to an actual key
+# # Define MAX_TILES, MAX_TILES_SESSION, and any other constants here
+# print(bing_api_key)
+# print(azure_api_key)
+# print(google_api_key)
+# print("The Bing_API_KEY is set: " + str(bing_api_key != "actual_bing_api_key_value"))  #This key will be updated to an actual key
+# print("The Azure_API_KEY is set: " + str(azure_api_key.endswith("xxxx"))) #This key will be updated to an actual key
+# print("The Google_API_KEY is set: " + str(google_api_key != "actual_google_api_key_value")) #This key will be updated to an actual key
 
 
 
