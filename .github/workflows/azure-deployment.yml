@@ -13,9 +13,10 @@ on:
   workflow_dispatch:
 
 jobs:
-   build:
-    runs-on: TowerScout
-      #group: edav-devops
+  build:
+    runs-on: 
+      - TowerScout
+      #group: edav-devops-prd
     permissions:
       contents: read #This is required for actions/checkout
 
@@ -30,19 +31,19 @@ jobs:
       - name: Create and start virtual environment
         run: |
           python -m venv venv
-          .\venv\Scripts\Activate  # Correct command for PowerShell
+          .\venv\Scripts\Activate.ps1  # Correct command for PowerShell
       
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          .\venv\Scripts\python.exe -m pip install --upgrade pip
+          pip install -r requirements.txt
+        shell: powershell
         
-      # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
+     # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
       - name: Create zip release file
         run: |
           Compress-Archive -Path ./* -DestinationPath release.zip
         shell: powershell  # Use the default Windows PowerShell shell
-
-  
-
 
       #- name: Upload artifact for deployment jobs
       #  uses: actions/upload-artifact@v4
@@ -51,7 +52,8 @@ jobs:
       #    path: |
       #      release.zip
       #      !venv/
-   deploy:
+
+  deploy:
     runs-on: TowerScout
       #group: edav-devops
     needs: build
@@ -69,7 +71,6 @@ jobs:
         run: |
           Expand-Archive -Path release.zip -DestinationPath ./ -Force
         shell: powershell  # Ensure it uses PowerShell
-
 
       
       - name: 'Deploy to Azure Web App'
