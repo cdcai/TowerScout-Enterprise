@@ -45,3 +45,4 @@ wheels/
 */datasets/*
 *.jpg
 *.png
+tsdb/examples
