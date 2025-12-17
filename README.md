@@ -1,29 +1,34 @@
-# TowerScout
+# TowerScout Cloud Adaptation
 
-A tool for identifying cooling towers from satellite and aerial imagery
+## Introduction
+This repo is an extension of the existing TowerScout application to utilize a more enterprise architecture on Databricks. It's ideal for users of TowerScout who are looking for a more scalable system
 
-TowerScout Team:
+## Key Capabilities
+This migration introduces the following features:
+- Stored detections in ADLS/S3
+- Retraining pipeline connected to validated images
+- Model scaling and storage in Unity Catalog
 
-<a target="_blank" href="https://www.linkedin.com/in/karenkwong/">Karen Wong</a>,
-<a target="_blank" href="https://www.linkedin.com/in/jia-lu-gracie-a8b5a71a/">Jia Lu</a>,
-<a target="_blank" href="https://www.linkedin.com/in/gunnarmein/">Gunnar Mein</a>,
-<a target="_blank" href="https://www.linkedin.com/in/thaddeussegura/">Thaddeus Segura</a><br>
+## Architecture
+![TowerScout Cloud Architecture](./img/towerscout_architecture.jpeg)
+## Quickstart
+We do not provide the model in this release; however, you can train your own model using the training pipeline.
+
+We developed this using DBR 15.4 ML. Although this application was designed on Databricks, you can adapt the code to a standard Spark setup
+
+The original TowerScout is monolithic and that may serve some use cases better, you can find that repo [here](https://github.com/TowerScout/TowerScout).
+
+### UI
+The frontend files are located in webapp
+
+### Backend/ML
+The backend/ML files are located in tsdb
+
+#### notebooks
+Notebooks are the orchestration tools we used for the PySpark backend. The application runs using file arrival to trigger a structured streaming query. We have a timer listener that closes the stream after a period of time.
+
+## Future Adaptations
+We run this using YOLOv5, but if you opt to run this on Databricks, using YOLOv10 along with a ML Endpoint will yield better performance.
 
 Licensed under <a target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC-BY-NC-SA-4.0</a>
 (see <a target="_blank" href="https://github.com/TowerScout/TowerScout/blob/main/LICENSE.TXT">LICENSE.TXT</a> in the root of the repository for details)
-
-
-# Code Style and Formatting
-## Pre-commit Hooks
-Pre-commit hooks are useful for uniformly formatting code such as missing semicolons, removing trailing whitespace,
-and standardizing line lengths. The goal is to allow the developer to focus on the code without getting bogged down in
-trivial style nitpicks.
-
-## Installation
-`pip install pre-commit`
-
-Run `pre-commit install` to setup the git hook scripts. Now `pre-commit` will run automatically on a `git commit`
-
-Run `pip install pylint` to install
-It's highly recommended to run pylint on any files you have edited before committing. PyLint helps standardize code
-format and will warn of any issues. It will not throw an error.
