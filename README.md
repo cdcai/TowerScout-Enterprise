@@ -10,7 +10,7 @@ This migration introduces the following features:
 - Model scaling and storage in Unity Catalog
 
 ## Architecture
-![TowerScout Cloud Architecture](./img/towerscout_architecture.jpeg)
+![TowerScout Cloud Architecture](towerscout_architecture.jpeg)
 ## Quickstart
 We do not provide the model in this release; however, you can train your own model using the training pipeline.
 
