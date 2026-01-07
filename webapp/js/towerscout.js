@@ -2831,6 +2831,7 @@ function ToggleTestEnvironment() {
       if (enableTestEnv === 'True') {
         document.getElementById("btnTest").removeAttribute("style");
         document.getElementById("btnTestGold").removeAttribute("style");
+        document.getElementById('btnPushAddresses').removeAttribute("style");
       }
 
     })
