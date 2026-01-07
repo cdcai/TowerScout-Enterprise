@@ -2382,11 +2382,14 @@ function getObjects(estimate) {
         })
         .catch(e => {
           console.log(e + ": "); disableProgress(0, 0);
-        });
+        }).finally(() => {
+          // Always executed (success or failure)
+          getazmapTransactioncountjs(2);
+          disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
+      });
     });
 
-  getazmapTransactioncountjs(2);
-  disableProgress((performance.now() - startTime) / 1000, Tile_tiles.length);
+  
 }
 
 function ProcessUserRequest(estimate) {
@@ -2481,9 +2484,11 @@ function ProcessUserRequest(estimate) {
             console.log("Images uploaded ....");
             formData.append('user_id', result.user_id);
             formData.append('request_id', result.request_id);
+            globalrequest_id = result.request_id;
+            globaluser_id = result.user_id;
             formData.append('tiles_count', result.tiles_count);
             console.log("Polling Cluster Status");
-
+            window.clusterPollStartTime = Date.now();
             pollClusterStatusjs();
             // console.log("Delaying Polling Silver Table by 1 minute");
             // setTimeout(pollSilverTableWithLogs, 60000);  // Start polling after 1 minute
@@ -2575,16 +2580,26 @@ async function pollSilverTableWithLogs() {
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
   const controller = new AbortController();  // Create an AbortController instance
   let timeoutHandle;
-  const params = new URLSearchParams(formData).toString();
+  
   const tilecount = formData.get('tiles_count');
   var RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
   if (tilecount < 100) {
     RESTART_DELAY = tilecount * 5000;  // Restart delay in milliseconds (e.g., 5 seconds per tile)
   }
-
+   // 🔒 Create start time ONCE per session (shared across reconnects)
+  if (!window.silverPollStartTime) {
+    window.silverPollStartTime = Date.now();
+  }
+   // Build params including persistent trigger_time_ms
+  const params = new URLSearchParams({
+    ...Object.fromEntries(formData),
+    trigger_time_ms: window.silverPollStartTime
+  }).toString();
+  // const RESTART_DELAY = 60000;  // Restart delay in milliseconds (e.g., 60 seconds)
+  let eventSource;
+  let completed = false;
+  let reconnectTimeout;
   try {
-
-
 
     const eventSource = new EventSource(`/pollSilverTableWithLogs?${params}`);
     let completed = false;
@@ -2605,26 +2620,34 @@ async function pollSilverTableWithLogs() {
 
 
     });
-    timeoutHandle = setTimeout(async () => {
+    eventSource.addEventListener("error", (event) => {
+      completed = true;
+      clearTimeout(reconnectTimeout);
+      eventSource.close();
+
+      console.error("❌ Polling error:", event.data || "Unknown error");
+
+      if (event?.data?.includes("10-minute")) {
+        alert("Processing timed out after 10 minutes.");
+      }
+    });
+    // ⏱️ Close and reconnect after 4.9 minutes
+    reconnectTimeout = setTimeout(async () => {
       if (!completed && eventSource.readyState !== EventSource.CLOSED) {
-        console.log('⏱️ Closing connection after 5 minutes...');
+        console.log("⏱️ Closing SSE after 4.9 minutes...");
         eventSource.close();
 
-
-        console.log('⏱️ Reconnecting after 4.9 minutes...');
-        // Wait before sending another request (restart cycle after 10 seconds)
-        console.log('Waiting for 60 seconds before retrying...');
-        await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
-        return pollSilverTableWithLogs();
-
-      } // 4.9 minutes
+        console.log(`🔁 Reconnecting after ${RESTART_DELAY / 1000}s...`);
+        await new Promise((resolve) => setTimeout(resolve, RESTART_DELAY));
+        pollSilverTableWithLogs();
+      }
     }, TIMEOUT_DURATION);
 
     eventSource.onerror = (error) => {
       console.error('SSE connection error Polling Silver Table:', error);
       eventSource.close();
       // Wait before sending another request (restart cycle after 10 seconds)
-      console.log('Waiting for 10 seconds before retrying...');
+      console.log(`🔁 Retrying in ${RESTART_DELAY / 1000}s...`);
       // Wait 10 seconds before starting the next process
       setTimeout(() => {
         console.log('Waiting for 10 seconds before retrying...');
@@ -2638,7 +2661,7 @@ async function pollSilverTableWithLogs() {
   } catch (error) {
     console.log('Error during pollSilverTableWithLogs request:' + error);
     // In case of error, wait for 10 seconds before retrying
-    eventSource.close();
+    if (eventSource) eventSource.close();
     console.log('Waiting for 60 seconds before retrying...');
     await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
     return pollSilverTableWithLogs();
@@ -2820,11 +2843,14 @@ function ToggleTestEnvironment() {
 //get Cluster Status
 async function pollClusterStatusjs() {
   let isFirstAttempt = true;
+  const HARD_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
   const TIMEOUT_DURATION = 4.9 * 60 * 1000;  // 4.9 minutes in milliseconds
   let timeoutHandle;  // Need to clear this before returning true
   try {
     // while (true) {
-
+    if (Date.now() - window.clusterPollStartTime > HARD_TIMEOUT_MS) {
+    throw new Error("Cluster did not reach RUNNING within 15 minutes");
+    }
     const result = await getClusterStatusjs();
 
     if (result == 'RUNNING') {
