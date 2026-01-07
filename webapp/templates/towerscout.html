@@ -50,15 +50,12 @@ Licensed under CC-BY-NC-SA-4.0
   <div class="grid-container">
 
     <div class="fheader" style="width: 100%;">
-      <div class="fheader" style="width: 100%;text-align: center;background-color: azure; color: black;">
       TowerScout
-       </div>
       <a class="hover" href="{{ url_for('about') }}" target="_blank">About TowerScout</a>
      </div><br>
      
 
     <div class="fsearch">
-      
       <div id="mapsearchui" style="display:block;height:auto">
         <span id="location">Location:&nbsp;</span>
         <div id="bingSearchBoxContainer" style="display:none;">
@@ -68,6 +65,11 @@ Licensed under CC-BY-NC-SA-4.0
         <span style="float: right;" id="geometry">
           <input type='text' aria-labelledby="radiusbutton" id='radius' style='width:20%;vertical-align:10%'>&nbsp;
           <button onclick="circleBoundary()" id="radiusbutton" style="vertical-align:10%;">Circle</button>
+          <span
+            style="display: inline-block; width:1px; height:80%; vertical-align:-8%; background:white; margin: 0 2px;">&nbsp;</span>
+          <!-- <button onclick="drawnBoundary()" id="drawnbutton" style="vertical-align:10%;">Custom shape</button> -->
+          <span
+            style="display: inline-block; width:1px; height:80%; vertical-align:-8%; background:white; margin: 0 2px;">&nbsp;</span>
           <button onclick="clearBoundaries()" style="vertical-align:10%;">Clear</button>
         </span>
       </div>
@@ -93,18 +95,13 @@ Licensed under CC-BY-NC-SA-4.0
       <br><br>
       User interface:<br>
       <form id="uis" name="uis">
-        <!-- <input type="radio" id="google" name="uis" value="google" checked> -->
-        <!-- <label for="google">Google Maps</label><br> -->
         <input type="radio" id="azure" name="uis" value="azure" checked>
         <label for="azure">Azure Maps</label><br>
         <input type="radio" id="bing" name="uis" value="bing" >
         <label for="bing">Bing Maps</label><br>
-        <!-- <input type="radio" id="upload" name="uis" value="upload">
-        <label for="upload">Image upload</label>
-        <br> -->
       </form>
       <br>
-      Backend map provider:
+      Backend map provider:<br>
       <br>
       <form id='providers' name='providers'>
       </form>
@@ -134,8 +131,6 @@ Licensed under CC-BY-NC-SA-4.0
       <button id="btnTestGold" style="display: none;" class="btn" onclick='drawBoundingBoxesGoldTable()'>Find Gold towers</button>
       <button id="estimate" class="btn" onclick='ProcessUserRequest(true)'>Estimate tiles</button>
       <button id="find" class="btn" onclick='ProcessUserRequest()'>Find towers</button>
-      
-      
     </div>
 
     <div class="ffilter" id="ffilter" style="font-size: smaller;display:none">
@@ -184,7 +179,9 @@ Licensed under CC-BY-NC-SA-4.0
       <button class="btn" onclick="download_csv(),download_kml()" style="width:50%; height:100%">Download
         results</button>
       <button class="btn" onclick="PromoteSilverToGold()" style="width:50%; height:100%">Promote to Gold</button>
-     
+     <br>
+     <button id="btnPushAddresses" class="btn" onclick="PushAddressesToBenchmarkSilver()" style="width:20%;display: none;">Push Addresses to Benchmark Silver</button>
+    
     </div>
 
     <div class="ftext" style="font-size: smaller;">
