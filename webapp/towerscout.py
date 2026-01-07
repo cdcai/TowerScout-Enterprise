@@ -607,10 +607,13 @@ def get_objects():
         return results
     except Exception as e:
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+        raise
     except RuntimeError as e:
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+        raise
     except SyntaxError as e:
-            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+        logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+        raise
 
 @app.route("/uploadTileImages", methods=["POST"])
 def uploadTileImages():
@@ -762,26 +765,54 @@ def pollSilverTableWithLogs():
         
         print(" session:", id(session))
         
-        # # Need to Add code to read results from EDAV
-        stInstance = ts_readdetections.SilverTable()
         user_id = request.args.get("user_id")
         request_id = request.args.get("request_id")
         tilescount = int(request.args.get("tiles_count"))
         max_retries = tilescount*2
-       
+        trigger_time_ms = int(request.args.get("trigger_time_ms", time.time() * 1000))
         # abort if signaled
         if exit_events.query(id(session)):
             print(" client aborted request.")
             exit_events.free(id(session))
             return "[]"
+        if not user_id or not request_id:
+            logging.error("Missing user_id or request_id in request")
+            return "[]", 400
+         # Create a unique key for this polling session (multi-user safe)
+        session_key = f"{user_id}:{request_id}"
+        # 2️⃣ Allocate the session in exit_events BEFORE starting polling
+        exit_events.alloc(session_key)
+        # Check if client has aborted previously
+        if exit_events.query(session_key):
+            print(f"⚠️ Client aborted request for session {session_key}")
+            exit_events.free(session_key)
+            return "[]"
+        # Instantiate your SilverTable object
+        stInstance = ts_readdetections.SilverTable()
         
-        return Response(stream_with_context(stInstance.poll_SilverTableJobDoneWithLogs(request_id, user_id, tilescount, max_retries, 20)), mimetype='text/event-stream')
+        return Response(
+            stream_with_context(
+                stInstance.poll_SilverTableJobDoneWithLogs(
+                    request_id, user_id, tilescount, max_retries, 20,
+                    trigger_time_ms=trigger_time_ms,  # pass client trigger time
+                    session_key=session_key,          # pass session key for aborts
+                    exit_events = exit_events
+                    )), 
+                    mimetype='text/event-stream')
+    except Exception as e:
+        logging.error("❌ Error in pollSilverTableWithLogs", exc_info=e)
+        # Send error to client as SSE
+        def error_gen():
+            yield f"event: error\ndata: {str(e)}\n\n"
+        return Response(stream_with_context(error_gen()), mimetype="text/event-stream")
     except Exception as e:
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+        raise
     except RuntimeError as e:
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+        raise
     except SyntaxError as e:
-            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+        logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
 
 
 @app.route("/fetchBoundingBoxResults", methods=["POST"])
@@ -1337,7 +1368,13 @@ def getazmaptransactions():
         return result
     except ClientAuthenticationError as e:
         logging.error("ClientAuthenticationError at %s", "getazmaptransactions towerscout.py", exc_info=e)
-        result="ClientAuthenticationError"
+        # Optional: check for expired-secret specifically
+        if "AADSTS7000222" in str(e):
+            raise RuntimeError(
+                "Azure App Service AD client secret has expired. Rotate the secret and update Key Vault."
+            ) from e
+        else:
+            raise
         
     except Exception as e:
         logging.error("Error at %s", "getazmaptransactions towerscout.py", exc_info=e)
@@ -1364,7 +1401,13 @@ def getClusterStatus():
         return result
     except ClientAuthenticationError as e:
         logging.error("ClientAuthenticationError at %s", "getClusterStatus towerscout.py", exc_info=e)
-        result="ClientAuthenticationError"
+        # Optional: check for expired-secret specifically
+        if "AADSTS7000222" in str(e):
+            raise RuntimeError(
+                "Azure App Service AD client secret has expired. Rotate the secret and update Key Vault."
+            ) from e
+        else:
+            raise
         
     except Exception as e:
         logging.error("Error at %s", "getClusterStatus towerscout.py", exc_info=e)
