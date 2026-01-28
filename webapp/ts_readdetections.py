@@ -765,7 +765,7 @@ class SilverTable:
             }
     
             body = {
-                "WAREHOUSE_ID": Config.WAREHOUSE_ID,
+                "warehouse_id": Config.WAREHOUSE_ID,
                 "statement": sql_query,
                 "catalog": catalog,
                 "schema": schema
@@ -1688,7 +1688,7 @@ class GoldTable:
             }
     
             body = {
-                "WAREHOUSE_ID": Config.WAREHOUSE_ID,
+                "warehouse_id": Config.WAREHOUSE_ID,
                 "statement": sql_query,
                 "catalog": catalog,
                 "schema": schema
