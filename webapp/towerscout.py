@@ -26,7 +26,7 @@ from ts_events import ExitEvents
 import ts_maps
 from ts_azmaps import AzureMap
 from ts_azmapmetrics import azTransactions
-from ts_readdetections import SilverTable
+import ts_readdetections
 from functools import reduce
 import asyncio
 import jwt
@@ -35,6 +35,12 @@ from datetime import timedelta
 import random
 from azure.core.exceptions import ClientAuthenticationError
 import ts_secrets
+
+config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
+
+import random
+
+from azure.core.exceptions import ClientAuthenticationError
 
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
@@ -49,6 +55,7 @@ from flask import (
     session,
     Response,
     jsonify,
+    stream_with_context,
 )
 from flask_session import Session
 from waitress import serve
@@ -140,13 +147,6 @@ zipcode_lock = threading.Lock()
 zipcode_provider = None
 
 
-# def start_zipcodes():
-#     global zipcode_provider
-#     with zipcode_lock:
-#         print("instantiating zipcode frame, could take 10 seconds ...")
-#         zipcode_provider = Zipcode_Provider()
-
-
 # Flask boilerplate stuff
 app = Flask(__name__)
 
@@ -221,11 +221,18 @@ CLIENT_ID = ""
 CLIENT_SECRET = ""
 TENANT_ID = ""
 AUTHORITY = "https://login.microsoftonline.com/" + TENANT_ID
-REDIRECT_URI = "https://csels-pd-towerscrt-dev-web-01.edav-dev-app.appserviceenvironment.net/towerscoutmainnodetection/getAToken"
 
 SCOPES = ["User.Read"]
 
+@app.route('/stream')
+def stream():
+    def generate():
+        for i in range(5):
+            yield f"data: Step {i + 1} at {time.strftime('%X')}\n\n"
+            time.sleep(1)
+        yield "event: done\ndata: true\n\n"
 
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 # main page route
 @app.route("/")
 def map_func():
@@ -275,41 +282,6 @@ def _build_msal_app():
     return msal.ConfidentialClientApplication(
         CLIENT_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET
     )
-
-
-# Route to initiate the authentication process (redirects to Microsoft login)
-@app.route("/login")
-def login():
-    msal_app = _build_msal_app()
-
-    # Create the authorization URL to redirect the user for login (if not already logged in)
-    auth_url = msal_app.get_authorization_request_url(SCOPES, redirect_uri=REDIRECT_URI)
-    return redirect(auth_url)
-
-
-# Callback route to handle the response from Microsoft after login
-@app.route("/towerscoutmainnodetection/getAToken")
-def authorized():
-    code = request.args.get("code")
-
-    if not code:
-        return "Authorization failed", 400
-
-    msal_app = _build_msal_app()
-
-    # Exchange the authorization code for an access token
-    result = msal_app.acquire_token_by_authorization_code(
-        code, scopes=SCOPES, redirect_uri=REDIRECT_URI
-    )
-
-    if "access_token" in result:
-        # Store the user's information (including user_id) in the session
-        session["user"] = result.get("id_token_claims")
-        # return redirect(url_for('/'))
-        # now render the map.html template, inserting the key
-        return render_template("towerscout.html", bing_map_key=bing_api_key, dev=dev)
-    else:
-        return "Error: Unable to acquire token", 400
 
 
 @app.after_request
@@ -390,33 +362,7 @@ def get_objects():
         response.headers['Keep-Alive'] = 'timeout=600, max=100'  # Keep alive for 10 minutes, max 100 requests
 
         print(" session:", id(session))
-        # print("session(user_id)",session['user'])
-        # id_token = request.headers.get('X-MS-TOKEN-AAD-ID-TOKEN')
-        # logging.info("id_token:{id_token}")
-        # auth_code = request.args.get("code")
-        # print("auth_code:", auth_code)
-        # # user_id = get_ms_entra_ID(auth_code)
-        # # logging.info(f"user_id:{user_id}")
-        # # Get the token from the Authorization header
-        # auth_header = request.headers.get("Authorization")
-        # print("auth_header", auth_header)
-        # if auth_header:
-        #     # Extract the token (after 'Bearer ' prefix)
-        #     token = auth_header.split(" ")[1]
-
-        #     # Get the user ID from the token
-        #     user_id = get_user_id_from_token(token)
-        #     session["user_id"] = user_id
-        #     if user_id:
-        #         print(
-        #             jsonify(
-        #                 {"message": "Welcome to the Home page!", "user_id": user_id}
-        #             )
-        #         )
-        #     else:
-        #         print(jsonify({"error": "Unable to extract user ID"}), 400)
-        # else:
-        #     print(jsonify({"error": "Authorization header missing"}), 401)
+       
         # check whether this session is over its limit
         if "tiles" not in session:
             session["tiles"] = 0
@@ -431,19 +377,7 @@ def get_objects():
         # engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
-        # id_token = request.headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
-        # access_token = request.headers.get("X-MS-TOKEN-AAD-ACCESS-TOKEN")
-        # user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
-        # user_name = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
-        # print("id_token:", id_token)
-        # print("access_token:", access_token)
-        # print("user_id:", user_id)
-        # print("user_name:", user_name)
-        # print("incoming detection request:")
-        # print(" bounds:", bounds)
-        # # print(" engine:", engine)
-        # print(" map provider:", provider)
-        # print(" polygons:", polygons)
+        
 
         # cropping
         crop_tiles = False
@@ -544,7 +478,7 @@ def get_objects():
         # # Sending a request to databricks with a url to the bronze
 
         # # Need to Add code to read results from EDAV
-        stInstance = SilverTable()
+        stInstance = ts_readdetections.SilverTable()
         user_id = map.user_id
         request_id = map.request_id
 
@@ -572,10 +506,7 @@ def get_objects():
         # record some results in session for later saving if desired
         session["detections"] = make_persistable_tile_results(tiles)
         print("After make_persistable_tile_results towerscout.py line 556")
-        # # Only for localhost - Azure app services
-        # for chunk in results_raw:
-        #     if chunk:
-        #         print(f"tile results chunk: {chunk}")
+       
         # post-process the results
         results = []
         for result, tile in zip(results_raw, tiles):
@@ -646,7 +577,11 @@ def get_objects():
                     "selected": True,
                     "tile": tile["id"],
                     "uuid": tile["uuid"],
-                    "image_hash": tile["image_hash"]
+                    "image_hash": tile["image_hash"],
+                    "lat": tile["lat"],
+                    "lng": tile["lng"],
+                    "w": tile["w"],
+                    "h": tile["h"],
                 }
             )
 
@@ -672,42 +607,19 @@ def get_objects():
         return results
     except Exception as e:
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+        raise
     except RuntimeError as e:
         logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+        raise
     except SyntaxError as e:
-            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+        logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+        raise
 
 @app.route("/uploadTileImages", methods=["POST"])
 def uploadTileImages():
     try:
         print(" session:", id(session))
-        # print("session(user_id)",session['user'])
-        # id_token = request.headers.get('X-MS-TOKEN-AAD-ID-TOKEN')
-        # logging.info("id_token:{id_token}")
-        # auth_code = request.args.get("code")
-        # print("auth_code:", auth_code)
-        # # user_id = get_ms_entra_ID(auth_code)
-        # # logging.info(f"user_id:{user_id}")
-        # # Get the token from the Authorization header
-        # auth_header = request.headers.get("Authorization")
-        # print("auth_header", auth_header)
-        # if auth_header:
-        #     # Extract the token (after 'Bearer ' prefix)
-        #     token = auth_header.split(" ")[1]
-
-        #     # Get the user ID from the token
-        #     user_id = get_user_id_from_token(token)
-        #     session["user_id"] = user_id
-        #     if user_id:
-        #         print(
-        #             jsonify(
-        #                 {"message": "Welcome to the Home page!", "user_id": user_id}
-        #             )
-        #         )
-        #     else:
-        #         print(jsonify({"error": "Unable to extract user ID"}), 400)
-        # else:
-        #     print(jsonify({"error": "Authorization header missing"}), 401)
+       
         # check whether this session is over its limit
         if "tiles" not in session:
             session["tiles"] = 0
@@ -721,20 +633,7 @@ def uploadTileImages():
         # engine = request.form.get("engine")
         provider = request.form.get("provider")
         polygons = request.form.get("polygons")
-        # id_token = request.headers.get("X-MS-TOKEN-AAD-ID-TOKEN")
-        # access_token = request.headers.get("X-MS-TOKEN-AAD-ACCESS-TOKEN")
-        # user_id = request.headers.get("X-MS-CLIENT-PRINCIPAL-ID")
-        # user_name = request.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
-        # print("id_token:", id_token)
-        # print("access_token:", access_token)
-        # print("user_id:", user_id)
-        # print("user_name:", user_name)
-        # print("incoming detection request:")
-        # print(" bounds:", bounds)
-        # # print(" engine:", engine)
-        # print(" map provider:", provider)
-        # print(" polygons:", polygons)
-
+        
         # cropping
         crop_tiles = False
 
@@ -820,9 +719,7 @@ def uploadTileImages():
             tile['filename'] = user_id+"/"+fname+str(i)+".jpeg"
         
         session["tilesinsession"] = tiles
-        print(" tilesinsession:",str(session["tilesinsession"]))
-        print(" tilesinsession:",session["tilesinsession"])
-        print(" tiles:",tiles)
+        
 
         return jsonify({"user_id": user_id, "request_id": unique_direcotry, "tiles_count": len(tiles)})
     except Exception as e:
@@ -839,7 +736,7 @@ def pollSilverTable():
         print(" session:", id(session))
         
         # # Need to Add code to read results from EDAV
-        stInstance = SilverTable()
+        stInstance = ts_readdetections.SilverTable()
         user_id = request.form.get("user_id")
         request_id = request.form.get("request_id")
         tilescount = int(request.form.get("tiles_count"))
@@ -860,6 +757,64 @@ def pollSilverTable():
     except SyntaxError as e:
             logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
 
+
+@app.route("/pollSilverTableWithLogs")
+def pollSilverTableWithLogs():
+    print("calling pollSilverTableWithLogs towerscout.py")
+    try:
+        
+        print(" session:", id(session))
+        
+        user_id = request.args.get("user_id")
+        request_id = request.args.get("request_id")
+        tilescount = int(request.args.get("tiles_count"))
+        max_retries = tilescount*2
+        trigger_time_ms = int(request.args.get("trigger_time_ms", time.time() * 1000))
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+        if not user_id or not request_id:
+            logging.error("Missing user_id or request_id in request")
+            return "[]", 400
+         # Create a unique key for this polling session (multi-user safe)
+        session_key = f"{user_id}:{request_id}"
+        # 2️⃣ Allocate the session in exit_events BEFORE starting polling
+        exit_events.alloc(session_key)
+        # Check if client has aborted previously
+        if exit_events.query(session_key):
+            print(f"⚠️ Client aborted request for session {session_key}")
+            exit_events.free(session_key)
+            return "[]"
+        # Instantiate your SilverTable object
+        stInstance = ts_readdetections.SilverTable()
+        
+        return Response(
+            stream_with_context(
+                stInstance.poll_SilverTableJobDoneWithLogs(
+                    request_id, user_id, tilescount, max_retries, 20,
+                    trigger_time_ms=trigger_time_ms,  # pass client trigger time
+                    session_key=session_key,          # pass session key for aborts
+                    exit_events = exit_events
+                    )), 
+                    mimetype='text/event-stream')
+    except Exception as e:
+        logging.error("❌ Error in pollSilverTableWithLogs", exc_info=e)
+        # Send error to client as SSE
+        def error_gen():
+            yield f"event: error\ndata: {str(e)}\n\n"
+        return Response(stream_with_context(error_gen()), mimetype="text/event-stream")
+    except Exception as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+        raise
+    except RuntimeError as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+        raise
+    except SyntaxError as e:
+        logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+
+
 @app.route("/fetchBoundingBoxResults", methods=["POST"])
 def fetchBoundingBoxResults():
     try:
@@ -871,7 +826,7 @@ def fetchBoundingBoxResults():
         request_id = request.form.get("request_id")
         bounds = request.form.get("bounds")
         polygons = request.form.get("polygons")
-        stInstance = SilverTable()
+        stInstance = ts_readdetections.SilverTable()
 
         # cropping
         crop_tiles = False
@@ -923,22 +878,13 @@ def fetchBoundingBoxResults():
 
          # read metadata if present
         for tile in tiles:
-            # if meta:
-            #     filename = user_id+"/"+fname+str(tile['id'])+".meta.txt"
-            #     with open(filename) as f:
-            #         tile['metadata'] = map.get_date(f.read())
-            #         # print(" metadata: "+tile['metadata'])
-            #         f.close
-            # else:
+           
             tile['metadata'] = ""
         print("Before make_persistable_tile_results towerscout.py line 553")
         # record some results in session for later saving if desired
         session["detections"] = make_persistable_tile_results(tiles)
         print("After make_persistable_tile_results towerscout.py line 556")
-        # # Only for localhost - Azure app services
-        # for chunk in results_raw:
-        #     if chunk:
-        #         print(f"tile results chunk: {chunk}")
+       
         # post-process the results
                
         results = []
@@ -1015,7 +961,11 @@ def fetchBoundingBoxResults():
                     "selected": True,
                     "tile": tile["id"],
                     "uuid": tile["uuid"],
-                    "image_hash": tile["image_hash"]
+                    "image_hash": tile["image_hash"],
+                    "lat": tile["lat"],
+                    "lng": tile["lng"],
+                    "w": tile["w"],
+                    "h": tile["h"],
                 }
             )
 
@@ -1049,6 +999,196 @@ def fetchBoundingBoxResults():
     except SyntaxError as e:
             logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
 
+@app.route("/fetchBoundingBoxResultsGold", methods=["POST"])
+def fetchBoundingBoxResultsGold():
+    try:
+        print(" session:", id(session))
+        
+        tiles = []
+        start = time.time()
+        user_id = request.form.get("user_id")
+        request_id = request.form.get("request_id")
+        bounds = request.form.get("bounds")
+        polygons = request.form.get("polygons")
+        stInstance = ts_readdetections.GoldTable()
+
+        # cropping
+        crop_tiles = False
+
+        # make the polygons
+        polygons = json.loads(polygons)
+        # print(" parsed polygons:", polygons)
+        polygons = [ts_imgutil.make_boundary(p) for p in polygons]
+        print(" Shapely polygons:", polygons)
+        
+        provider = request.form.get("provider")
+        # empty results
+        results = []
+
+        # create a map provider object
+        map = None
+        if provider == "bing":
+            map = BingMap(bing_api_key)
+        elif provider == "google":
+            map = GoogleMap(google_api_key)
+        elif provider == "azure":
+            map = AzureMap(azure_api_key)
+
+        if map is None:
+            print(" could not instantiate map provider:", provider)
+
+         # divide the map into 640x640 parts
+        tiles, nx, ny, meters, h, w = map.make_tiles(bounds, crop_tiles=crop_tiles)
+        print(f" {len(tiles)} tiles, {nx} x {ny}, {meters} x {meters} m")
+        # print(" Tile centers:")
+        # for c in tiles:
+        #   print("  ",c)
+       
+        tiles = [t for t in tiles if ts_maps.check_tile_against_bounds(t, bounds)]
+        tiles = [t for t in tiles if ts_imgutil.tileIntersectsPolygons(t, polygons)]
+        for i, tile in enumerate(tiles):
+            tile["id"] = i
+            
+        results_raw = stInstance.get_bboxesfortilesWithoutPolling(
+            tiles, exit_events, id(session), request_id, user_id
+        )
+        
+        logging.info("get_bboxesfortiles completed")
+        # abort if signaled
+        if exit_events.query(id(session)):
+            print(" client aborted request.")
+            exit_events.free(id(session))
+            return "[]"
+
+         # read metadata if present
+        for tile in tiles:
+            # if meta:
+            #     filename = user_id+"/"+fname+str(tile['id'])+".meta.txt"
+            #     with open(filename) as f:
+            #         tile['metadata'] = map.get_date(f.read())
+            #         # print(" metadata: "+tile['metadata'])
+            #         f.close
+            # else:
+            tile['metadata'] = ""
+        print("Before make_persistable_tile_results towerscout.py line 553")
+        # record some results in session for later saving if desired
+        session["detections"] = make_persistable_tile_results(tiles)
+        print("After make_persistable_tile_results towerscout.py line 556")
+        # # Only for localhost - Azure app services
+        # for chunk in results_raw:
+        #     if chunk:
+        #         print(f"tile results chunk: {chunk}")
+        # post-process the results
+               
+        results = []
+        for result, tile in zip(results_raw, tiles):
+            
+            for i, object in enumerate(result):
+                # object['conf'] *= map.checkCutOffs(object) # used to do this before we started cropping
+                object["silverx1"] = object["x1"]
+                object["silverx2"] = object["x2"]
+                object["silvery1"] = object["y1"]
+                object["silvery2"] = object["y2"]
+                object["x1"] = tile["lng"] - 0.5 * tile["w"] + object["x1"] * tile["w"]
+                object["x2"] = tile["lng"] - 0.5 * tile["w"] + object["x2"] * tile["w"]
+                object["y1"] = tile["lat"] + 0.5 * tile["h"] - object["y1"] * tile["h"]
+                object["y2"] = tile["lat"] + 0.5 * tile["h"] - object["y2"] * tile["h"]
+                object["tile"] = tile["id"]
+                object["id_in_tile"] = i
+                object["selected"] = object["secondary"] >= 0.35
+                object["uuid"] = tile["uuid"]
+                object["image_hash"] = tile["image_hash"]
+                
+            results += result
+
+        # mark results out of bounds or polygon
+        for o in results:
+            o["inside"] = ts_imgutil.resultIntersectsPolygons(
+                o["x1"], o["y1"], o["x2"], o["y2"], polygons
+            ) and ts_maps.check_bounds(o["x1"], o["y1"], o["x2"], o["y2"], bounds)
+            # print("in " if o['inside'] else "out ", end="")
+
+        # sort the results by lat, long, conf
+        results.sort(key=lambda x: x["y1"] * 2 * 180 + 2 * x["x1"] + x["conf"])
+
+        # # Commenting out this code - this code removes coordinates with less than 1 mile distance between them
+        # # assuming them to be duplicates. This is the original code.
+        # # coaslesce neighboring (in list) towers that are closer than 1 m for x1, y1
+        # if len(results) > 1:
+        #     i = 0
+        #     while i < len(results) - 1:
+        #         if (
+        #             ts_maps.get_distance(
+        #                 results[i]["x1"],
+        #                 results[i]["y1"],
+        #                 results[i + 1]["x1"],
+        #                 results[i + 1]["y1"],
+        #             )
+        #             < 1
+        #         ):
+        #             print(" removing 1 duplicate result")
+        #             results.remove(results[i + 1])
+        #         else:
+        #             i += 1
+
+        # Adding tiles collection with corresponding id. id is needed for Silver to Gold Merge
+        # Using 10 for class in order to handle class values of 0/1 for selected/unselected detections while Promoting detections to Gold
+       
+        tile_results = []
+        for tile in tiles:
+            tile_results.append(
+                {
+                    "x1": tile["lng"] - 0.5 * tile["w"],
+                    "y1": tile["lat"] + 0.5 * tile["h"],
+                    "x2": tile["lng"] + 0.5 * tile["w"],
+                    "y2": tile["lat"] - 0.5 * tile["h"],
+                    "class": 10,
+                    "class_name": "tile",
+                    "conf": 1,
+                    "metadata": tile["metadata"],
+                    "url": tile["url"],
+                    "selected": True,
+                    "tile": tile["id"],
+                    "uuid": tile["uuid"],
+                    "image_hash": tile["image_hash"],
+                    "lat": tile["lat"],
+                    "lng": tile["lng"],
+                    "w": tile["w"],
+                    "h": tile["h"],
+                }
+            )
+
+        # all done
+        selected = str(reduce(lambda a, e: a + (e["selected"]), results, 0))
+        print(
+            " request complete,"
+            + str(len(results))
+            + " detections ("
+            + selected
+            + " selected), elapsed time: ",
+            (time.time() - start),
+        )
+        results = tile_results + results
+        # print()
+
+        exit_events.free(id(session))
+        print("Before results = json.dumps(results) towerscout.py line 638")
+        
+        # # Return the loaded data as JSON response
+        exit_events.free(id(session))
+        # return jsonify(results)
+        results = json.dumps(results)
+        print("After results = json.dumps(results) towerscout.py line 640")
+        session["results"] = results
+        return results
+    except Exception as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except RuntimeError as e:
+        logging.error("Error at %s", "get_objects towerscout.py", exc_info=e)
+    except SyntaxError as e:
+            logging.error("Error at %s", "get_objects ts_maps.py", exc_info=e)
+
+
 @app.route('/promoteSilverToGold', methods=['POST'])
 def promoteSilverToGold():
     try:
@@ -1063,7 +1203,7 @@ def promoteSilverToGold():
         schema = data['schema']
         request_id = request.form.get("request_id")
         user_id = request.form.get("user_id")
-        stInstance = SilverTable()
+        stInstance = ts_readdetections.SilverTable()
         statement_id = ""
         print(f"SilverDetections:{SilverDetections}")
         # Construct dynamic SQL query based on bbox_dict
@@ -1079,14 +1219,15 @@ def promoteSilverToGold():
         logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
     except SyntaxError as e:
         logging.error("Error at %s", "towerscout.py(promoteSilverToGold)", exc_info=e)
-    
+
+  
     
 @app.route('/pollquerystatus', methods=['POST'])
 def pollquerystatus():
     try:
         success = ""
         statement_id = request.form.get("SQLstatement_id")
-        stinstance = SilverTable()
+        stinstance = ts_readdetections.SilverTable()
         success = stinstance.poll_query_status(statement_id)
         # abort if signaled
         if exit_events.query(id(session)):
@@ -1205,7 +1346,19 @@ def drawResult(r, im):
         outline="red",
     )
 
-
+@app.route("/setDetectionInside", methods=["POST"])
+def setDetectionInside():
+    newDetections = json.loads(request.form.get("MissedDetections"))
+    bounds = request.form.get("bounds")
+    polygons = request.form.get("polygons")
+    for o in newDetections:
+       try:
+           o['inside'] = ts_imgutil.resultIntersectsPolygons(
+               o["x1"], o["y1"], o["x2"], o["y2"], polygons
+           ) and ts_maps.check_bounds(o["x1"], o["y1"], o["x2"], o["y2"], bounds)
+       except:
+           print(" Error in isDetectionInside")
+   
 @app.route("/getazmaptransactions", methods=["GET"])
 def getazmaptransactions():
     try:
@@ -1215,7 +1368,13 @@ def getazmaptransactions():
         return result
     except ClientAuthenticationError as e:
         logging.error("ClientAuthenticationError at %s", "getazmaptransactions towerscout.py", exc_info=e)
-        result="ClientAuthenticationError"
+        # Optional: check for expired-secret specifically
+        if "AADSTS7000222" in str(e):
+            raise RuntimeError(
+                "Azure App Service AD client secret has expired. Rotate the secret and update Key Vault."
+            ) from e
+        else:
+            raise
         
     except Exception as e:
         logging.error("Error at %s", "getazmaptransactions towerscout.py", exc_info=e)
@@ -1225,6 +1384,56 @@ def getazmaptransactions():
         result = "RuntimeError"
     finally:
         return result
+
+
+@app.route("/getClusterStatus", methods=["GET"])
+def getClusterStatus():
+    try:
+        result = "TERMINATED"
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            job_ID = os.getenv('Inference_JOBID')
+        else:     
+            tablesConfigFile = config_dir + "/config.dbjobid.json"
+            with open(tablesConfigFile, "r") as file:
+                data = json.load(file)
+                job_ID = data['Inference_JOBID']
+        result = ts_readdetections.get_clusterstatusfromjob(job_ID)
+        return result
+    except ClientAuthenticationError as e:
+        logging.error("ClientAuthenticationError at %s", "getClusterStatus towerscout.py", exc_info=e)
+        # Optional: check for expired-secret specifically
+        if "AADSTS7000222" in str(e):
+            raise RuntimeError(
+                "Azure App Service AD client secret has expired. Rotate the secret and update Key Vault."
+            ) from e
+        else:
+            raise
+        
+    except Exception as e:
+        logging.error("Error at %s", "getClusterStatus towerscout.py", exc_info=e)
+        
+    except RuntimeError as e:
+        logging.error("RuntimeError at %s", "getClusterStatus towerscout.py", exc_info=e)
+        result = "RuntimeError"
+    finally:
+        return result
+@app.route("/ToggleTestEnvironment", methods=["GET"])
+def ToggleTestEnvironment():
+    try:
+        result = 'False'
+        if 'WEBSITE_SITE_NAME' in os.environ:
+            result= os.getenv('ToggleTestEnvironment')
+        else:     
+            result= 'True'
+        return result
+    except Exception as e:
+        logging.error("Error at %s", "ToggleTestEnvironment towerscout.py", exc_info=e)
+        return "Exception"
+    except RuntimeError as e:
+        logging.error("RuntimeError at %s", "ToggleTestEnvironment towerscout.py", exc_info=e)
+        return "RuntimeError"
+    
+
 
 # download results as dataset for formal training /testing
 @app.route("/getdataset", methods=["POST"])
@@ -1236,9 +1445,7 @@ def send_dataset():
     tiles = session["detections"]
     meta = session["metadata"]
 
-    # print(" raw inclusions:", request.form.get("include"))
-    # print(" inclusions:", include)
-    # print(" last result:", json.dumps(tiles))
+   
 
     # filter to keep only "included" (i.e. selected and meeting threshold) detections
     keep_detections = set([])
@@ -1518,7 +1725,7 @@ if __name__ == "__main__":
     # read maps api key (not in source code due to security reasons)
     # has to be an api key with access to maps, staticmaps and places
     # todo: deploy CDC-owned key in final version
-    mapkeys = ts_secrets.devSecrets.getSecret("AZUREMAPKEYS")
+    mapkeys = ts_secrets.getSecret("AZUREMAPKEYS")
     
     azure_api_key = mapkeys.split(";")[0]
     bing_api_key = mapkeys.split(";")[1]

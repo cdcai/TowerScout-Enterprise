@@ -22,10 +22,7 @@ from azure.keyvault.secrets import SecretClient
 
 
 class AzureMap(Map):
-    # VAULT_URL = os.environ["https://towerscout-mapkeyvault.vault.azure.net/"]
-    # credential = DefaultAzureCredential()
-    # client = SecretClient(vault_url=VAULT_URL, credential=credential)
-
+    
     def __init__(self, api_key):
         self.key = api_key
         self.has_metadata = False
@@ -34,11 +31,7 @@ class AzureMap(Map):
     def get_mapkey():
         credential = DefaultAzureCredential()
 
-        # secret_client = SecretClient(vault_url="https://towerscout-mapkeyvault.vault.azure.net/", credential=credential)
-        # secretazuremapkey = secret_client.get_secret("TowerScout-Azuremapkey")
-
-        # print(secretazuremapkey.name)
-        # print(secretazuremapkey)
+      
 
     def get_url(
         self, tile, zoom=19, size="640,640", sc=2, fmt="jpeg", maptype="satellite"
@@ -51,25 +44,16 @@ class AzureMap(Map):
         url = "https://atlas.microsoft.com/map/static?subscription-key=" + self.key
         url += "&zoom=18"  # + str(zoom) - Need to subtract zoom level by 1 to get the same scale
         url += (
-            "&tilesetId=microsoft.imagery&api-version=2024-04-01&center="
+            "&tilesetId=microsoft.imagery&api-version=2024-04-01&scale=2&center="
             + str(tile["lng"])
             + ","
             + str(tile["lat_for_url"])
         )
-        url += "&height=640&Width=640&format=jpeg&labels=false&showCountryBoundary=false&traffic=false&pointOfInterest=false&showRoadLabels=false&traffic=false"
+        url += "&height=640&Width=640&format=jpeg&labels=false&showCountryBoundary=false&traffic=false&pointOfInterest=false&showRoadLabels=false"
         
 
         return url
-        #Original one
-        url = "https://atlas.microsoft.com/map/static?subscription-key=" + self.key
-        url += "&zoom=18&trafficLayer=microsoft.traffic.relative.main"  # + str(zoom) - Need to subtract zoom level by 1 to get the same scale
-        url += (
-            "&tilesetId=microsoft.imagery&api-version=2024-04-01&language=en-us&center="
-            + str(tile["lng"])
-            + ","
-            + str(tile["lat_for_url"])
-        )
-        url += "&height=640&Width=640&view=auto&layer=hybrid&format=jpeg&maptype=satellite&scale=2"
+       
     def get_meta_url(
         self, tile, zoom=19, size="640,640", sc=2, fmt="jpeg", maptype="satellite"
     ):

@@ -348,7 +348,7 @@ class BaseTrainer:
 
                 if step_number - last_optimizer_step >= self.accumulate:
                     self.optimizer_step()
-                    last_otpimizer_step = step_number
+                    last_optimizer_step = step_number
 
                 self.ema.update_attr(
                     self.model,

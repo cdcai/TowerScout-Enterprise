@@ -49,9 +49,11 @@ Licensed under CC-BY-NC-SA-4.0
   </div>
   <div class="grid-container">
 
-    <div class="fheader">
+    <div class="fheader" style="width: 100%;">
       TowerScout
-    </div>
+      <a class="hover" href="{{ url_for('about') }}" target="_blank">About TowerScout</a>
+     </div><br>
+     
 
     <div class="fsearch">
       <div id="mapsearchui" style="display:block;height:auto">
@@ -65,7 +67,7 @@ Licensed under CC-BY-NC-SA-4.0
           <button onclick="circleBoundary()" id="radiusbutton" style="vertical-align:10%;">Circle</button>
           <span
             style="display: inline-block; width:1px; height:80%; vertical-align:-8%; background:white; margin: 0 2px;">&nbsp;</span>
-          <button onclick="drawnBoundary()" id="drawnbutton" style="vertical-align:10%;">Custom shape</button>
+          <!-- <button onclick="drawnBoundary()" id="drawnbutton" style="vertical-align:10%;">Custom shape</button> -->
           <span
             style="display: inline-block; width:1px; height:80%; vertical-align:-8%; background:white; margin: 0 2px;">&nbsp;</span>
           <button onclick="clearBoundaries()" style="vertical-align:10%;">Clear</button>
@@ -78,22 +80,25 @@ Licensed under CC-BY-NC-SA-4.0
     </div>
 
     <div id="fversion" class="fversion" style="text-align: right;">
-      <a class="hover" href="{{ url_for('about') }}" target="_blank">About TowerScout</a>
-      <label id="lblazmaptransactions" style="width: 100%; display: block;">Azure map Transaction count</label>
+     <span style="display: block;width: 100%;"><label id="lblazmaptransactions" style="width: 100%; display: block;">Azure map Transaction count</label></span>
     </div>
+    
 
     <div class="fmodel" style="font-size:smaller; overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
-      User interface:<br><br>
+      Search Area: <br>
+     
+        <input type="radio" id="nonrural" value="nonrural" onclick="ToggleSearchArea('nonrural')" checked>
+        <label for="nonrural">Urban/Suburban</label><br>
+        <input type="radio" id="rural" onclick="ToggleSearchArea('rural')" value="rural">
+        <label for="rural">Rural</label>
+     
+      <br><br>
+      User interface:<br>
       <form id="uis" name="uis">
-        <!-- <input type="radio" id="google" name="uis" value="google" checked> -->
-        <!-- <label for="google">Google Maps</label><br> -->
         <input type="radio" id="azure" name="uis" value="azure" checked>
         <label for="azure">Azure Maps</label><br>
         <input type="radio" id="bing" name="uis" value="bing" >
         <label for="bing">Bing Maps</label><br>
-        <!-- <input type="radio" id="upload" name="uis" value="upload">
-        <label for="upload">Image upload</label>
-        <br> -->
       </form>
       <br>
       Backend map provider:<br>
@@ -101,20 +106,16 @@ Licensed under CC-BY-NC-SA-4.0
       <form id='providers' name='providers'>
       </form>
       <br>
-      Active model:<br>
-      <br>
-      <form id='engines' name='engines'>
-      </form>
+      <label style="float: left;">Cluster Status:</label>
+      <label id="lblClusterStatusValue" style="color: white;"></label><br><br>
+      <label>Cluster Status last updated:</label><br>
+      <label id="lblClusterStatusDtTime" style="display: none;"></label><br><br>
+      <button id="btnGetClusterStatus" class="btn" onclick='getClusterStatusjs()' style="display: none;">Refresh Cluster Status</button><br><br>
+      <label id="lblSearchStartTime" style="display: none;"></label><br><br>
+      <label id="lblSearchEndTime" style="display: none;"></label><br><br>
     </div>
-
-    <!-- <div class="fuploadmodel" id="fuploadmodel"
-      style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;font-size: smaller;">
-      <input type="file" id="upload_model" style="display:none" />
-      <button class="btn" onclick="document.getElementById('upload_model').click()"
-        style="width:100%; height:100%">Upload model</button>
-    </div> -->
-
-
+   
+   
     <!--The div element for the map -->
     <div class="fmap" style="overflow-y:hidden;white-space: nowrap; overflow-x: hidden;">
       <!-- <div id="googleMap" style="display:block"></div> -->
@@ -126,6 +127,8 @@ Licensed under CC-BY-NC-SA-4.0
     </div>
 
     <div class="fdetect" id="fdetect">
+      <button id="btnTest" style="display: none;" class="btn" onclick='drawBoundingBoxesTest()'>Find Test towers</button>
+      <button id="btnTestGold" style="display: none;" class="btn" onclick='drawBoundingBoxesGoldTable()'>Find Gold towers</button>
       <button id="estimate" class="btn" onclick='ProcessUserRequest(true)'>Estimate tiles</button>
       <button id="find" class="btn" onclick='ProcessUserRequest()'>Find towers</button>
     </div>
@@ -176,10 +179,9 @@ Licensed under CC-BY-NC-SA-4.0
       <button class="btn" onclick="download_csv(),download_kml()" style="width:50%; height:100%">Download
         results</button>
       <button class="btn" onclick="PromoteSilverToGold()" style="width:50%; height:100%">Promote to Gold</button>
-      <!-- <button class="btn" onclick="document.getElementById('upload_dataset').click()"
-        style="width:33%; height:100%" hidden>Restore
-        dataset</button> -->
-      <!-- <input type="file" id="upload_dataset" style="display:none" /> -->
+     <br>
+     <button id="btnPushAddresses" class="btn" onclick="PushAddressesToBenchmarkSilver()" style="width:20%;display: none;">Push Addresses to Benchmark Silver</button>
+    
     </div>
 
     <div class="ftext" style="font-size: smaller;">
@@ -189,6 +191,20 @@ Licensed under CC-BY-NC-SA-4.0
     </div>
   </div>
 
+<div id="mapContextMenu" style="
+    position: absolute;
+    display: none;
+    color: black;
+    background-color: white;
+    border: 1px solid #ccc;
+    padding: 5px 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    cursor: pointer;
+    z-index: 1000;
+">
+  <div id="coordText">Copy coordinates</div>
+  
+</div>
 
 
   <script src="/js/jquery-3.5.1.min.js"></script>

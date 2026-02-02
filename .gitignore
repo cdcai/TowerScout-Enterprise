@@ -12,6 +12,7 @@ webapp/temp/*
 webapp/uploads/*
 webapp/flask_session/*
 config.*
+webapp/config.*
 towerscout.pem
 workspace.code-workspace
 test/*
@@ -42,5 +43,5 @@ wheels/
 .coverage
 *.pt
 */datasets/*
-*.jpg
-*.png
+# *.png
+tsdb/examples
