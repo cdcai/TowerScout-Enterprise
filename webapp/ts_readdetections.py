@@ -1,43 +1,46 @@
 from databricks import sql
 from requests.exceptions import Timeout, RequestException
-import os, time, logging, requests, ts_secrets, json, asyncio
+import os, time, logging, requests, ts_secrets, json, asyncio, datetime
 from databricks.sql.exc import RequestError
 from numpy.random import choice
+from azure.core.exceptions import ClientAuthenticationError
 config_dir = os.path.join(os.getcwd().replace("webapp", ""), "webapp")
 
-DATABRICKS_INSTANCE = ""
-PERSONAL_ACCESS_TOKEN = ts_secrets.getSecret('DB-PERSONAL-ACCESS-TOKEN')
-WAREHOUSE_ID = ""
-SQL_STATEMENTS_ENDPOINT = ""
-CATALOG = ""
-SCHEMA = ""
-TABLE = ""
-GOLD_TABLE = ""
+class Config:
+    DATABRICKS_INSTANCE = ""
+    PERSONAL_ACCESS_TOKEN = ts_secrets.getSecret('DB-PERSONAL-ACCESS-TOKEN')
+    WAREHOUSE_ID = ""
+    SQL_STATEMENTS_ENDPOINT = ""
+    CATALOG = ""
+    SCHEMA = ""
+    TABLE = ""
+    GOLD_TABLE = ""
+    job_id = ""
 class SilverTable:
     
 
                     
     def __init__(self):
         self.batch_size = 100
+        
         if 'WEBSITE_SITE_NAME' in os.environ:
-            data = json.loads(os.getenv('dbinstance'))
+          data = json.loads(os.getenv('dbinstance'))
+          Config.job_id = os.getenv('Inference_JOBID')
         else:     
-            dbinstancefile = config_dir + "/config.dbinstance.json"
-            with open(dbinstancefile, "r") as file:
-                data = json.load(file)
-        global DATABRICKS_INSTANCE
-        global WAREHOUSE_ID
-        global SQL_STATEMENTS_ENDPOINT
-        global SCHEMA
-        global CATALOG
-        global TABLE
-
-        DATABRICKS_INSTANCE = data["DATABRICKS_INSTANCE"]
-        WAREHOUSE_ID = data["WAREHOUSE_ID"]
-        SCHEMA = data["SCHEMA"]
-        CATALOG = data["CATALOG"]
-        TABLE = data["TABLE"]
-        SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
+          dbinstancefile = config_dir + "/config.dbinstance.json"
+          jobIDFile = config_dir + "/config.dbjobid.json"
+          with open(dbinstancefile, "r") as file:
+              data = json.load(file)
+          with open(jobIDFile, "r") as file:
+              jobIDdata = json.load(file)
+              Config.job_id = jobIDdata["Inference_JOBID"]
+        
+        Config.DATABRICKS_INSTANCE = data["DATABRICKS_INSTANCE"]
+        Config.WAREHOUSE_ID = data["WAREHOUSE_ID"]
+        Config.SCHEMA = data["SCHEMA"]
+        Config.CATALOG = data["CATALOG"]
+        Config.TABLE = data["TABLE"]
+        Config.SQL_STATEMENTS_ENDPOINT = f'https://{Config.DATABRICKS_INSTANCE}/api/2.0/sql/statements'
 
       # @retry(wait=wait_exponential(min=2, max=10), stop=stop_after_attempt(3))
     def fetchbboxes(self, request_id, user_id, tile_count):
@@ -57,16 +60,16 @@ class SilverTable:
                     # Set the payload for the request (include the query)
                     data = {
                         'statement': sql_query,
-                        'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+                        'warehouse_id': Config.WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
                     }
                     # Set the headers with the personal access token for authentication
                     headers = {
-                        'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+                        'Authorization': f'Bearer {Config.PERSONAL_ACCESS_TOKEN}',
                         'Content-Type': 'application/json',
                     }
             
 
-                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
                     result_data = response.json()
                     print("Query result:", result_data)
                     result_data = result_data['result']['data_array']
@@ -159,23 +162,23 @@ class SilverTable:
                     "concat(uuid,'.jpeg') AS filename, "
                     "image_path AS url, "
                     "uuid, image_hash "
-                    "FROM " + CATALOG + "." + SCHEMA + "." + TABLE + " where user_id = '" + user_id + "' AND request_id = '" + request_id + "' "
+                    "FROM " + Config.CATALOG + "." + Config.SCHEMA + "." + Config.TABLE + " where user_id = '" + user_id + "' AND request_id = '" + request_id + "' "
                     "ORDER BY image_id")
                     print(f"sql_query: {sql_query}")
                     
                      # Set the payload for the request (include the query)
                     data = {
                         'statement': sql_query,
-                        'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+                        'warehouse_id': Config.WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
                         'output_format': 'json'
                     }
                     # Set the headers with the personal access token for authentication
                     headers = {
-                        'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+                        'Authorization': f'Bearer {Config.PERSONAL_ACCESS_TOKEN}',
                         'Content-Type': 'application/json',
                     }
-            
-                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    print("Warehouse_ID:", Config.WAREHOUSE_ID)
+                    response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
                     result_data = response.json()
                     print("Query result:", result_data)
                     result_data = result_data['result']['data_array']
@@ -254,27 +257,27 @@ class SilverTable:
         self, request_id, user_id, tile_count, max_retries, delay=10
     ):
         
-        
         try:
         
             retries = 0
             
             sql_query  = (f"SELECT count(bboxes) "
-                          "FROM " + CATALOG + "." + SCHEMA + "." + TABLE + "  WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                          "FROM " + Config.CATALOG + "." + Config.SCHEMA + "." + Config.TABLE + "  WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
             # Set the payload for the request (include the query)
             data = {
             'statement': sql_query,
-            'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
-        }
+            'warehouse_id': Config.WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+}
             # Set the headers with the personal access token for authentication
             headers = {
-            'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+            'Authorization': f'Bearer {Config.PERSONAL_ACCESS_TOKEN}',
             'Content-Type': 'application/json',
         }
             while retries < max_retries:
                 try:
-                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
-                    
+                    response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    print(f"SELECT count(bboxes) from " + Config.CATALOG + "." + Config.SCHEMA + "." + Config.TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                    print(response.status_code)
                     if response.status_code == 200:
                         result_data = response.json()
                         resultcount = result_data['result']['data_array'][0][0]
@@ -331,6 +334,15 @@ class SilverTable:
                     if retries >= max_retries:
                         max_retries+=1
                     time.sleep(delay)  # Wait before retrying
+                except ClientAuthenticationError as e:
+                    logging.error("ClientAuthenticationError at %s", "getazmaptransactions towerscout.py", exc_info=e)
+                    # Optional: check for expired-secret specifically
+                    if "AADSTS7000222" in str(e):
+                        raise RuntimeError(
+                            "Azure App Service AD client secret has expired. Rotate the secret and update Key Vault."
+                        ) from e
+                    else:
+                        raise
                 finally:
                     print("Finally. Retrying sub process...")
                         
@@ -371,32 +383,55 @@ class SilverTable:
             print("Finally. Retrying...")
     
     def poll_SilverTableJobDoneWithLogs(
-        self, request_id, user_id, tile_count, max_retries, delay=20
+        self, request_id, user_id, tile_count, max_retries, delay=20, trigger_time_ms=None, session_key=None, exit_events = None
         ):
-        print("calling poll_SilverTableJobDoneWithLogs")
         
         try:
-        
+            if trigger_time_ms is None:
+                trigger_time_ms = int(time.time() * 1000)
+            # run_id = discover_run_id(Config.job_id, request_id,trigger_time_ms)
+            start_time = trigger_time_ms
             retries = 0
-            global totalTilesProcessed
+            
             totalTilesProcessed = 0
-            sql_query  = "SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
-        # Set the payload for the request (include the query)
+            sql_query  = "SELECT count(bboxes) from " + Config.CATALOG + "." + Config.SCHEMA + "."  + Config.TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
+            # Set the payload for the request (include the query)
             data = {
             'statement': sql_query,
-            'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+            'warehouse_id': Config.WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
         }
-        # Set the headers with the personal access token for authentication
+            # Set the headers with the personal access token for authentication
             headers = {
-            'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+            'Authorization': f'Bearer {Config.PERSONAL_ACCESS_TOKEN}',
             'Content-Type': 'application/json',
         }
-            while retries < max_retries:
+            while True:
+                # Check for client abort
+                # if session_key and exit_events.query(session_key):
+                if session_key and exit_events.query(session_key):
+                    logging.info(f"Client aborted polling for session {session_key}")
+                    exit_events.free(session_key)
+                    yield f"event: error\ndata: Client aborted request\n\n"
+                    return
+
+                # Check absolute timeout (10 minutes)
+                elapsed_ms = int(time.time() * 1000) - start_time
+                if elapsed_ms > 10 * 60 * 1000:  # 10 minutes
+                    yield f"event: error\ndata: Polling timed out after 10 minutes\n\n"
+                    exit_events.free(session_key)
+                    return
+
+                # Build SQL query to count processed tiles
+                # job_failed, jobrun_details = get_jobstatus(run_id)
+                # if job_failed is True:
+                #     yield f"event: error\ndata: Databricks job failed: {json.dumps(jobrun_details)}\n\n"
+                #     return
                 try:
                     
-                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
-                    print(f"SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                    response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    print(f"SELECT count(bboxes) from " + Config.CATALOG + "." + Config.SCHEMA + "."  + Config.TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
                     print(response.status_code)
+                    response.raise_for_status()
                     if response.status_code == 200:
                         result_data = response.json()
                         newTilesProcessCount = result_data['result']['data_array'][0][0]
@@ -407,6 +442,7 @@ class SilverTable:
                             final_result = {"status": "Completed", "message": f"Task completed successfully. {newTilesProcessCount} Tiles out of {str(tile_count)} have been processed."}
                             # yield f"data: {jsonify(final_result).data.decode('utf-8')}\n\n"
                             yield f"event: done\ndata: Task completed successfully. All {str(tile_count)} tiles have been processed.\n\n"
+                            exit_events.free(session_key)
                             return True
                         else:
                             retries += 1
@@ -422,29 +458,48 @@ class SilverTable:
                                 totalTilesProcessed = int(newTilesProcessCount)
                             # raise Timeout("Forcing timeout error")
                             time.sleep(delay)
+                    elif response.status_code == 400:
+                        try:
+                            error_data = response.json()
+                            logging.error("400 error: %s", "ts_readdetections.py(poll_SilverTableJobDone)")
+                            # Common patterns
+                            field = error_data.get("field")     
+                            message = error_data.get("message")
+                            errors = error_data.get("errors")
+
+                            print("Invalid field:", field or errors or message)
+                        except ValueError as e:
+                            logging.error("400 error with non-JSON body: %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
+                            raise    
+
+                        
                     else:
                         retries += 1
                         logging.info(f"Number of retries: {retries}")
                         if retries == max_retries:
                             max_retries +=1
+                                                      
                         time.sleep(delay)
-                   
-                    
+                except KeyError as e:
+                    missing_key = e.args[0]
+                    logging.error(f"Error at %s Missing key: {missing_key}", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
+                    print(f"Missing key: {missing_key}")
+                    logging.error(f"Missing key in API response: {missing_key}", exc_info=e)
+                    yield f"event: error\ndata: Missing key in response: {missing_key}\n\n"
+                    exit_events.free(session_key)
+                    raise     
+                except RuntimeError as e:
+                    logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
+                    exit_events.free(session_key)
+                    raise   
                 except RequestError as e:
                     print("RequestError silvertablejobdone. Retrying...")
-                   
+
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
                     time.sleep(delay)  # Wait before retrying
                 
-                except Exception as e:
-                    print(f"Exception silvertablejobdone. Retrying...{e}")
-                    
-                    retries += 1
-                    if retries >= max_retries:
-                        max_retries+=1
-                    time.sleep(delay)  # Wait before retrying
                 except (Timeout,ConnectionError) as e:
                     print("Timeout,ConnectionError occurred. Retrying...")
                     
@@ -456,13 +511,24 @@ class SilverTable:
                     logging.info(f"result count:{newTilesProcessCount}")
                     logging.error("SyntaxError at %s","ts_readdetections.py(poll_SilverTableJobDone)",
                     exc_info=e)
-                    time.sleep(delay)
+                    exit_events.free(session_key)
+                    raise
+                    # time.sleep(delay)
+                    
                 except RequestException as e:
                     print("RequestException silvertablejobdone. Retrying...")
                     retries += 1
                     if retries >= max_retries:
                         max_retries+=1
                     time.sleep(delay)  # Wait before retrying
+                except Exception as e:
+                    print(f"Exception silvertablejobdone. Retrying...{e}")
+                    
+                    retries += 1
+                    if retries >= max_retries:
+                        max_retries+=1
+                    time.sleep(delay)  # Wait before retrying
+                
                 finally:
                     print("Finally. Retrying sub process...")
                         
@@ -472,21 +538,28 @@ class SilverTable:
                 "ts_readdetections.py(poll_SilverTableJobDone)",
                 exc_info=e
             )
-            
+            raise
         except sql.DatabaseError as e:
             logging.error(
                 "Database Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
                 exc_info=e
             )
-            
+            raise
         except sql.OperationalError as e:
             logging.error(
                 "Operational Error at %s",
                 "ts_readdetections.py(poll_SilverTableJobDone)",
                 exc_info=e
             )
-            
+            raise
+        
+        except RuntimeError as e:
+            logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
+            raise
+        except SyntaxError as e:
+            logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
+            raise
         except Exception as e:
            
             logging.error(
@@ -494,16 +567,12 @@ class SilverTable:
                 "ts_readdetections.py(poll_SilverTableJobDone)",
                 exc_info=e
             )
-           
-        except RuntimeError as e:
-            logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
-        except SyntaxError as e:
-            logging.error("Error at %s", "ts_readdetections.py(poll_SilverTableJobDone)", exc_info=e)
+            raise
         finally:
             print("Finally. Retrying...")
-                    
-      
-
+            if session_key:
+                exit_events.free(session_key)
+     
     def get_bboxesfortiles(self, tiles, events, id, request_id, user_id):
         try:
             tile_count = len(tiles)
@@ -691,18 +760,18 @@ class SilverTable:
         try:
            
             headers = {
-                "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}",
+                "Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}",
                 "Content-Type": "application/json"
             }
     
             body = {
-                "warehouse_id": WAREHOUSE_ID,
+                "warehouse_id": Config.WAREHOUSE_ID,
                 "statement": sql_query,
                 "catalog": catalog,
                 "schema": schema
             }
     
-            response = requests.post(SQL_STATEMENTS_ENDPOINT, json=body, headers=headers)
+            response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=body, headers=headers)
             statement_id = ""
             logging.info(f"executed merge query: {response.json()}")
             if response.status_code == 200:
@@ -851,9 +920,9 @@ class SilverTable:
 
 
     def check_query_status(self, statement_id):
-        url = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements/{statement_id}'
+        url = f'https://{Config.DATABRICKS_INSTANCE}/api/2.0/sql/statements/{statement_id}'
         headers = {
-            "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}"
+            "Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"
         }
      
         try:
@@ -937,27 +1006,24 @@ class GoldTable:
     def __init__(self):
         self.batch_size = 100
         if 'WEBSITE_SITE_NAME' in os.environ:
-            data = json.loads(os.getenv('dbinstance'))
+          data = json.loads(os.getenv('dbinstance'))
+          Config.job_id = os.getenv('Inference_JOBID')
         else:     
-            dbinstancefile = config_dir + "/config.dbinstance.json"
-            with open(dbinstancefile, "r") as file:
-                data = json.load(file)
-        global DATABRICKS_INSTANCE
-        global WAREHOUSE_ID
-        global SQL_STATEMENTS_ENDPOINT
-        global SCHEMA
-        global CATALOG
-        global TABLE
-        global GOLD_TABLE
-
-
-        DATABRICKS_INSTANCE = data["DATABRICKS_INSTANCE"]
-        WAREHOUSE_ID = data["WAREHOUSE_ID"]
-        SCHEMA = data["SCHEMA"]
-        CATALOG = data["CATALOG"]
-        TABLE = data["TABLE"]
-        GOLD_TABLE = data["GOLD_TABLE"]
-        SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
+          dbinstancefile = config_dir + "/config.dbinstance.json"
+          jobIDFile = config_dir + "/config.dbjobid.json"
+          with open(dbinstancefile, "r") as file:
+              data = json.load(file)
+          with open(jobIDFile, "r") as file:
+              jobIDdata = json.load(jobIDFile)
+              Config.job_id = jobIDdata('Inference_JOBID')
+       
+        Config.DATABRICKS_INSTANCE = data["DATABRICKS_INSTANCE"]
+        Config.WAREHOUSE_ID = data["WAREHOUSE_ID"]
+        Config.SCHEMA = data["SCHEMA"]
+        Config.CATALOG = data["CATALOG"]
+        Config.TABLE = data["TABLE"]
+        Config.GOLD_TABLE = data["GOLD_TABLE"]
+        Config.SQL_STATEMENTS_ENDPOINT = f'https://{Config.DATABRICKS_INSTANCE}/api/2.0/sql/statements'
 
       # @retry(wait=wait_exponential(min=2, max=10), stop=stop_after_attempt(3))
     def fetchbboxes(self, request_id, user_id, tile_count):
@@ -977,16 +1043,16 @@ class GoldTable:
                     # Set the payload for the request (include the query)
                     data = {
                         'statement': sql_query,
-                        'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+                        'warehouse_id': Config.WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
                     }
                     # Set the headers with the personal access token for authentication
                     headers = {
-                        'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+                        'Authorization': f'Bearer {Config.PERSONAL_ACCESS_TOKEN}',
                         'Content-Type': 'application/json',
                     }
             
 
-                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
                     result_data = response.json()
                     print("Query result:", result_data)
                     result_data = result_data['result']['data_array']
@@ -1079,23 +1145,22 @@ class GoldTable:
                     "concat(uuid,'.jpeg') AS filename, "
                     "image_path AS url, "
                     "uuid, image_hash "
-                    "FROM " + CATALOG + "." + SCHEMA + "." + GOLD_TABLE + " where user_id = '" + user_id + "' AND request_id = '" + request_id + "' "
-                    "ORDER BY image_id")
+                    "FROM " + Config.CATALOG + "." + Config.SCHEMA + "." + Config.GOLD_TABLE + " where user_id = '" + user_id + "' AND request_id = '" + request_id + "' ")
                     print(f"sql_query: {sql_query}")
                     
                      # Set the payload for the request (include the query)
                     data = {
                         'statement': sql_query,
-                        'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+                        'warehouse_id': Config.WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
                         'output_format': 'json'
                     }
                     # Set the headers with the personal access token for authentication
                     headers = {
-                        'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+                        'Authorization': f'Bearer {Config.PERSONAL_ACCESS_TOKEN}',
                         'Content-Type': 'application/json',
                     }
             
-                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
                     result_data = response.json()
                     print("Query result:", result_data)
                     result_data = result_data['result']['data_array']
@@ -1180,15 +1245,15 @@ class GoldTable:
             retries = 0
             
             sql_query  = (f"SELECT count(bboxes) "
-                          "FROM " + CATALOG + "." + SCHEMA + "." + TABLE + "  WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                          "FROM " + Config.CATALOG + "." + Config.SCHEMA + "." + Config.TABLE + "  WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
 # Set the payload for the request (include the query)
             data = {
             'statement': sql_query,
-            'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+            'warehouse_id': Config.WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
 }
         # Set the headers with the personal access token for authentication
             headers = {
-            'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+            'Authorization': f'Bearer {Config.PERSONAL_ACCESS_TOKEN}',
             'Content-Type': 'application/json',
         }
             while retries < max_retries:
@@ -1197,8 +1262,8 @@ class GoldTable:
                     #      time.sleep(60)
                         #  continue
                     # if not connection.open:
-                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
-                    print(f"SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "." + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                    response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    print(f"SELECT count(bboxes) from " + Config.CATALOG + "." + Config.SCHEMA + "." + Config.TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
                     print(response.status_code)
                     if response.status_code == 200:
                         result_data = response.json()
@@ -1303,17 +1368,16 @@ class GoldTable:
         try:
         
             retries = 0
-            global totalTilesProcessed
             totalTilesProcessed = 0
-            sql_query  = "SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
+            sql_query  = "SELECT count(bboxes) from " + Config.CATALOG + "." + Config.SCHEMA + "."  + Config.TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'"
 # Set the payload for the request (include the query)
             data = {
             'statement': sql_query,
-            'warehouse_id': WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
+            'warehouse_id': Config.WAREHOUSE_ID,  # Replace with your actual SQL warehouse ID
         }
         # Set the headers with the personal access token for authentication
             headers = {
-            'Authorization': f'Bearer {PERSONAL_ACCESS_TOKEN}',
+            'Authorization': f'Bearer {Config.PERSONAL_ACCESS_TOKEN}',
             'Content-Type': 'application/json',
         }
             while retries < max_retries:
@@ -1322,8 +1386,8 @@ class GoldTable:
                     #      time.sleep(60)
                         #  continue
                     # if not connection.open:
-                    response = requests.post(SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
-                    print(f"SELECT count(bboxes) from " + CATALOG + "." + SCHEMA + "."  + TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
+                    response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=data, headers=headers)
+                    print(f"SELECT count(bboxes) from " + Config.CATALOG + "." + Config.SCHEMA + "."  + Config.TABLE + " WHERE user_id = '" + user_id + "' AND request_id = '" + request_id + "'")
                     print(response.status_code)
                     if response.status_code == 200:
                         result_data = response.json()
@@ -1619,18 +1683,18 @@ class GoldTable:
         try:
            
             headers = {
-                "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}",
+                "Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}",
                 "Content-Type": "application/json"
             }
     
             body = {
-                "warehouse_id": WAREHOUSE_ID,
+                "warehouse_id": Config.WAREHOUSE_ID,
                 "statement": sql_query,
                 "catalog": catalog,
                 "schema": schema
             }
     
-            response = requests.post(SQL_STATEMENTS_ENDPOINT, json=body, headers=headers)
+            response = requests.post(Config.SQL_STATEMENTS_ENDPOINT, json=body, headers=headers)
             statement_id = ""
             logging.info(f"executed merge query: {response.json()}")
             if response.status_code == 200:
@@ -1779,9 +1843,9 @@ class GoldTable:
 
 
     def check_query_status(self, statement_id):
-        url = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements/{statement_id}'
+        url = f'https://{Config.DATABRICKS_INSTANCE}/api/2.0/sql/statements/{statement_id}'
         headers = {
-            "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}"
+            "Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"
         }
      
         try:
@@ -1867,23 +1931,18 @@ def get_clusterstatusfromjob(job_id):
         dbinstancefile = config_dir + "/config.dbinstance.json"
         with open(dbinstancefile, "r") as file:
             data = json.load(file)
-    global DATABRICKS_INSTANCE
-    global WAREHOUSE_ID
-    global SQL_STATEMENTS_ENDPOINT
-    global SCHEMA
-    global CATALOG
-    global TABLE
+    
 
-    DATABRICKS_INSTANCE = data["DATABRICKS_INSTANCE"]
-    WAREHOUSE_ID = data["WAREHOUSE_ID"]
-    SCHEMA = data["SCHEMA"]
-    CATALOG = data["CATALOG"]
-    TABLE = data["TABLE"]
-    print("Table" + TABLE)
-    SQL_STATEMENTS_ENDPOINT = f'https://{DATABRICKS_INSTANCE}/api/2.0/sql/statements'
+    Config.DATABRICKS_INSTANCE = data["DATABRICKS_INSTANCE"]
+    Config.WAREHOUSE_ID = data["WAREHOUSE_ID"]
+    Config.SCHEMA = data["SCHEMA"]
+    Config.CATALOG = data["CATALOG"]
+    Config.TABLE = data["TABLE"]
+    print("Table" + Config.TABLE)
+    Config.SQL_STATEMENTS_ENDPOINT = f'https://{Config.DATABRICKS_INSTANCE}/api/2.0/sql/statements'
     # Set up the headers for authentication
     headers = {
-            "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}"
+            "Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"
         }
 
     # Define the parameters for the API call
@@ -1894,50 +1953,424 @@ def get_clusterstatusfromjob(job_id):
         'active_only': 'true'
     }
    
-    url = f'https://{DATABRICKS_INSTANCE}/api/2.2/jobs/runs/list'
+    url = f'https://{Config.DATABRICKS_INSTANCE}/api/2.2/jobs/runs/list'
     # Make the request to the Databricks API
     response = requests.get(url, headers=headers, params=params)
-
-    # Check if the request was successful
-    if response.status_code == 200:
-        # Successfully retrieved job run details
+    try:
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(
+            f"Databricks Cluster Status check API call failed. URL: {url}, Response: {response.text}"
+        ) from e
+     # ---------- Parse JSON ----------
+    try:
         job_run_info = response.json()
-        if (len(job_run_info)>0):
-            if(('existing_cluster' in job_run_info['runs'][0]['tasks'][0])):
-                clusterID = job_run_info['runs'][0]['tasks'][0]['existing_cluster_id']
-            elif(('cluster_instance' in job_run_info['runs'][0]['tasks'][0])):
-                clusterID = job_run_info['runs'][0]['tasks'][0]['cluster_instance']['cluster_id']
-            if(clusterID == 'undefined'):
-                return "TERMINATED"
-            else:
-                return get_cluster_status_from_databricks(clusterID)
+    except ValueError as e:
+        raise RuntimeError("Invalid JSON response from towerscout.py get_clusterstatusfromjob") from e
+    # ---------- Validate response ----------
+    runs = job_run_info.get("runs", [])
+    if not runs:
+        # No active runs → valid state
+        return "TERMINATED"
+
+    try:
+        task = runs[0]["tasks"][0]
+
+        if "existing_cluster_id" in task:
+            cluster_id = task["existing_cluster_id"]
+        elif "cluster_instance" in task:
+            cluster_id = task["cluster_instance"]["cluster_id"]
         else:
+            # raise KeyError("Cluster ID not found in task")
             return "TERMINATED"
-            
-    else:
-        # If the request fails, return an error message
-        return {"error": f"Failed to retrieve job run status, url:{url}, Token: xxxxxxx", "message": response.json()}
+
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(
+            f"Unexpected Databricks response structure from towerscout.py get_clusterstatusfromjob: {job_run_info}"
+        ) from e
+
+    # ---------- Business logic ----------
+    if not cluster_id or cluster_id == "undefined":
+        return "TERMINATED"
+
+    return get_cluster_status_from_databricks(cluster_id)
+# The job is running
+def get_jobstatus(run_id):
+    # trigger_time_ms = int(time.time() * 1000)
+    # run_id = discover_run_id(job_id, request_id,trigger_time_ms)
+    job_failed, jobrun_details = is_databricks_job_failed(run_id)
+    return job_failed, jobrun_details
+
 
 # Function to get the cluster status
 def get_cluster_status_from_databricks(cluster_id):
     # Databricks API authentication headers
     headers = {
-            "Authorization": f"Bearer {PERSONAL_ACCESS_TOKEN}"
+            "Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"
         }
     
     # Define the parameters to be passed to the API
     params = {'cluster_id': cluster_id}
 
-    url = f'https://{DATABRICKS_INSTANCE}/api/2.1/clusters/get'
-    # Make the request to the Databricks API
-    response = requests.get(url, headers=headers, params=params)
+    url = f'https://{Config.DATABRICKS_INSTANCE}/api/2.1/clusters/get'
+    try:
+        # Make the request to the Databricks API
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()  # Raises for 4xx / 5xx
 
-    # Check the response status code
-    if response.status_code == 200:
-        # Successfully fetched cluster details
-        cluster_info = response.json()
-        print(cluster_info["state"])
+        # # Check the response status code
+        # if response.status_code == 200:
+            # Successfully fetched cluster details
+        cluster_info = response.json()  # May raise ValueError()
+        if "state" not in cluster_info:
+            raise KeyError("Missing 'state' in Databricks response")
+
         return cluster_info["state"]
-    else:
-        # Return error message if the API request fails
-        return {"error": "Failed to retrieve cluster status", "message": response.json()}
+        
+    except requests.exceptions.RequestException as e:
+        # Network errors, timeouts, HTTP errors
+        raise RuntimeError(
+            f"Failed to retrieve cluster status. Databricks cluster status request failed. "
+            f"Cluster ID: {cluster_id}, URL: {url}, {response.json()}"
+        ) from e
+
+    except ValueError as e:
+        # JSON decoding error
+        raise RuntimeError(
+            f"Failed to retrieve cluster status. Invalid JSON response from Databricks. Cluster ID: {cluster_id}, {response.json()}"
+        ) from e
+
+    except KeyError as e:
+        # Unexpected response shape
+        raise RuntimeError(
+            f"Failed to retrieve cluster status. Unexpected Databricks response format: {e}, {response.json()}"
+        ) from e
+def get_today_utc_range_ms():
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + datetime.timedelta(days=1)
+
+    return (
+        int(today_start.timestamp() * 1000),
+        int(tomorrow_start.timestamp() * 1000)
+    )
+
+def discover_run_idOld(job_id, request_id, trigger_time_ms, max_retries=5, delay=5):
+    """
+    Discover the Databricks run_id corresponding to a user request.
+
+    Args:
+        job_id (int): Databricks job ID
+        request_id (str): Unique ID for this user request
+        trigger_time_ms (int): Epoch time in ms when the request was triggered
+        max_retries (int): Number of retries if run_id not found
+        delay (int): Delay between retries in seconds
+
+    Returns:
+        run_id (int) if found, None otherwise
+    """
+    url = f"https://{Config.DATABRICKS_INSTANCE}/api/2.2/jobs/runs/list"
+    headers = {"Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"}
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params={"job_id": job_id, "active_only": "false", "limit": 10},
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                logging.warning(f"Attempt {attempt}: Failed to list runs, status code {response.status_code}")
+                time.sleep(delay)
+                continue
+
+            runs = response.json().get("runs", [])
+            if not runs:
+                logging.info(f"Attempt {attempt}: No runs found yet for job_id {job_id}")
+                time.sleep(delay)
+                continue
+
+            for run in runs:
+                # # Attempt to match by request_id first - this is not working
+                # notebook_params = run.get("notebook_params", {})
+                # if notebook_params.get("request_id") == request_id:
+                #     return run["run_id"]
+
+                # Fallback: match by start time
+                start_time = run.get("start_time", 0)
+                end_time_ms = run.get("end_time")
+                start_time_ms = run.get("start_time")
+                start_time = datetime.datetime.fromtimestamp(start_time_ms / 1000)
+                is_today = start_time.date() == datetime.date.today()
+                state = run.get("state", {})
+                life_cycle = state.get("life_cycle_state")
+                result_state = state.get("result_state")
+                if life_cycle != "TERMINATED" and not end_time_ms and is_today:
+                    return run["run_id"], False
+                if life_cycle == "TERMINATED" and result_state == "FAILED" and is_today and (start_time>=trigger_time_ms):
+                    return run["run_id"], True
+            # Not found in this attempt
+            logging.info(f"Attempt {attempt}: No matching run_id found yet.")
+            time.sleep(delay)
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Attempt {attempt}: RequestException while listing runs: {e}")
+            time.sleep(delay)
+        except ValueError as e:
+            logging.error(f"Attempt {attempt}: JSON decode error: {e}")
+            time.sleep(delay)
+        except KeyError as e:
+            logging.error(f"Attempt {attempt}: Missing expected field: {e}")
+            time.sleep(delay)
+        except Exception as e:
+            logging.error(f"Attempt {attempt}: Unexpected error: {e}")
+            time.sleep(delay)
+
+    logging.error(f"Failed to discover run_id for request_id {request_id} after {max_retries} attempts")
+    return None
+def discover_run_idwithstarttime(job_id, trigger_time_ms, max_retries=5, delay=5):
+    """
+    Returns (run_id, is_failed) or None
+    Ensures the run started today (UTC).
+    """
+
+    url = f"https://{Config.DATABRICKS_INSTANCE}/api/2.2/jobs/runs/list"
+    headers = {"Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"}
+
+    today_start_ms, tomorrow_start_ms = get_today_utc_range_ms()
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params={
+                    "job_id": job_id,
+                    "active_only": "false",
+                    "limit": 20
+                },
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                logging.warning(
+                    f"Attempt {attempt}: Failed to list runs "
+                    f"(status {response.status_code})"
+                )
+                time.sleep(delay)
+                continue
+
+            runs = response.json().get("runs", [])
+
+            for run in runs:
+                start_time_ms = run.get("start_time")
+                if not start_time_ms:
+                    continue
+
+                # ✅ Ensure run started today
+                if not (today_start_ms <= start_time_ms < tomorrow_start_ms):
+                    continue
+
+                # Optional: also ensure it started after the trigger
+                if start_time_ms < trigger_time_ms:
+                    continue
+
+                state = run.get("state", {})
+                life_cycle = state.get("life_cycle_state")
+                result_state = state.get("result_state")
+
+                # 🟡 Still running
+                if life_cycle in ("PENDING", "RUNNING", "TERMINATING"):
+                    return run["run_id"], False
+
+                # 🔴 Finished & failed
+                if life_cycle == "TERMINATED" and result_state == "FAILED":
+                    return run["run_id"], True
+
+            logging.info(f"Attempt {attempt}: No matching run found yet")
+            time.sleep(delay)
+
+        except Exception as e:
+            logging.error(f"Attempt {attempt}: Error while discovering run: {e}")
+            time.sleep(delay)
+
+    logging.error(f"No run started today found for job {job_id}")
+    return None
+def discover_run_id(job_id, trigger_time_ms, max_retries=5, delay=5):
+    """
+    Returns (run_id, is_failed) or None
+    Ensures the run started today (UTC).
+    """
+
+    url = f"https://{Config.DATABRICKS_INSTANCE}/api/2.2/jobs/runs/list"
+    headers = {"Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"}
+
+    today_start_ms, tomorrow_start_ms = get_today_utc_range_ms()
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params={
+                    "job_id": job_id,
+                    "active_only": "false",
+                    "limit": 20
+                },
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                logging.warning(
+                    f"Attempt {attempt}: Failed to list runs "
+                    f"(status {response.status_code})"
+                )
+                time.sleep(delay)
+                continue
+
+            runs = response.json().get("runs", [])
+
+            for run in runs:
+                start_time_ms = run.get("start_time")
+                if not start_time_ms:
+                    continue
+
+                # ✅ Ensure run started today
+                if not (today_start_ms <= start_time_ms < tomorrow_start_ms):
+                    continue
+
+                # Optional: also ensure it started after the trigger
+                if start_time_ms < trigger_time_ms:
+                    continue
+
+                state = run.get("state", {})
+                life_cycle = state.get("life_cycle_state")
+                result_state = state.get("result_state")
+
+                # 🟡 Still running
+                if life_cycle in ("PENDING", "RUNNING", "TERMINATING"):
+                    return run["run_id"], False
+
+                # 🔴 Finished & failed
+                if life_cycle == "TERMINATED" and result_state == "FAILED":
+                    return run["run_id"], True
+
+            logging.info(f"Attempt {attempt}: No matching run found yet")
+            time.sleep(delay)
+
+        except Exception as e:
+            logging.error(f"Attempt {attempt}: Error while discovering run: {e}")
+            time.sleep(delay)
+
+    logging.error(f"No run started today found for job {job_id}")
+    return None
+
+
+def is_databricks_job_failed(run_id):
+    # url = f"{Config.DATABRICKS_INSTANCE}/api/2.1/jobs/runs/get"
+    # headers = {
+    #     "Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"
+    # }
+    # params = {
+    #     "run_id": run_id
+    # }
+
+    # response = requests.get(url, headers=headers, params=params)
+    try:
+        response = requests.post(
+        f"https://{Config.DATABRICKS_INSTANCE}/api/2.1/jobs/runs/get",
+        headers={
+            "Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        },
+        json={"run_id": int(run_id)},
+        timeout=10
+    )
+        response.raise_for_status()
+        run_info = response.json()
+
+        state = run_info.get("state", {})
+        life_cycle = state.get("life_cycle_state")
+        result_state = state.get("result_state")
+    
+
+        if life_cycle == "TERMINATED" and result_state == "FAILED":
+            run_details = {
+            "life_cycle_state": state.get("life_cycle_state"),
+            "result_state": state.get("result_state"),
+            "state_message": state.get("state_message"),
+            "start_time": run_info.get("start_time"),
+            "end_time": run_info.get("end_time"),
+            "setup_duration_ms": run_info.get("setup_duration"),
+            "execution_duration_ms": run_info.get("execution_duration"),
+            "run_duration_ms": run_info.get("run_duration")
+            }
+            return True, run_details
+
+        if life_cycle == "TERMINATED" and result_state == "SUCCESS":
+            return False, None
+
+        return None, None  # still running
+    except Exception as e:
+        logging.error(
+            "Error at %s", "is_databricks_job_failed", exc_info=e
+        )
+        raise
+    except RuntimeError as e:
+        logging.error("Error at %s", "is_databricks_job_failed", exc_info=e)
+        raise
+    except SyntaxError as e:
+        logging.error("Error at %s", "is_databricks_job_failed", exc_info=e)
+        raise
+    except requests.exceptions.RequestException as e:
+        logging.error("Databricks Job status API call failed", exc_info=e)
+        raise
+def get_job_run_details(run_id):
+    response = requests.get(
+        f"https://{Config.DATABRICKS_INSTANCE}/api/2.1/jobs/runs/get",
+        headers={"Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"},
+        params={"run_id": run_id},
+        timeout=10
+    )
+    response.raise_for_status()
+
+    run = response.json()
+    state = run.get("state", {})
+
+    details = {
+        "life_cycle_state": state.get("life_cycle_state"),
+        "result_state": state.get("result_state"),
+        "state_message": state.get("state_message"),
+        "start_time": run.get("start_time"),
+        "end_time": run.get("end_time"),
+        "setup_duration_ms": run.get("setup_duration"),
+        "execution_duration_ms": run.get("execution_duration"),
+        "run_duration_ms": run.get("run_duration")
+    }
+
+    return details
+
+def get_job_run_error_output(run_id):
+    response = requests.get(
+        f"https://{Config.DATABRICKS_INSTANCE}/api/2.1/jobs/runs/get-output",
+        headers={"Authorization": f"Bearer {Config.PERSONAL_ACCESS_TOKEN}"},
+        params={"run_id": run_id},
+        timeout=10
+    )
+
+    if response.status_code != 200:
+        return None
+
+    output = response.json()
+
+    # Notebook task
+    if "error" in output:
+        return output["error"]
+
+    # Spark / JAR / Python task
+    if "metadata" in output and "error" in output["metadata"]:
+        return output["metadata"]["error"]
+
+    return None

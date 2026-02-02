@@ -30,5 +30,14 @@ Notebooks are the orchestration tools we used for the PySpark backend. The appli
 ## Future Adaptations
 We run this using YOLOv5, but if you opt to run this on Databricks, using YOLOv10 along with a ML Endpoint will yield better performance.
 
-Licensed under <a target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC-BY-NC-SA-4.0</a>
-(see <a target="_blank" href="https://github.com/TowerScout/TowerScout/blob/main/LICENSE.TXT">LICENSE.TXT</a> in the root of the repository for details)
+## Licensing
+
+The source code in this repository is licensed under the Apache License,
+Version 2.0. See the LICENSE file for details.
+
+This project integrates with proprietary cloud services including
+Microsoft Azure Maps and Azure Databricks. Use of these services requires
+a valid subscription and acceptance of their respective terms of service.
+
+No Azure Maps credentials, Databricks credentials, or proprietary
+Microsoft or Databricks software are included in this repository.
