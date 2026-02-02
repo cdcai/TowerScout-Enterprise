@@ -1,33 +1,51 @@
-## Third-Party Services and Dependencies
+# Third-Party Services and Open-Source Libraries
 
-This project integrates with the following third-party services and
-open-source libraries.
+## Proprietary Azure Cloud Services
 
-### Azure Maps Services
+This application uses Microsoft Azure cloud services, including:
 
-This project includes open-source client-side code that interfaces with
-Microsoft Azure Maps services, including REST APIs and dynamic map
-rendering.
+- Azure Maps APIs  
+- Azure Key Vault  
+- Azure Storage  
+- Azure Databricks  
 
-Azure Maps is a proprietary cloud service provided by Microsoft and is
-governed by Microsoft’s Azure Maps Terms of Service and applicable Azure
-licensing terms.
+These services are **proprietary** and are not included with this project.  
+Users must obtain a valid Microsoft Azure subscription and comply with Microsoft’s terms of service.  
 
-No Azure Maps subscription keys or service credentials are included in
-this repository. Users are responsible for obtaining their own Azure
-subscription and complying with all applicable usage terms and fees.
+No Azure subscription keys or credentials are included.
 
-### Azure Databricks
+---
 
-This project integrates with Azure Databricks for machine learning model
-inference via publicly documented APIs.
+## Open-Source Python Libraries
 
-Azure Databricks is a proprietary, managed service subject to Databricks
-and Microsoft licensing terms. This repository does not include
-Databricks software, credentials, or grant any rights to use the service.
+This project uses open-source Python libraries installed via `requirements.txt`. Examples include:
 
-### Open Source Libraries
+| Library | License | Repository / URL |
+|---------|---------|----------------|
+| azure-core | Apache 2.0 | https://github.com/Azure/azure-sdk-for-python |
+| msrest | Apache 2.0 | https://github.com/Azure/msrest-for-python |
+| requests | Apache 2.0 | https://github.com/psf/requests |
+| azure-identity | MIT | https://github.com/Azure/azure-sdk-for-python |
+| numpy | BSD | https://numpy.org/ |
+| pandas | BSD | https://pandas.pydata.org/ |
 
-This project uses open-source libraries distributed under their
-respective licenses. See `requirements.txt` and accompanying dependency
-documentation for license details.
+> For the full list of dependencies, see `requirements.txt`.
+
+---
+
+## Machine Learning Libraries
+
+| Library | License | Repository / URL |
+|---------|---------|----------------|
+| PyTorch | BSD 3-Clause | https://pytorch.org/ |
+| YOLO | MIT | [link to the specific YOLO repository used] |
+
+These libraries are used under their respective open-source licenses.
+
+---
+
+## Notes
+
+- This file **does not include Azure subscription keys or credentials**.  
+- Apache 2.0 dependencies included via `pip install` do **not require a separate NOTICE file** unless you redistribute the libraries.  
+- Users are responsible for complying with the licenses of all third-party libraries and services.
