@@ -38,7 +38,7 @@ This project uses open-source Python libraries installed via `requirements.txt`.
 | Library | License | Repository / URL |
 |---------|---------|----------------|
 | PyTorch | BSD 3-Clause | https://pytorch.org/ |
-| YOLO | MIT | [link to the specific YOLO repository used] |
+| YOLO | MIT | https://docs.ultralytics.com/models/yolov5/ |
 
 These libraries are used under their respective open-source licenses.
 
