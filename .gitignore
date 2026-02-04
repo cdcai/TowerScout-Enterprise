@@ -43,5 +43,6 @@ wheels/
 .coverage
 *.pt
 */datasets/*
-# *.png
+*.png
 tsdb/examples
+*.md
