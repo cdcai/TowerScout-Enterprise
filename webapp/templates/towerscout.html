@@ -50,8 +50,8 @@ Licensed under CC-BY-NC-SA-4.0
   <div class="grid-container">
 
     <div class="fheader" style="width: 100%;">
-      TowerScout
-      <a class="hover" href="{{ url_for('about') }}" target="_blank">About TowerScout</a>
+      TowerScout Enterprise
+      <a class="hover" href="{{ url_for('about') }}" target="_blank">About</a>
      </div><br>
      
 
@@ -127,8 +127,6 @@ Licensed under CC-BY-NC-SA-4.0
     </div>
 
     <div class="fdetect" id="fdetect">
-      <button id="btnTest" style="display: none;" class="btn" onclick='drawBoundingBoxesTest()'>Find Test towers</button>
-      <button id="btnTestGold" style="display: none;" class="btn" onclick='drawBoundingBoxesGoldTable()'>Find Gold towers</button>
       <button id="estimate" class="btn" onclick='ProcessUserRequest(true)'>Estimate tiles</button>
       <button id="find" class="btn" onclick='ProcessUserRequest()'>Find towers</button>
     </div>
@@ -180,8 +178,7 @@ Licensed under CC-BY-NC-SA-4.0
         results</button>
       <button class="btn" onclick="PromoteSilverToGold()" style="width:50%; height:100%">Promote to Gold</button>
      <br>
-     <button id="btnPushAddresses" class="btn" onclick="PushAddressesToBenchmarkSilver()" style="width:20%;display: none;">Push Addresses to Benchmark Silver</button>
-    
+     
     </div>
 
     <div class="ftext" style="font-size: smaller;">
