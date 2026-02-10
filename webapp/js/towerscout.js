@@ -2829,9 +2829,9 @@ function ToggleTestEnvironment() {
       // Assign the response value to a variable
       enableTestEnv = data;
       if (enableTestEnv === 'True') {
-        document.getElementById("btnTest").removeAttribute("style");
-        document.getElementById("btnTestGold").removeAttribute("style");
-        document.getElementById('btnPushAddresses').removeAttribute("style");
+        // document.getElementById("btnTest").removeAttribute("style");
+        // document.getElementById("btnTestGold").removeAttribute("style");
+        // document.getElementById('btnPushAddresses').removeAttribute("style");
       }
 
     })
