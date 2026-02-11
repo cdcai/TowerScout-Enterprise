@@ -48,11 +48,11 @@ model.eval()
 
 catalog = "edav_dev_csels"
 schema = "towerscout_test_schema"
-parent_dir = "/Workspace/Users/nzs0@cdc.gov"
+parent_dir = "/Workspace/Users/<user>"
 if not os.path.exists(parent_dir):
     os.makedirs(parent_dir)
 
-mlflow.set_experiment("/Workspace/Users/nzs0@cdc.gov/TowerScout_YOLOv5_Baseline")
+mlflow.set_experiment("/Workspace/Users/<user>/TowerScout_YOLOv5_Baseline")
 
 with mlflow.start_run(run_name="Register_pretrained_YOLOv5_model") as run:
     run_id = run.info.run_id

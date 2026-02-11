@@ -1,7 +1,7 @@
 {
   "job_id": 11718277971941,
-  "creator_user_name": "ztm8@cdc.gov",
-  "run_as_user_name": "ztm8@cdc.gov",
+  "creator_user_name": "<user>",
+  "run_as_user_name": "<user>",
   "run_as_owner": true,
   "settings": {
     "name": "wf_tower_scout_inference",
@@ -16,7 +16,7 @@
         "task_key": "inference_pipeline",
         "run_if": "ALL_SUCCESS",
         "notebook_task": {
-          "notebook_path": "/Repos/DDPHSS-CSELS-PD-TOWERSCOUT/TowerScout/tsdb/development/nb_inference_pipeline_development",
+          "notebook_path": "<path>",
           "source": "WORKSPACE"
         },
         "job_cluster_key": "DDPHSS_CSELS_TowerScout_Job_Cluster_UC",
@@ -43,7 +43,7 @@
           "driver_node_type_id": "Standard_NC4as_T4_v3",
           "custom_tags": {
             "edav_center": "csels",
-            "OriginalCreator": "lml9@cdc.gov",
+            "OriginalCreator": "<user>",
             "edav_environment": "development",
             "cluster_type": "project",
             "edav_project": "towerscout",
@@ -56,7 +56,7 @@
             }
           },
           "enable_elastic_disk": true,
-          "policy_id": "001C6B2DE03BCE23",
+          "policy_id": "<id>",
           "data_security_mode": "SINGLE_USER",
           "runtime_engine": "STANDARD",
           "autoscale": {

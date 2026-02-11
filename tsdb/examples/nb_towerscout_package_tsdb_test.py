@@ -36,7 +36,7 @@ print(f"Package {tsdb.__name__} imported successfully!")
 
 # COMMAND ----------
 
-# MAGIC %pip install -r /Workspace/Users/ac84@cdc.gov/TowerScout/requirements.txt
+# MAGIC %pip install -r /Workspace/Users/<user>/TowerScout/requirements.txt
 # MAGIC
 # MAGIC
 # MAGIC

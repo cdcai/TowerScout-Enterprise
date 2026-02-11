@@ -21,7 +21,7 @@ CREATE TABLE  IF NOT EXISTS image_inference_silver (
   )
   USING delta
   PARTITIONED BY(user_id, request_id)
-  LOCATION 'abfss://ddphss-csels@edavsynapsedatalake.dfs.core.windows.net/PD/TowerScout/Database/towerscout/silver/image_inference_silver';
+  LOCATION '<location>';
 
 
 
