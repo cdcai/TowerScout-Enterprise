@@ -1,3 +1,12 @@
+#
+# TowerScout
+# A tool for identifying cooling towers from satellite and aerial imagery
+#
+
+#
+# Licensed under Apache 2.0
+# (see LICENSE.TXT in the root of the repository for details)
+#
 from databricks import sql
 from requests.exceptions import Timeout, RequestException
 import os, time, logging, requests, ts_secrets, json, asyncio, datetime

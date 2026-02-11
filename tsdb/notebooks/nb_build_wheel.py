@@ -42,7 +42,7 @@ package_and_move_wheel(source_path, target_path, dbutils, overwrite=False)
 
 # COMMAND ----------
 
-!python /Workspace/Users/ac84@cdc.gov/TowerScout/setup.py bdist_wheel --dist-dir /tmp/
+!python /Workspace/Users/<USER>/TowerScout/setup.py bdist_wheel --dist-dir /tmp/
 import os
 # Step 2: Find the dynamically generated wheel file in /tmp
 wheel_files = [f for f in os.listdir('/tmp') if f.endswith('.whl')]

@@ -2,7 +2,7 @@
 # TowerScout
 # A tool for identifying cooling towers from satellite and aerial imagery
 #
-# Licensed under CC-BY-NC-SA-4.0
+# Licensed under Apache 2.0
 # (see LICENSE.TXT in the root of the repository for details)
 #
 from azure.identity import ClientSecretCredential
