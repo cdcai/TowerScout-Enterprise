@@ -12,7 +12,7 @@ This migration introduces the following features:
 ## Architecture
 ![TowerScout Architecture](https://github.com/cdcent/TowerScout/blob/prod/towerscout_architecture.jpg)
 ## Quickstart
-We do not provide the model in this release; however, you can train your own model using the training pipeline.
+We do not provide the model in this release; however, YOLOv5 and EfficientNet model weights available upon request, you can train your own model using the training pipeline.
 
 We developed this using DBR 15.4 ML. Although this application was designed on Databricks, you can adapt the code to a standard Spark setup
 
